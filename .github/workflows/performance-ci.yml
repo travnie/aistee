@@ -7,10 +7,9 @@ on: # yamllint disable-line rule:truthy
       - "benchmark/**"
       - "app/build.gradle.kts"
       - "app/proguard-rules.pro"
-      - "app/src/main/AndroidManifest.xml"
-      - "app/src/main/java/ais/tee/MainActivity.kt"
-      - "app/src/main/java/ais/tee/ui/screens/WebChatScreen.kt"
-      - "shared/src/commonMain/kotlin/ais/tee/data/model/ChatModels.kt"
+      - "app/src/main/**"
+      - "shared/src/commonMain/**"
+      - "shared/src/androidMain/**"
       - "app/src/**/generated/baselineProfiles/**"
       - "gradle/libs.versions.toml"
       - "gradle.properties"
@@ -23,10 +22,9 @@ on: # yamllint disable-line rule:truthy
       - "benchmark/**"
       - "app/build.gradle.kts"
       - "app/proguard-rules.pro"
-      - "app/src/main/AndroidManifest.xml"
-      - "app/src/main/java/ais/tee/MainActivity.kt"
-      - "app/src/main/java/ais/tee/ui/screens/WebChatScreen.kt"
-      - "shared/src/commonMain/kotlin/ais/tee/data/model/ChatModels.kt"
+      - "app/src/main/**"
+      - "shared/src/commonMain/**"
+      - "shared/src/androidMain/**"
       - "app/src/**/generated/baselineProfiles/**"
       - "gradle/libs.versions.toml"
       - "gradle.properties"
@@ -91,3 +89,6 @@ jobs:
           name: aistee-baseline-profile
           path: app/src/**/generated/baselineProfiles/*.txt
           if-no-files-found: error
+
+      - name: Check generated Baseline Profile is current
+        run: git diff --exit-code -- app/src/release/generated/baselineProfiles/
