@@ -23,7 +23,13 @@ __pycache__/
 
 # Generated AI/profile output
 .ai/generated/
+!app/src/release/generated/
+!app/src/release/generated/baselineProfiles/
+!app/src/release/generated/baselineProfiles/*.txt
 generated/
+!app/src/release/generated/
+!app/src/release/generated/baselineProfiles/
+!app/src/release/generated/baselineProfiles/*.txt
 
 # OS/editor noise
 .DS_Store

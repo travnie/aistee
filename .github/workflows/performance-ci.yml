@@ -6,9 +6,11 @@ on: # yamllint disable-line rule:truthy
     paths:
       - "benchmark/**"
       - "app/build.gradle.kts"
+      - "app/proguard-rules.pro"
       - "app/src/main/AndroidManifest.xml"
       - "app/src/**/generated/baselineProfiles/**"
       - "gradle/libs.versions.toml"
+      - "gradle.properties"
       - "build.gradle.kts"
       - "settings.gradle.kts"
       - ".github/workflows/performance-ci.yml"
@@ -17,9 +19,11 @@ on: # yamllint disable-line rule:truthy
     paths:
       - "benchmark/**"
       - "app/build.gradle.kts"
+      - "app/proguard-rules.pro"
       - "app/src/main/AndroidManifest.xml"
       - "app/src/**/generated/baselineProfiles/**"
       - "gradle/libs.versions.toml"
+      - "gradle.properties"
       - "build.gradle.kts"
       - "settings.gradle.kts"
       - ".github/workflows/performance-ci.yml"
@@ -62,7 +66,7 @@ jobs:
           disable-animations: true
           script: |
             ./gradlew :app:generateBaselineProfile -Pandroidx.baselineprofile.forceonlyconnecteddevices -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.benchmark.BaselineProfileGenerator -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile --stacktrace
-            ./gradlew :benchmark:connectedCheck -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.benchmark.StartupBenchmark,ais.tee.benchmark.ProviderSwitchBenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=Macrobenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.dryRunMode.enable=true -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR --stacktrace
+            ./gradlew :benchmark:connectedBenchmarkReleaseAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.benchmark.StartupBenchmark,ais.tee.benchmark.ProviderSwitchBenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=Macrobenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.dryRunMode.enable=true -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR --stacktrace
 
       - name: Upload performance test reports
         if: always()

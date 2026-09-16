@@ -74,6 +74,10 @@ android {
     }
 }
 
+baselineProfile {
+    saveInSrc = true
+}
+
 dependencies {
     implementation(project(":shared"))
     implementation(libs.androidx.core.ktx)
