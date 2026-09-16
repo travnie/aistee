@@ -10,6 +10,11 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
+@Target(AnnotationTarget.CLASS, AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.RUNTIME)
+annotation class TestExpandedWidth
+
+@TestExpandedWidth
 @RunWith(AndroidJUnit4::class)
 class WideWebProviderNavigationTest {
     @get:Rule
