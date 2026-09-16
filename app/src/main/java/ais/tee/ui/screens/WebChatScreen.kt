@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
@@ -1646,6 +1647,7 @@ private fun WebProviderDrawerItem(
         modifier = Modifier
             .padding(horizontal = 12.dp)
             .semantics {
+                contentDescription = "Switch to ${service.shortName}"
                 when (activityStatus) {
                     WebChatActivityStatus.GENERATING -> stateDescription = "Generating response"
                     WebChatActivityStatus.UNREAD -> stateDescription = "Unread response"
