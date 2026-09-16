@@ -20,4 +20,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Aistee"
-include(":app", ":shared")
+include(":app", ":shared", ":benchmark")

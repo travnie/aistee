@@ -1,0 +1,130 @@
+name: Android performance verification
+
+on: # yamllint disable-line rule:truthy
+  push:
+    branches: [main]
+    paths:
+      - "benchmark/**"
+      - "app/build.gradle.kts"
+      - "app/proguard-rules.pro"
+      - "app/src/main/**"
+      - "shared/src/commonMain/**"
+      - "shared/src/androidMain/**"
+      - "app/src/**/generated/baselineProfiles/**"
+      - "gradle/libs.versions.toml"
+      - "gradle.properties"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - ".github/workflows/performance-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "benchmark/**"
+      - "app/build.gradle.kts"
+      - "app/proguard-rules.pro"
+      - "app/src/main/**"
+      - "shared/src/commonMain/**"
+      - "shared/src/androidMain/**"
+      - "app/src/**/generated/baselineProfiles/**"
+      - "gradle/libs.versions.toml"
+      - "gradle.properties"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - ".github/workflows/performance-ci.yml"
+
+concurrency:
+  group: performance-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark-verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Verify Baseline Profile and Macrobenchmark journeys
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: |
+            ./gradlew :app:generateBaselineProfile -Pandroidx.baselineprofile.forceonlyconnecteddevices -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.benchmark.BaselineProfileGenerator -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile --stacktrace
+            ./gradlew :benchmark:connectedBenchmarkReleaseAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.benchmark.StartupBenchmark,ais.tee.benchmark.ProviderSwitchBenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=Macrobenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.dryRunMode.enable=true -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR --stacktrace
+
+      - name: Upload performance test reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: aistee-performance-test-reports
+          path: |
+            benchmark/build/outputs/androidTest-results/**
+            benchmark/build/reports/androidTests/**
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload generated Baseline Profile
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: aistee-baseline-profile
+          path: app/src/**/generated/baselineProfiles/*.txt
+          if-no-files-found: error
+
+      - name: Check generated Aistee profile coverage is current
+        shell: python
+        run: |
+          import difflib
+          import pathlib
+          import re
+          import subprocess
+          import sys
+
+          def canonical_rules(text: str) -> list[str]:
+              return sorted({
+                  re.sub(r"^[HSP]+", "", line)
+                  for line in text.splitlines()
+                  if "Lais/tee/" in line
+              })
+
+          stale = False
+          root = pathlib.Path("app/src/release/generated/baselineProfiles")
+          for name in ("baseline-prof.txt", "startup-prof.txt"):
+              path = root / name
+              committed = subprocess.check_output(
+                  ["git", "show", f"HEAD:{path.as_posix()}"], text=True
+              )
+              expected = canonical_rules(committed)
+              generated = canonical_rules(path.read_text())
+              if expected != generated:
+                  stale = True
+                  print(f"::error::{name} Aistee coverage is stale")
+                  print("".join(difflib.unified_diff(
+                      expected,
+                      generated,
+                      fromfile=f"committed/{name}",
+                      tofile=f"generated/{name}",
+                      lineterm="\n",
+                  )))
+
+          if stale:
+              sys.exit(1)
