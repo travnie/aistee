@@ -10,7 +10,7 @@ private const val UI_TIMEOUT_MS = 5_000L
 internal fun MacrobenchmarkScope.switchWebProvider(providerName: String) {
     val providerSelector = By.desc("Switch to $providerName")
     val visibleProvider = device.findObject(providerSelector)
-    if (visibleProvider != null) {
+    if (visibleProvider != null && !visibleProvider.visibleBounds.isEmpty) {
         visibleProvider.click()
         device.waitForIdle()
         return
