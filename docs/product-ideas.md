@@ -104,6 +104,7 @@ Treat Token Arena as the overlap between Bench tooling and a small experimental 
 
 ### Shipped foundations
 
+- The September 2026 dependency pass aligns the Compose BOM, Material 3 and Material 3 Adaptive baseline with their stable release lines.
 - The main shell adapts through Material 3 Adaptive: compact layouts use bottom navigation and wider layouts use rail-class navigation.
 - Account-backed Web chats stay immersive on compact screens and keep provider navigation persistently visible on rail-class layouts.
 - Native chat rows use stable message IDs and `contentType` so Lazy layouts can reuse compatible compositions.
@@ -113,7 +114,6 @@ Treat Token Arena as the overlap between Bench tooling and a small experimental 
 
 ### Next
 
-- Before another UI dependency/refactor pass, align the pinned Compose BOM/Material 3 dependencies with current stable releases. Keep stable Material 3 + Material 3 Adaptive as the baseline; isolate experimental Expressive APIs until they are actually needed.
 - Use a list-detail pattern for locally owned conversations on larger screens: conversation list on the leading pane, active chat in the main pane, and an optional supporting pane for tools/files/provider controls. Preserve pane and scroll state when resizing or rotating.
 - Use Material 3 Expressive selectively for discovery, prominent actions and transitions. Keep repeated chat/message interactions calmer and faster with standard motion instead of animating every surface.
 - Prefer Material typography over hard-coded tiny essential labels; keep touch targets and Android font-scaling/accessibility behavior intact.
