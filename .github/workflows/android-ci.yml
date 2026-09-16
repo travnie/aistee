@@ -74,11 +74,7 @@ jobs:
           target: google_apis
           disable-animations: true
           script: |
-            ./gradlew :app:connectedDebugAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.notAnnotation=ais.tee.TestExpandedWidth \
-              --stacktrace
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=ais.tee.TestExpandedWidth --stacktrace
             adb shell wm size 1280x800
             adb shell wm density 240
-            ./gradlew :app:connectedDebugAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.annotation=ais.tee.TestExpandedWidth \
-              --stacktrace
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.annotation=ais.tee.TestExpandedWidth --stacktrace
