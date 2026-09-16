@@ -29,6 +29,5 @@ class BaselineProfileGenerator {
         pressHome()
         startActivityAndWait()
         switchWebProvider("ChatGPT")
-        openCompareHub()
     }
 }

@@ -21,18 +21,3 @@ internal fun MacrobenchmarkScope.switchWebProvider(providerName: String) {
     provider.click()
     device.waitForIdle()
 }
-
-internal fun MacrobenchmarkScope.openCompareHub() {
-    val switcher = device.wait(
-        Until.findObject(By.desc("Switch AI service")),
-        UI_TIMEOUT_MS
-    ) ?: error("Web provider switcher did not become available")
-    switcher.click()
-
-    val compareHub = device.wait(
-        Until.findObject(By.text("Compare Hub")),
-        UI_TIMEOUT_MS
-    ) ?: error("Compare Hub did not become available")
-    compareHub.click()
-    device.wait(Until.hasObject(By.textContains("Compare")), UI_TIMEOUT_MS)
-}

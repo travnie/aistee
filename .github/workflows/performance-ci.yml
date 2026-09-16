@@ -61,8 +61,8 @@ jobs:
           target: google_apis
           disable-animations: true
           script: |
-            ./gradlew :app:generateBaselineProfile -Pandroidx.baselineprofile.forceonlyconnecteddevices -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile --stacktrace
-            ./gradlew :benchmark:connectedBenchmarkReleaseAndroidTest -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=Macrobenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.dryRunMode.enable=true -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR --stacktrace
+            ./gradlew :app:generateBaselineProfile -Pandroidx.baselineprofile.forceonlyconnecteddevices -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.benchmark.BaselineProfileGenerator -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile --stacktrace
+            ./gradlew :benchmark:connectedCheck -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.benchmark.StartupBenchmark,ais.tee.benchmark.ProviderSwitchBenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=Macrobenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.dryRunMode.enable=true -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR --stacktrace
 
       - name: Upload performance test reports
         if: always()
