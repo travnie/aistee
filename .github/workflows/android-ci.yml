@@ -66,7 +66,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run Android 16 launch smoke test
+      - name: Run Android 16 compact and wide smoke tests
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 36
@@ -74,6 +74,7 @@ jobs:
           target: google_apis
           disable-animations: true
           script: |
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=ais.tee.TestExpandedWidth --stacktrace
             adb shell wm size 1280x800
             adb shell wm density 240
-            ./gradlew :app:connectedDebugAndroidTest --stacktrace
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.annotation=ais.tee.TestExpandedWidth --stacktrace
