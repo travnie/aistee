@@ -64,6 +64,17 @@ jobs:
             ./gradlew :app:generateBaselineProfile -Pandroidx.baselineprofile.forceonlyconnecteddevices -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile --stacktrace
             ./gradlew :benchmark:connectedBenchmarkReleaseAndroidTest -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=Macrobenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.dryRunMode.enable=true -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR --stacktrace
 
+      - name: Upload performance test reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: aistee-performance-test-reports
+          path: |
+            benchmark/build/outputs/androidTest-results/**
+            benchmark/build/reports/androidTests/**
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Upload generated Baseline Profile
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
