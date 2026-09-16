@@ -90,5 +90,41 @@ jobs:
           path: app/src/**/generated/baselineProfiles/*.txt
           if-no-files-found: error
 
-      - name: Check generated Baseline Profile is current
-        run: git diff --exit-code -- app/src/release/generated/baselineProfiles/
+      - name: Check generated Aistee profile coverage is current
+        shell: python
+        run: |
+          import difflib
+          import pathlib
+          import re
+          import subprocess
+          import sys
+
+          def canonical_rules(text: str) -> list[str]:
+              return sorted({
+                  re.sub(r"^[HSP]+", "", line)
+                  for line in text.splitlines()
+                  if "Lais/tee/" in line
+              })
+
+          stale = False
+          root = pathlib.Path("app/src/release/generated/baselineProfiles")
+          for name in ("baseline-prof.txt", "startup-prof.txt"):
+              path = root / name
+              committed = subprocess.check_output(
+                  ["git", "show", f"HEAD:{path.as_posix()}"], text=True
+              )
+              expected = canonical_rules(committed)
+              generated = canonical_rules(path.read_text())
+              if expected != generated:
+                  stale = True
+                  print(f"::error::{name} Aistee coverage is stale")
+                  print("".join(difflib.unified_diff(
+                      expected,
+                      generated,
+                      fromfile=f"committed/{name}",
+                      tofile=f"generated/{name}",
+                      lineterm="\n",
+                  )))
+
+          if stale:
+              sys.exit(1)

@@ -9,3 +9,5 @@ Aistee keeps Android performance tests in the `:benchmark` module.
 - Treat performance numbers from CI emulators as non-authoritative; compare real metrics on a physical device using the benchmark release variant.
 
 Generate the shipping profile with `:app:generateBaselineProfile`. The generated profile under `app/src/**/generated/baselineProfiles/` is the release source of truth and should be regenerated when startup or covered critical journeys materially change.
+
+CI regenerates the profiles and compares canonical Aistee-owned (Lais/tee/) rule coverage. It ignores H/S/P hotness prefixes and framework-owned rules because emulator collection can vary those between otherwise equivalent runs.
