@@ -1,11 +1,13 @@
 package ais.tee.benchmark
 
+import android.os.SystemClock
 import androidx.benchmark.macro.MacrobenchmarkScope
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Until
 
 internal const val TARGET_PACKAGE = "ais.tee"
 private const val UI_TIMEOUT_MS = 5_000L
+private const val UI_POLL_INTERVAL_MS = 50L
 
 internal fun MacrobenchmarkScope.switchWebProvider(providerName: String) {
     val providerSelector = By.desc("Switch to $providerName")
@@ -22,8 +24,18 @@ internal fun MacrobenchmarkScope.switchWebProvider(providerName: String) {
     ) ?: error("Web provider switcher did not become available")
     switcher.click()
 
-    val provider = device.wait(Until.findObject(providerSelector), UI_TIMEOUT_MS)
-        ?: error("Web provider $providerName did not become available")
-    provider.click()
+    val deadline = SystemClock.uptimeMillis() + UI_TIMEOUT_MS
+    var provider = device.findObject(providerSelector)
+    while (
+        (provider == null || provider.visibleBounds.isEmpty) &&
+        SystemClock.uptimeMillis() < deadline
+    ) {
+        SystemClock.sleep(UI_POLL_INTERVAL_MS)
+        provider = device.findObject(providerSelector)
+    }
+
+    val visibleDrawerProvider = provider?.takeIf { !it.visibleBounds.isEmpty }
+        ?: error("Web provider $providerName did not become visible")
+    visibleDrawerProvider.click()
     device.waitForIdle()
 }
