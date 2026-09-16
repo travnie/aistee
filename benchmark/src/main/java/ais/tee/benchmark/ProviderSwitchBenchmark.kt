@@ -26,6 +26,7 @@ class ProviderSwitchBenchmark {
             setupBlock = {
                 pressHome()
                 startActivityAndWait()
+                switchWebProvider("ChatGPT")
                 switchWebProvider("Claude")
             }
         ) {

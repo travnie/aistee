@@ -28,6 +28,7 @@ class BaselineProfileGenerator {
     ) {
         pressHome()
         startActivityAndWait()
+        switchWebProvider("Claude")
         switchWebProvider("ChatGPT")
     }
 }
