@@ -102,16 +102,20 @@ Treat Token Arena as the overlap between Bench tooling and a small experimental 
 
 ## UI/UX architecture and smoothness
 
-- Before the UI refactor, align the currently pinned Compose BOM/Material 3 dependencies with the then-current stable releases. Use stable Material 3 + Material 3 Adaptive as the baseline instead of inventing parallel breakpoint/navigation systems; keep experimental/alpha-only Expressive APIs optional and isolated until they are needed.
-- Adapt the main shell by width: compact screens keep bottom navigation; medium/expanded screens should prefer a navigation rail or drawer through `NavigationSuiteScaffold` rather than stretching phone chrome.
+### Shipped foundations
+
+- The main shell adapts through Material 3 Adaptive: compact layouts use bottom navigation and wider layouts use rail-class navigation.
+- Account-backed Web chats stay immersive on compact screens and keep provider navigation persistently visible on rail-class layouts.
+- Native chat rows use stable message IDs and `contentType` so Lazy layouts can reuse compatible compositions.
+- Native chat auto-scroll follows the reader only while they stay near the latest message; scrolling upward exposes a jump-to-latest control instead of yanking the list during streaming.
+- Streaming text is coalesced to a UI-friendly cadence, and the generating pulse updates alpha in the graphics layer instead of driving color recomposition.
+- Native message bubbles use an adaptive readable width with phone gutters and an expanded-screen cap.
+
+### Next
+
+- Before another UI dependency/refactor pass, align the pinned Compose BOM/Material 3 dependencies with current stable releases. Keep stable Material 3 + Material 3 Adaptive as the baseline; isolate experimental Expressive APIs until they are actually needed.
 - Use a list-detail pattern for locally owned conversations on larger screens: conversation list on the leading pane, active chat in the main pane, and an optional supporting pane for tools/files/provider controls. Preserve pane and scroll state when resizing or rotating.
-- Keep account-backed Web chats immersive on phones, but allow their modal provider drawer to become a persistent rail/drawer on wider layouts.
 - Use Material 3 Expressive selectively for discovery, prominent actions and transitions. Keep repeated chat/message interactions calmer and faster with standard motion instead of animating every surface.
-- The native chat list already uses stable message IDs. Add `contentType` for user/assistant/error/status rows so Lazy layouts can reuse compatible compositions efficiently.
-- Auto-scroll only while the user is already near the latest message. If they scroll upward, never yank them back during streaming; show a compact jump-to-latest/unread control instead.
-- Coalesce streaming text updates to a UI-friendly cadence and keep message rows fed by stable/immutable state so token-by-token updates do not recompose unrelated chrome or old messages.
-- Avoid composition-driven infinite animation for incidental effects when a draw/graphics phase update can do the same job. Keep typing/generating indicators cheap.
-- Replace fixed narrow message widths on expanded screens with adaptive readable widths: do not stretch text edge-to-edge, but do not keep the current phone-sized bubble cap on tablets either.
 - Prefer Material typography over hard-coded tiny essential labels; keep touch targets and Android font-scaling/accessibility behavior intact.
 - Keep edge-to-edge, IME handling and predictive back coherent across chats, sheets, drawers and list-detail panes.
 - Add Macrobenchmark journeys and Baseline Profiles for cold/warm start, opening a chat, provider switching, long-message-list scrolling, returning from a detail pane and active streaming. Judge smoothness from release builds and frame timing, not debug feel.
@@ -125,6 +129,7 @@ Treat Token Arena as the overlap between Bench tooling and a small experimental 
 - **Perplexity:** useful separation of chats/projects/library/artifacts and quick reuse of generated work.
 - **Obsidian:** strongest local-file/source-of-truth ergonomics for create/open/search/edit flows.
 - Treat these as interaction references, not a runtime benchmark; the APK inspection does not justify claiming one app has better frame timing than another.
+
 ## Android widgets and conversation notifications
 
 - Build first-party home-screen widgets with Jetpack Glance and responsive layouts; update them from local state changes rather than aggressive polling.
