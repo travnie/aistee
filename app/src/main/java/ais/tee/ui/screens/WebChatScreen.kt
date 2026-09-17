@@ -112,13 +112,14 @@ internal fun webServicesToKeepAfterMemoryPressure(
     liveServices: List<WebAiService>,
     selectedService: WebAiService,
     generatingServices: Set<WebAiService>,
+    webChatActive: Boolean,
     mode: WebViewEvictionMode
 ): List<WebAiService> = when (mode) {
     WebViewEvictionMode.NONE -> liveServices
     WebViewEvictionMode.PRESERVE_GENERATING -> liveServices.filter { service ->
         service == selectedService || service in generatingServices
     }
-    WebViewEvictionMode.SELECTED_ONLY -> listOf(selectedService)
+    WebViewEvictionMode.SELECTED_ONLY -> if (webChatActive) listOf(selectedService) else emptyList()
 }
 
 private data class PendingSharedUploadConfirmation(
@@ -292,7 +293,11 @@ fun WebChatScreen(
     }
 
     LaunchedEffect(isActive, selectedService) {
-        if (isActive && deferredRendererRecoveryServices.remove(selectedService) == true) {
+        if (!isActive) return@LaunchedEffect
+        if (selectedService !in liveServices) {
+            liveServices = nextWebViewLru(liveServices, selectedService)
+        }
+        if (deferredRendererRecoveryServices.remove(selectedService) == true) {
             bumpWebViewInstance(selectedService)
         }
     }
@@ -637,6 +642,7 @@ fun WebChatScreen(
                 liveServices = liveServices,
                 selectedService = currentSelectedService,
                 generatingServices = currentGeneratingServices(),
+                webChatActive = currentIsActive,
                 mode = mode
             )
         )
