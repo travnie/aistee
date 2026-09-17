@@ -4,6 +4,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -22,7 +23,10 @@ class WebViewNavigationRetentionTest {
     fun webViewInstanceSurvivesNavigationAwayAndBack() {
         val before = awaitWebViewIdentities()
 
-        composeRule.onNodeWithTag("btn_web_provider_drawer").performClick()
+        if (composeRule.onAllNodesWithTag("btn_web_provider_drawer").fetchSemanticsNodes().isNotEmpty()) {
+            composeRule.onNodeWithTag("btn_web_provider_drawer").performClick()
+            composeRule.waitForIdle()
+        }
         composeRule.onNodeWithTag("btn_switch_to_studio").performClick()
         composeRule.waitForIdle()
         assertEquals(before, webViewIdentities())
