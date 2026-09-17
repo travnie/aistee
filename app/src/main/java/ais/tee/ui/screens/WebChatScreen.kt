@@ -149,6 +149,7 @@ fun WebChatScreen(
     uiState: StudioUiState,
     onOpenNativeCompare: () -> Unit,
     onOpenStudio: () -> Unit,
+    isActive: Boolean,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -278,6 +279,10 @@ fun WebChatScreen(
     }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
+
+    LaunchedEffect(isActive) {
+        if (!isActive) drawerState.close()
+    }
 
     fun bumpWebViewInstance(service: WebAiService) {
         webViewInstanceRevisions[service] = (webViewInstanceRevisions[service] ?: 0) + 1
@@ -822,7 +827,7 @@ fun WebChatScreen(
         )
     }
 
-    BackHandler(enabled = canGoBack && drawerState.currentValue == DrawerValue.Closed) {
+    BackHandler(enabled = isActive && canGoBack && drawerState.currentValue == DrawerValue.Closed) {
         activeWebView?.let {
             if (it.canGoBack()) {
                 it.goBack()
@@ -1149,7 +1154,7 @@ fun WebChatScreen(
 
     // Quick Prompt / Profile Copier Dialog
     ExternalIntentConfirmationDialog(
-        uri = pendingExternalIntentUri,
+        uri = pendingExternalIntentUri.takeIf { isActive },
         onDismiss = { pendingExternalIntentUri = null },
         onConfirm = { pendingUri ->
             pendingExternalIntentUri = null
@@ -1157,7 +1162,7 @@ fun WebChatScreen(
         }
     )
 
-    pendingSharedUploadConfirmation?.let { confirmation ->
+    pendingSharedUploadConfirmation?.takeIf { isActive }?.let { confirmation ->
         SharedUploadConfirmationDialog(
             service = confirmation.service,
             attachmentCount = confirmation.uris.size,
@@ -1201,7 +1206,7 @@ fun WebChatScreen(
         )
     }
 
-    if (showProviderDiagnosticsDialog) {
+    if (isActive && showProviderDiagnosticsDialog) {
         val webViewPackage = WebView.getCurrentWebViewPackage()?.let { packageInfo ->
             listOfNotNull(packageInfo.packageName, packageInfo.versionName).joinToString(" ")
         } ?: "Unavailable"
@@ -1229,7 +1234,7 @@ fun WebChatScreen(
         )
     }
 
-    if (showPromptHelperDialog) {
+    if (isActive && showPromptHelperDialog) {
         AlertDialog(
             onDismissRequest = { showPromptHelperDialog = false },
             title = {

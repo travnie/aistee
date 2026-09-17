@@ -170,46 +170,52 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize()
                     ) { innerPadding ->
                         Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(bottom = innerPadding.calculateBottomPadding())
-                    ) {
-                        when (uiState.currentTab) {
-                            NavigationTab.WEB_CHATS -> WebChatScreen(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(bottom = innerPadding.calculateBottomPadding())
+                        ) {
+                            val webChatsActive = uiState.currentTab == NavigationTab.WEB_CHATS
+                            WebChatScreen(
                                 viewModel = viewModel,
                                 uiState = uiState,
                                 onOpenNativeCompare = { viewModel.selectTab(NavigationTab.COMPARE_HUB) },
-                                onOpenStudio = { viewModel.selectTab(NavigationTab.STUDIO) }
+                                onOpenStudio = { viewModel.selectTab(NavigationTab.STUDIO) },
+                                isActive = webChatsActive,
+                                modifier = if (webChatsActive) Modifier.fillMaxSize() else Modifier.size(0.dp)
                             )
-                            NavigationTab.COMPARE_HUB -> ChatScreen(
-                                viewModel = viewModel,
-                                uiState = uiState
-                            )
-                            NavigationTab.STUDIO -> StudioScreen(
-                                viewModel = viewModel,
-                                uiState = uiState,
-                                onNavigateToInstructions = { viewModel.selectTab(NavigationTab.INSTRUCTIONS) },
-                                onNavigateToSkills = { viewModel.selectTab(NavigationTab.SKILLS) },
-                                onNavigateToYaml = { viewModel.selectTab(NavigationTab.YAML) },
-                                onNavigateToPlayground = { viewModel.selectTab(profilePlaygroundDestination()) }
-                            )
-                            NavigationTab.INSTRUCTIONS -> InstructionsScreen(
-                                viewModel = viewModel,
-                                uiState = uiState,
-                                onNavigateToPlayground = { viewModel.selectTab(profilePlaygroundDestination()) }
-                            )
-                            NavigationTab.YAML -> YamlEditorScreen(
-                                viewModel = viewModel,
-                                uiState = uiState
-                            )
-                            NavigationTab.PLAYGROUND -> PlaygroundScreen(
-                                viewModel = viewModel,
-                                uiState = uiState
-                            )
-                            NavigationTab.SKILLS -> SkillsBrowserScreen(
-                                viewModel = viewModel
-                            )
-                        }
+                            if (!webChatsActive) {
+                                when (uiState.currentTab) {
+                                    NavigationTab.WEB_CHATS -> Unit
+                                    NavigationTab.COMPARE_HUB -> ChatScreen(
+                                        viewModel = viewModel,
+                                        uiState = uiState
+                                    )
+                                    NavigationTab.STUDIO -> StudioScreen(
+                                        viewModel = viewModel,
+                                        uiState = uiState,
+                                        onNavigateToInstructions = { viewModel.selectTab(NavigationTab.INSTRUCTIONS) },
+                                        onNavigateToSkills = { viewModel.selectTab(NavigationTab.SKILLS) },
+                                        onNavigateToYaml = { viewModel.selectTab(NavigationTab.YAML) },
+                                        onNavigateToPlayground = { viewModel.selectTab(profilePlaygroundDestination()) }
+                                    )
+                                    NavigationTab.INSTRUCTIONS -> InstructionsScreen(
+                                        viewModel = viewModel,
+                                        uiState = uiState,
+                                        onNavigateToPlayground = { viewModel.selectTab(profilePlaygroundDestination()) }
+                                    )
+                                    NavigationTab.YAML -> YamlEditorScreen(
+                                        viewModel = viewModel,
+                                        uiState = uiState
+                                    )
+                                    NavigationTab.PLAYGROUND -> PlaygroundScreen(
+                                        viewModel = viewModel,
+                                        uiState = uiState
+                                    )
+                                    NavigationTab.SKILLS -> SkillsBrowserScreen(
+                                        viewModel = viewModel
+                                    )
+                                }
+                            }
                         }
                     }
                 }
