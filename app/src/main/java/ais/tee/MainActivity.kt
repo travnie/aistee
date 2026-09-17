@@ -175,14 +175,20 @@ class MainActivity : ComponentActivity() {
                                 .padding(bottom = innerPadding.calculateBottomPadding())
                         ) {
                             val webChatsActive = uiState.currentTab == NavigationTab.WEB_CHATS
-                            WebChatScreen(
-                                viewModel = viewModel,
-                                uiState = uiState,
-                                onOpenNativeCompare = { viewModel.selectTab(NavigationTab.COMPARE_HUB) },
-                                onOpenStudio = { viewModel.selectTab(NavigationTab.STUDIO) },
-                                isActive = webChatsActive,
-                                modifier = if (webChatsActive) Modifier.fillMaxSize() else Modifier.size(0.dp)
-                            )
+                            var webChatsVisited by rememberSaveable { mutableStateOf(webChatsActive) }
+                            LaunchedEffect(webChatsActive) {
+                                if (webChatsActive) webChatsVisited = true
+                            }
+                            if (webChatsActive || webChatsVisited) {
+                                WebChatScreen(
+                                    viewModel = viewModel,
+                                    uiState = uiState,
+                                    onOpenNativeCompare = { viewModel.selectTab(NavigationTab.COMPARE_HUB) },
+                                    onOpenStudio = { viewModel.selectTab(NavigationTab.STUDIO) },
+                                    isActive = webChatsActive,
+                                    modifier = if (webChatsActive) Modifier.fillMaxSize() else Modifier.size(0.dp)
+                                )
+                            }
                             if (!webChatsActive) {
                                 when (uiState.currentTab) {
                                     NavigationTab.WEB_CHATS -> Unit

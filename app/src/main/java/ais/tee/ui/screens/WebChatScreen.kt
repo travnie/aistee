@@ -638,11 +638,12 @@ fun WebChatScreen(
 
     val lifecycleStarted = rememberWebViewLifecycleStarted(
         webViewMap = webViewMap,
-        selectedService = currentSelectedService
+        selectedService = currentSelectedService,
+        isActive = isActive
     )
 
-    LaunchedEffect(lifecycleStarted, liveServices) {
-        if (!lifecycleStarted) return@LaunchedEffect
+    LaunchedEffect(lifecycleStarted, isActive, liveServices) {
+        if (!lifecycleStarted || !isActive) return@LaunchedEffect
         var pollTick = 0
         while (true) {
             liveServices.forEach { service ->
@@ -1091,7 +1092,7 @@ fun WebChatScreen(
                                     inactivityConfirmed = isRendererInactivityConfirmed
                                 )
                             )
-                            if (isCurrentService && lifecycleStarted) {
+                            if (isCurrentService && lifecycleStarted && isActive) {
                                 wv.onResume()
                             } else {
                                 wv.onPause()
