@@ -37,7 +37,15 @@ class WebRendererRecoveryTest {
     fun lowMemoryRendererTerminationRecreatesLastUrl() {
         assertEquals(
             WebRendererRecoveryAction.RECREATE_LAST_URL,
-            webRendererRecoveryAction(didCrash = false, isSelected = true)
+            webRendererRecoveryAction(didCrash = false, isSelected = true, isWebChatActive = true)
+        )
+    }
+
+    @Test
+    fun hiddenSelectedLowMemoryTerminationDefersUntilWebChatIsActive() {
+        assertEquals(
+            WebRendererRecoveryAction.DEFER_UNTIL_ACTIVE,
+            webRendererRecoveryAction(didCrash = false, isSelected = true, isWebChatActive = false)
         )
     }
 
@@ -45,7 +53,7 @@ class WebRendererRecoveryTest {
     fun inactiveLowMemoryTerminationStaysEvictedUntilSelected() {
         assertEquals(
             WebRendererRecoveryAction.EVICT_UNTIL_SELECTED,
-            webRendererRecoveryAction(didCrash = false, isSelected = false)
+            webRendererRecoveryAction(didCrash = false, isSelected = false, isWebChatActive = false)
         )
     }
 
@@ -73,7 +81,7 @@ class WebRendererRecoveryTest {
     fun rendererCrashRequiresExplicitRetry() {
         assertEquals(
             WebRendererRecoveryAction.REQUIRE_USER_RETRY,
-            webRendererRecoveryAction(didCrash = true, isSelected = true)
+            webRendererRecoveryAction(didCrash = true, isSelected = true, isWebChatActive = false)
         )
     }
 }

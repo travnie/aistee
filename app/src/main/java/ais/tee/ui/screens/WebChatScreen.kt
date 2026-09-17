@@ -266,9 +266,11 @@ fun WebChatScreen(
     val providerFavicons = remember { mutableStateMapOf<WebAiService, Bitmap>() }
     val webViewInstanceRevisions = remember { mutableStateMapOf<WebAiService, Int>() }
     val rendererCrashServices = remember { mutableStateMapOf<WebAiService, Boolean>() }
+    val deferredRendererRecoveryServices = remember { mutableStateMapOf<WebAiService, Boolean>() }
     val rendererInactivityConfirmed = remember { mutableStateMapOf<WebAiService, Boolean>() }
     val rendererPriorityProbeRequestIds = remember { mutableMapOf<WebAiService, Int>() }
     val currentSelectedService by rememberUpdatedState(selectedService)
+    val currentIsActive by rememberUpdatedState(isActive)
     var livePoolDecisionRequestId by remember { mutableIntStateOf(0) }
 
     fun releaseSharedTextClaimFor(webView: WebView) {
@@ -287,6 +289,12 @@ fun WebChatScreen(
 
     fun bumpWebViewInstance(service: WebAiService) {
         webViewInstanceRevisions[service] = (webViewInstanceRevisions[service] ?: 0) + 1
+    }
+
+    LaunchedEffect(isActive, selectedService) {
+        if (isActive && deferredRendererRecoveryServices.remove(selectedService) == true) {
+            bumpWebViewInstance(selectedService)
+        }
     }
 
     fun cancelPendingUploadFor(service: WebAiService) {
@@ -347,24 +355,37 @@ fun WebChatScreen(
                 activityStatuses[service] = webChatActivityStatusAfterEviction(status)
             }
             webViewMap.remove(service)
-            if (selectedService == service) {
+            if (currentSelectedService == service) {
                 canGoBack = false
                 canGoForward = false
                 loadingProgress = 0
                 isLoading = false
                 currentUrl = lastKnownUrls[service] ?: service.url
             }
-            val isSelectedService = selectedService == service
-            when (webRendererRecoveryAction(didCrash, isSelectedService)) {
+            val isSelectedService = currentSelectedService == service
+            when (
+                webRendererRecoveryAction(
+                    didCrash = didCrash,
+                    isSelected = isSelectedService,
+                    isWebChatActive = currentIsActive
+                )
+            ) {
                 WebRendererRecoveryAction.RECREATE_LAST_URL -> {
                     rendererCrashServices.remove(service)
+                    deferredRendererRecoveryServices.remove(service)
                     bumpWebViewInstance(service)
+                }
+                WebRendererRecoveryAction.DEFER_UNTIL_ACTIVE -> {
+                    rendererCrashServices.remove(service)
+                    deferredRendererRecoveryServices[service] = true
                 }
                 WebRendererRecoveryAction.EVICT_UNTIL_SELECTED -> {
                     rendererCrashServices.remove(service)
+                    deferredRendererRecoveryServices.remove(service)
                     liveServices = liveServices.filterNot { it == service }
                 }
                 WebRendererRecoveryAction.REQUIRE_USER_RETRY -> {
+                    deferredRendererRecoveryServices.remove(service)
                     rendererCrashServices[service] = true
                     if (!isSelectedService) {
                         liveServices = liveServices.filterNot { it == service }
@@ -378,6 +399,7 @@ fun WebChatScreen(
 
     fun retryRendererAfterCrash(service: WebAiService) {
         if (rendererCrashServices.remove(service) != true) return
+        deferredRendererRecoveryServices.remove(service)
         lastKnownUrls[service] = service.url
         if (selectedService == service) currentUrl = service.url
         bumpWebViewInstance(service)

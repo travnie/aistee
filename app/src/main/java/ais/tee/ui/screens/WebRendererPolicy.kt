@@ -9,16 +9,19 @@ internal const val MAX_LIVE_WEBVIEWS = 2
 
 internal enum class WebRendererRecoveryAction {
     RECREATE_LAST_URL,
+    DEFER_UNTIL_ACTIVE,
     EVICT_UNTIL_SELECTED,
     REQUIRE_USER_RETRY
 }
 
 internal fun webRendererRecoveryAction(
     didCrash: Boolean,
-    isSelected: Boolean
+    isSelected: Boolean,
+    isWebChatActive: Boolean
 ): WebRendererRecoveryAction = when {
     didCrash -> WebRendererRecoveryAction.REQUIRE_USER_RETRY
-    isSelected -> WebRendererRecoveryAction.RECREATE_LAST_URL
+    isSelected && isWebChatActive -> WebRendererRecoveryAction.RECREATE_LAST_URL
+    isSelected -> WebRendererRecoveryAction.DEFER_UNTIL_ACTIVE
     else -> WebRendererRecoveryAction.EVICT_UNTIL_SELECTED
 }
 
