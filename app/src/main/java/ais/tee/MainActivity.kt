@@ -175,7 +175,7 @@ class MainActivity : ComponentActivity() {
                                 .padding(bottom = innerPadding.calculateBottomPadding())
                         ) {
                             val webChatsActive = uiState.currentTab == NavigationTab.WEB_CHATS
-                            var webChatsVisited by rememberSaveable { mutableStateOf(webChatsActive) }
+                            var webChatsVisited by remember { mutableStateOf(webChatsActive) }
                             LaunchedEffect(webChatsActive) {
                                 if (webChatsActive) webChatsVisited = true
                             }

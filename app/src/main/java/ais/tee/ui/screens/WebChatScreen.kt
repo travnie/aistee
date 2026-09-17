@@ -14,6 +14,7 @@ import android.net.http.SslError
 import android.util.Log
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.webkit.*
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -680,6 +681,15 @@ fun WebChatScreen(
     }
 
     val activeWebView = webViewMap[selectedService]
+    LaunchedEffect(isActive, activeWebView) {
+        if (!isActive) {
+            activeWebView?.let { webView ->
+                webView.clearFocus()
+                val inputMethodManager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                inputMethodManager.hideSoftInputFromWindow(webView.windowToken, 0)
+            }
+        }
+    }
     val isDesktopMode = desktopModes[selectedService] == true
     val studioPrompt = studioPromptForWebChat(uiState.renderedInstructions)
 
