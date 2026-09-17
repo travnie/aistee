@@ -91,6 +91,35 @@ internal fun webProviderNavigationIsPersistent(type: NavigationSuiteType): Boole
         type == NavigationSuiteType.WideNavigationRailCollapsed ||
         type == NavigationSuiteType.WideNavigationRailExpanded
 
+internal enum class WebViewEvictionMode {
+    NONE,
+    PRESERVE_GENERATING,
+    SELECTED_ONLY
+}
+
+@Suppress("DEPRECATION")
+internal fun webViewEvictionModeForTrimMemory(level: Int): WebViewEvictionMode = when {
+    level == ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN -> WebViewEvictionMode.NONE
+    level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE -> WebViewEvictionMode.SELECTED_ONLY
+    level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND -> WebViewEvictionMode.PRESERVE_GENERATING
+    level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> WebViewEvictionMode.SELECTED_ONLY
+    level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> WebViewEvictionMode.PRESERVE_GENERATING
+    else -> WebViewEvictionMode.NONE
+}
+
+internal fun webServicesToKeepAfterMemoryPressure(
+    liveServices: List<WebAiService>,
+    selectedService: WebAiService,
+    generatingServices: Set<WebAiService>,
+    mode: WebViewEvictionMode
+): List<WebAiService> = when (mode) {
+    WebViewEvictionMode.NONE -> liveServices
+    WebViewEvictionMode.PRESERVE_GENERATING -> liveServices.filter { service ->
+        service == selectedService || service in generatingServices
+    }
+    WebViewEvictionMode.SELECTED_ONLY -> listOf(selectedService)
+}
+
 private data class PendingSharedUploadConfirmation(
     val service: WebAiService,
     val shareId: Long,
@@ -572,9 +601,17 @@ fun WebChatScreen(
         probeBeforeActivatingService(service, knownGenerating, probeTargets)
     }
 
-    fun evictInactiveWebViews() {
+    fun evictInactiveWebViews(mode: WebViewEvictionMode) {
+        if (mode == WebViewEvictionMode.NONE) return
         livePoolDecisionRequestId++
-        updateLiveServices(listOf(currentSelectedService))
+        updateLiveServices(
+            webServicesToKeepAfterMemoryPressure(
+                liveServices = liveServices,
+                selectedService = currentSelectedService,
+                generatingServices = currentGeneratingServices(),
+                mode = mode
+            )
+        )
     }
 
     val appContext = context.applicationContext
@@ -582,13 +619,12 @@ fun WebChatScreen(
         val callbacks = object : ComponentCallbacks2 {
             @Suppress("DEPRECATION")
             override fun onTrimMemory(level: Int) {
-                if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
-                    evictInactiveWebViews()
-                }
+                evictInactiveWebViews(webViewEvictionModeForTrimMemory(level))
             }
 
             @Suppress("DEPRECATION")
-            override fun onLowMemory() = evictInactiveWebViews()
+            override fun onLowMemory() =
+                evictInactiveWebViews(WebViewEvictionMode.SELECTED_ONLY)
             override fun onConfigurationChanged(newConfig: Configuration) = Unit
         }
         appContext.registerComponentCallbacks(callbacks)
