@@ -884,36 +884,38 @@ fun WebChatScreen(
     val webChatContent: @Composable () -> Unit = {
         Scaffold(
             topBar = {
-                WebChatToolbar(
-                    activeWebView = activeWebView,
-                    selectedService = selectedService,
-                    activityStatus = activityStatuses[selectedService] ?: WebChatActivityStatus.IDLE,
-                    providerFavicon = providerFavicons[selectedService],
-                    currentUrl = currentUrl,
-                    canGoBack = canGoBack,
-                    canGoForward = canGoForward,
-                    isDesktopMode = isDesktopMode,
-                    isLoading = isLoading,
-                    loadingProgress = loadingProgress,
-                    showProviderDrawerButton = !persistentProviderNavigation,
-                    onOpenDrawer = { drawerScope.launch { drawerState.open() } },
-                    onApplyStudio = ::applyStudioPrompt,
-                    onShowPromptHelper = { showPromptHelperDialog = true },
-                    onShowDiagnostics = ::openProviderDiagnostics,
-                    onToggleDesktopMode = {
-                        val service = selectedService
-                        val currentMode = pendingDesktopModes[service] ?: isDesktopMode
-                        val nextDesktopMode = !currentMode
-                        if (webViewMap[service] == null) {
-                            pendingDesktopModes.remove(service)
-                            desktopModes[service] = nextDesktopMode
-                        } else {
-                            pendingDesktopModes[service] = nextDesktopMode
-                            probeServiceActivity(service)
-                        }
-                    },
-                    onShowSnackbar = viewModel::showSnackbar
-                )
+                if (isActive) {
+                    WebChatToolbar(
+                        activeWebView = activeWebView,
+                        selectedService = selectedService,
+                        activityStatus = activityStatuses[selectedService] ?: WebChatActivityStatus.IDLE,
+                        providerFavicon = providerFavicons[selectedService],
+                        currentUrl = currentUrl,
+                        canGoBack = canGoBack,
+                        canGoForward = canGoForward,
+                        isDesktopMode = isDesktopMode,
+                        isLoading = isLoading,
+                        loadingProgress = loadingProgress,
+                        showProviderDrawerButton = !persistentProviderNavigation,
+                        onOpenDrawer = { drawerScope.launch { drawerState.open() } },
+                        onApplyStudio = ::applyStudioPrompt,
+                        onShowPromptHelper = { showPromptHelperDialog = true },
+                        onShowDiagnostics = ::openProviderDiagnostics,
+                        onToggleDesktopMode = {
+                            val service = selectedService
+                            val currentMode = pendingDesktopModes[service] ?: isDesktopMode
+                            val nextDesktopMode = !currentMode
+                            if (webViewMap[service] == null) {
+                                pendingDesktopModes.remove(service)
+                                desktopModes[service] = nextDesktopMode
+                            } else {
+                                pendingDesktopModes[service] = nextDesktopMode
+                                probeServiceActivity(service)
+                            }
+                        },
+                        onShowSnackbar = viewModel::showSnackbar
+                    )
+                }
             },
             modifier = Modifier.fillMaxSize()
         ) { innerPadding ->
