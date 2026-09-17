@@ -1,0 +1,52 @@
+name: Refresh A2 baseline profiles
+
+on:
+  push:
+    branches:
+      - fix/webview-trim-memory-policy
+    paths:
+      - .github/workflows/refresh-a2-baseline-profile.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/webview-trim-memory-policy
+          fetch-depth: 0
+
+      - name: Download generated profile artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/10479995350/zip" \
+            --output /tmp/aistee-profile.zip
+          mkdir -p /tmp/aistee-profile
+          unzip -q /tmp/aistee-profile.zip -d /tmp/aistee-profile
+
+      - name: Update committed profiles and remove one-shot workflow
+        run: |
+          set -euo pipefail
+          cp /tmp/aistee-profile/release/generated/baselineProfiles/baseline-prof.txt \
+            app/src/release/generated/baselineProfiles/baseline-prof.txt
+          cp /tmp/aistee-profile/release/generated/baselineProfiles/startup-prof.txt \
+            app/src/release/generated/baselineProfiles/startup-prof.txt
+          rm .github/workflows/refresh-a2-baseline-profile.yml
+
+          git config user.name "gptomek[bot]"
+          git config user.email "gptomek[bot]@users.noreply.github.com"
+          git add app/src/release/generated/baselineProfiles/baseline-prof.txt \
+            app/src/release/generated/baselineProfiles/startup-prof.txt \
+            .github/workflows/refresh-a2-baseline-profile.yml
+          git commit -m "chore: refresh baseline profiles"
+          git push origin HEAD:fix/webview-trim-memory-policy
