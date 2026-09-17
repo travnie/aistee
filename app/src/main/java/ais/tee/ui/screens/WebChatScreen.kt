@@ -383,6 +383,7 @@ fun WebChatScreen(
                 WebRendererRecoveryAction.DEFER_UNTIL_ACTIVE -> {
                     rendererCrashServices.remove(service)
                     deferredRendererRecoveryServices[service] = true
+                    liveServices = liveServices.filterNot { it == service }
                 }
                 WebRendererRecoveryAction.EVICT_UNTIL_SELECTED -> {
                     rendererCrashServices.remove(service)
