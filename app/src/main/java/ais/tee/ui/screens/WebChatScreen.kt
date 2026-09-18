@@ -14,6 +14,7 @@ import android.net.http.SslError
 import android.util.Log
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.webkit.*
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -111,13 +112,14 @@ internal fun webServicesToKeepAfterMemoryPressure(
     liveServices: List<WebAiService>,
     selectedService: WebAiService,
     generatingServices: Set<WebAiService>,
+    webChatActive: Boolean,
     mode: WebViewEvictionMode
 ): List<WebAiService> = when (mode) {
     WebViewEvictionMode.NONE -> liveServices
     WebViewEvictionMode.PRESERVE_GENERATING -> liveServices.filter { service ->
         service == selectedService || service in generatingServices
     }
-    WebViewEvictionMode.SELECTED_ONLY -> listOf(selectedService)
+    WebViewEvictionMode.SELECTED_ONLY -> if (webChatActive) listOf(selectedService) else emptyList()
 }
 
 private data class PendingSharedUploadConfirmation(
@@ -149,6 +151,7 @@ fun WebChatScreen(
     uiState: StudioUiState,
     onOpenNativeCompare: () -> Unit,
     onOpenStudio: () -> Unit,
+    isActive: Boolean,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -264,9 +267,11 @@ fun WebChatScreen(
     val providerFavicons = remember { mutableStateMapOf<WebAiService, Bitmap>() }
     val webViewInstanceRevisions = remember { mutableStateMapOf<WebAiService, Int>() }
     val rendererCrashServices = remember { mutableStateMapOf<WebAiService, Boolean>() }
+    val deferredRendererRecoveryServices = remember { mutableStateMapOf<WebAiService, Boolean>() }
     val rendererInactivityConfirmed = remember { mutableStateMapOf<WebAiService, Boolean>() }
     val rendererPriorityProbeRequestIds = remember { mutableMapOf<WebAiService, Int>() }
     val currentSelectedService by rememberUpdatedState(selectedService)
+    val currentIsActive by rememberUpdatedState(isActive)
     var livePoolDecisionRequestId by remember { mutableIntStateOf(0) }
 
     fun releaseSharedTextClaimFor(webView: WebView) {
@@ -279,8 +284,22 @@ fun WebChatScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
 
+    LaunchedEffect(isActive) {
+        if (!isActive) drawerState.close()
+    }
+
     fun bumpWebViewInstance(service: WebAiService) {
         webViewInstanceRevisions[service] = (webViewInstanceRevisions[service] ?: 0) + 1
+    }
+
+    LaunchedEffect(isActive, selectedService) {
+        if (!isActive) return@LaunchedEffect
+        if (selectedService !in liveServices) {
+            liveServices = nextWebViewLru(liveServices, selectedService)
+        }
+        if (deferredRendererRecoveryServices.remove(selectedService) == true) {
+            bumpWebViewInstance(selectedService)
+        }
     }
 
     fun cancelPendingUploadFor(service: WebAiService) {
@@ -341,24 +360,38 @@ fun WebChatScreen(
                 activityStatuses[service] = webChatActivityStatusAfterEviction(status)
             }
             webViewMap.remove(service)
-            if (selectedService == service) {
+            if (currentSelectedService == service) {
                 canGoBack = false
                 canGoForward = false
                 loadingProgress = 0
                 isLoading = false
                 currentUrl = lastKnownUrls[service] ?: service.url
             }
-            val isSelectedService = selectedService == service
-            when (webRendererRecoveryAction(didCrash, isSelectedService)) {
+            val isSelectedService = currentSelectedService == service
+            when (
+                webRendererRecoveryAction(
+                    didCrash = didCrash,
+                    isSelected = isSelectedService,
+                    isWebChatActive = currentIsActive
+                )
+            ) {
                 WebRendererRecoveryAction.RECREATE_LAST_URL -> {
                     rendererCrashServices.remove(service)
+                    deferredRendererRecoveryServices.remove(service)
                     bumpWebViewInstance(service)
+                }
+                WebRendererRecoveryAction.DEFER_UNTIL_ACTIVE -> {
+                    rendererCrashServices.remove(service)
+                    deferredRendererRecoveryServices[service] = true
+                    liveServices = liveServices.filterNot { it == service }
                 }
                 WebRendererRecoveryAction.EVICT_UNTIL_SELECTED -> {
                     rendererCrashServices.remove(service)
+                    deferredRendererRecoveryServices.remove(service)
                     liveServices = liveServices.filterNot { it == service }
                 }
                 WebRendererRecoveryAction.REQUIRE_USER_RETRY -> {
+                    deferredRendererRecoveryServices.remove(service)
                     rendererCrashServices[service] = true
                     if (!isSelectedService) {
                         liveServices = liveServices.filterNot { it == service }
@@ -372,6 +405,7 @@ fun WebChatScreen(
 
     fun retryRendererAfterCrash(service: WebAiService) {
         if (rendererCrashServices.remove(service) != true) return
+        deferredRendererRecoveryServices.remove(service)
         lastKnownUrls[service] = service.url
         if (selectedService == service) currentUrl = service.url
         bumpWebViewInstance(service)
@@ -609,6 +643,7 @@ fun WebChatScreen(
                 liveServices = liveServices,
                 selectedService = currentSelectedService,
                 generatingServices = currentGeneratingServices(),
+                webChatActive = currentIsActive,
                 mode = mode
             )
         )
@@ -633,11 +668,12 @@ fun WebChatScreen(
 
     val lifecycleStarted = rememberWebViewLifecycleStarted(
         webViewMap = webViewMap,
-        selectedService = currentSelectedService
+        selectedService = currentSelectedService,
+        isActive = isActive
     )
 
-    LaunchedEffect(lifecycleStarted, liveServices) {
-        if (!lifecycleStarted) return@LaunchedEffect
+    LaunchedEffect(lifecycleStarted, isActive, liveServices) {
+        if (!lifecycleStarted || !isActive) return@LaunchedEffect
         var pollTick = 0
         while (true) {
             liveServices.forEach { service ->
@@ -674,6 +710,15 @@ fun WebChatScreen(
     }
 
     val activeWebView = webViewMap[selectedService]
+    LaunchedEffect(isActive, activeWebView) {
+        if (!isActive) {
+            activeWebView?.let { webView ->
+                webView.clearFocus()
+                val inputMethodManager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                inputMethodManager.hideSoftInputFromWindow(webView.windowToken, 0)
+            }
+        }
+    }
     val isDesktopMode = desktopModes[selectedService] == true
     val studioPrompt = studioPromptForWebChat(uiState.renderedInstructions)
 
@@ -822,7 +867,7 @@ fun WebChatScreen(
         )
     }
 
-    BackHandler(enabled = canGoBack && drawerState.currentValue == DrawerValue.Closed) {
+    BackHandler(enabled = isActive && canGoBack && drawerState.currentValue == DrawerValue.Closed) {
         activeWebView?.let {
             if (it.canGoBack()) {
                 it.goBack()
@@ -868,36 +913,38 @@ fun WebChatScreen(
     val webChatContent: @Composable () -> Unit = {
         Scaffold(
             topBar = {
-                WebChatToolbar(
-                    activeWebView = activeWebView,
-                    selectedService = selectedService,
-                    activityStatus = activityStatuses[selectedService] ?: WebChatActivityStatus.IDLE,
-                    providerFavicon = providerFavicons[selectedService],
-                    currentUrl = currentUrl,
-                    canGoBack = canGoBack,
-                    canGoForward = canGoForward,
-                    isDesktopMode = isDesktopMode,
-                    isLoading = isLoading,
-                    loadingProgress = loadingProgress,
-                    showProviderDrawerButton = !persistentProviderNavigation,
-                    onOpenDrawer = { drawerScope.launch { drawerState.open() } },
-                    onApplyStudio = ::applyStudioPrompt,
-                    onShowPromptHelper = { showPromptHelperDialog = true },
-                    onShowDiagnostics = ::openProviderDiagnostics,
-                    onToggleDesktopMode = {
-                        val service = selectedService
-                        val currentMode = pendingDesktopModes[service] ?: isDesktopMode
-                        val nextDesktopMode = !currentMode
-                        if (webViewMap[service] == null) {
-                            pendingDesktopModes.remove(service)
-                            desktopModes[service] = nextDesktopMode
-                        } else {
-                            pendingDesktopModes[service] = nextDesktopMode
-                            probeServiceActivity(service)
-                        }
-                    },
-                    onShowSnackbar = viewModel::showSnackbar
-                )
+                if (isActive) {
+                    WebChatToolbar(
+                        activeWebView = activeWebView,
+                        selectedService = selectedService,
+                        activityStatus = activityStatuses[selectedService] ?: WebChatActivityStatus.IDLE,
+                        providerFavicon = providerFavicons[selectedService],
+                        currentUrl = currentUrl,
+                        canGoBack = canGoBack,
+                        canGoForward = canGoForward,
+                        isDesktopMode = isDesktopMode,
+                        isLoading = isLoading,
+                        loadingProgress = loadingProgress,
+                        showProviderDrawerButton = !persistentProviderNavigation,
+                        onOpenDrawer = { drawerScope.launch { drawerState.open() } },
+                        onApplyStudio = ::applyStudioPrompt,
+                        onShowPromptHelper = { showPromptHelperDialog = true },
+                        onShowDiagnostics = ::openProviderDiagnostics,
+                        onToggleDesktopMode = {
+                            val service = selectedService
+                            val currentMode = pendingDesktopModes[service] ?: isDesktopMode
+                            val nextDesktopMode = !currentMode
+                            if (webViewMap[service] == null) {
+                                pendingDesktopModes.remove(service)
+                                desktopModes[service] = nextDesktopMode
+                            } else {
+                                pendingDesktopModes[service] = nextDesktopMode
+                                probeServiceActivity(service)
+                            }
+                        },
+                        onShowSnackbar = viewModel::showSnackbar
+                    )
+                }
             },
             modifier = Modifier.fillMaxSize()
         ) { innerPadding ->
@@ -1086,7 +1133,7 @@ fun WebChatScreen(
                                     inactivityConfirmed = isRendererInactivityConfirmed
                                 )
                             )
-                            if (isCurrentService && lifecycleStarted) {
+                            if (isCurrentService && lifecycleStarted && isActive) {
                                 wv.onResume()
                             } else {
                                 wv.onPause()
@@ -1149,7 +1196,7 @@ fun WebChatScreen(
 
     // Quick Prompt / Profile Copier Dialog
     ExternalIntentConfirmationDialog(
-        uri = pendingExternalIntentUri,
+        uri = pendingExternalIntentUri.takeIf { isActive },
         onDismiss = { pendingExternalIntentUri = null },
         onConfirm = { pendingUri ->
             pendingExternalIntentUri = null
@@ -1157,7 +1204,7 @@ fun WebChatScreen(
         }
     )
 
-    pendingSharedUploadConfirmation?.let { confirmation ->
+    pendingSharedUploadConfirmation?.takeIf { isActive }?.let { confirmation ->
         SharedUploadConfirmationDialog(
             service = confirmation.service,
             attachmentCount = confirmation.uris.size,
@@ -1201,7 +1248,7 @@ fun WebChatScreen(
         )
     }
 
-    if (showProviderDiagnosticsDialog) {
+    if (isActive && showProviderDiagnosticsDialog) {
         val webViewPackage = WebView.getCurrentWebViewPackage()?.let { packageInfo ->
             listOfNotNull(packageInfo.packageName, packageInfo.versionName).joinToString(" ")
         } ?: "Unavailable"
@@ -1229,7 +1276,7 @@ fun WebChatScreen(
         )
     }
 
-    if (showPromptHelperDialog) {
+    if (isActive && showPromptHelperDialog) {
         AlertDialog(
             onDismissRequest = { showPromptHelperDialog = false },
             title = {

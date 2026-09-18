@@ -40,6 +40,7 @@ class WebViewMemoryPolicyTest {
                 liveServices = liveServices,
                 selectedService = WebAiService.CHATGPT,
                 generatingServices = setOf(WebAiService.CLAUDE),
+                webChatActive = true,
                 mode = WebViewEvictionMode.PRESERVE_GENERATING
             )
         )
@@ -53,6 +54,21 @@ class WebViewMemoryPolicyTest {
                 liveServices = listOf(WebAiService.CLAUDE, WebAiService.CHATGPT),
                 selectedService = WebAiService.CHATGPT,
                 generatingServices = setOf(WebAiService.CLAUDE),
+                webChatActive = true,
+                mode = WebViewEvictionMode.SELECTED_ONLY
+            )
+        )
+    }
+
+    @Test
+    fun criticalPressureDropsHiddenSelectedProvider() {
+        assertEquals(
+            emptyList<WebAiService>(),
+            webServicesToKeepAfterMemoryPressure(
+                liveServices = listOf(WebAiService.CLAUDE, WebAiService.CHATGPT),
+                selectedService = WebAiService.CHATGPT,
+                generatingServices = setOf(WebAiService.CLAUDE),
+                webChatActive = false,
                 mode = WebViewEvictionMode.SELECTED_ONLY
             )
         )
