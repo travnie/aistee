@@ -100,11 +100,23 @@ jobs:
           import sys
 
           def canonical_rules(text: str) -> list[str]:
-              return sorted({
-                  re.sub(r"^[HSP]+", "", line)
-                  for line in text.splitlines()
-                  if "Lais/tee/" in line
-              })
+              rules = set()
+              for line in text.splitlines():
+                  if "Lais/tee/" not in line:
+                      continue
+                  rule = re.sub(r"^[HSP]+", "", line)
+                  # Compose/Kotlin can renumber compiler-generated lambdas between
+                  # equivalent profile runs. Compare only stable app methods.
+                  if "->" not in rule:
+                      continue
+                  if (
+                      "$ExternalSyntheticLambda" in rule
+                      or "$lambda$" in rule
+                      or "$inlined$" in rule
+                  ):
+                      continue
+                  rules.add(rule)
+              return sorted(rules)
 
           stale = False
           root = pathlib.Path("app/src/release/generated/baselineProfiles")
