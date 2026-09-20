@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_description"
+    android:configure="ais.tee.widget.AisteeWidgetConfigurationActivity"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:minWidth="240dp"
     android:minHeight="112dp"
@@ -10,4 +11,5 @@
     android:targetCellHeight="3"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="0"
-    android:widgetCategory="home_screen" />
+    android:widgetCategory="home_screen"
+    android:widgetFeatures="reconfigurable|configuration_optional" />

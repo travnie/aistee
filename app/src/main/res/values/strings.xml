@@ -3,6 +3,13 @@
     <string name="widget_description">Quick access to Aistee and recent local chats.</string>
     <string name="widget_recent_chats">Recent chats</string>
     <string name="widget_no_recent_chats">Open Compare to start a local chat.</string>
+    <string name="widget_recent_chat_hidden">Recent chat %1$d</string>
+    <string name="widget_config_title">Aistee widget</string>
+    <string name="widget_config_privacy_summary">Conversation titles are hidden by default. You can expose them on the launcher for this widget only.</string>
+    <string name="widget_config_show_titles">Show conversation titles</string>
+    <string name="widget_config_show_titles_summary">When off, recent chats appear as Recent chat 1, 2, and 3.</string>
+    <string name="widget_config_cancel">Cancel</string>
+    <string name="widget_config_save">Save</string>
     <string name="shortcut_web_ai_short">Web AI</string>
     <string name="shortcut_web_ai_long">Open Web AI</string>
     <string name="shortcut_compare_short">Compare</string>
