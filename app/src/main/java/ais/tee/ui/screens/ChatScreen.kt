@@ -24,6 +24,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.layout.AnimatedPane
+import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
+import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldDestinationItem
+import androidx.compose.material3.adaptive.navigation.NavigableListDetailPaneScaffold
+import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -99,12 +105,107 @@ internal fun chatMessageContentType(message: ModelChatMessage): String = when {
 internal fun chatBubbleMaxWidth(containerWidth: Dp): Dp =
     (containerWidth - 32.dp).coerceIn(340.dp, 640.dp)
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
+internal fun nativeChatInitialDestinationHistory(
+    activeConversationId: String
+): List<ThreePaneScaffoldDestinationItem<String>> = buildList {
+    add(ThreePaneScaffoldDestinationItem(ListDetailPaneScaffoldRole.List))
+    activeConversationId.takeIf(String::isNotBlank)?.let { conversationId ->
+        add(
+            ThreePaneScaffoldDestinationItem(
+                pane = ListDetailPaneScaffoldRole.Detail,
+                contentKey = conversationId
+            )
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
-// skipcq: KT-R1006 - Existing screen composition complexity is outside this targeted export change.
 fun ChatScreen(
     viewModel: StudioViewModel,
     uiState: StudioUiState,
+    modifier: Modifier = Modifier
+) {
+    val navigationScope = rememberCoroutineScope()
+    val activeConversationId = uiState.nativeChat.activeConversationId
+    val initialDestinationHistory = remember(activeConversationId) {
+        nativeChatInitialDestinationHistory(activeConversationId)
+    }
+    val navigator = rememberListDetailPaneScaffoldNavigator<String>(
+        initialDestinationHistory = initialDestinationHistory
+    )
+    val conversations = uiState.nativeChat.conversations.sortedByDescending { it.updatedAtEpochMs }
+
+    fun showConversation(conversationId: String) {
+        viewModel.switchNativeConversation(conversationId)
+        navigationScope.launch {
+            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, conversationId)
+        }
+    }
+
+    fun createConversation() {
+        viewModel.newNativeConversation()
+        val conversationId = viewModel.uiState.value.nativeChat.activeConversationId
+        if (conversationId.isNotBlank()) {
+            navigationScope.launch {
+                navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, conversationId)
+            }
+        }
+    }
+
+    fun deleteConversation(conversationId: String) {
+        val keepDetailVisible =
+            navigator.currentDestination?.pane == ListDetailPaneScaffoldRole.Detail
+        viewModel.deleteNativeConversation(conversationId)
+        if (keepDetailVisible) {
+            val nextConversationId = viewModel.uiState.value.nativeChat.activeConversationId
+            if (nextConversationId.isNotBlank()) {
+                navigationScope.launch {
+                    navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, nextConversationId)
+                }
+            }
+        }
+    }
+
+    NavigableListDetailPaneScaffold(
+        navigator = navigator,
+        modifier = modifier.fillMaxSize(),
+        listPane = {
+            AnimatedPane {
+                NativeConversationsPane(
+                    conversations = conversations,
+                    activeConversationId = activeConversationId,
+                    onNew = ::createConversation,
+                    onSelect = ::showConversation,
+                    onDelete = ::deleteConversation
+                )
+            }
+        },
+        detailPane = {
+            AnimatedPane {
+                NativeChatDetailPane(
+                    viewModel = viewModel,
+                    uiState = uiState,
+                    onOpenConversations = {
+                        navigationScope.launch {
+                            navigator.navigateTo(ListDetailPaneScaffoldRole.List)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+// skipcq: KT-R1006 - Existing screen composition complexity is outside this targeted export change.
+private fun NativeChatDetailPane(
+    viewModel: StudioViewModel,
+    uiState: StudioUiState,
+    onOpenConversations: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -119,7 +220,6 @@ fun ChatScreen(
     val promptInput = uiState.nativeChatDraft
     var showModelMenu by remember { mutableStateOf(false) }
     var showChatActionsMenu by remember { mutableStateOf(false) }
-    var showConversationDialog by remember { mutableStateOf(false) }
     var pendingMarkdownAsset by remember { mutableStateOf<PendingMarkdownAsset?>(null) }
     var pendingMarkdownPromptReplacement by remember { mutableStateOf<String?>(null) }
     var isPreparingChatMarkdown by remember { mutableStateOf(false) }
@@ -278,7 +378,7 @@ fun ChatScreen(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             IconButton(
-                                onClick = { showConversationDialog = true },
+                                onClick = onOpenConversations,
                                 enabled = uiState.isNativeConversationStoreReady,
                                 modifier = Modifier.testTag("btn_native_conversations")
                             ) {
@@ -714,23 +814,6 @@ fun ChatScreen(
         }
     }
 
-    if (showConversationDialog) {
-        NativeConversationsDialog(
-            conversations = uiState.nativeChat.conversations.sortedByDescending { it.updatedAtEpochMs },
-            activeConversationId = uiState.nativeChat.activeConversationId,
-            onNew = {
-                viewModel.newNativeConversation()
-                showConversationDialog = false
-            },
-            onSelect = { conversationId ->
-                viewModel.switchNativeConversation(conversationId)
-                showConversationDialog = false
-            },
-            onDelete = viewModel::deleteNativeConversation,
-            onDismiss = { showConversationDialog = false }
-        )
-    }
-
     pendingMarkdownAsset?.let { asset ->
         AlertDialog(
             onDismissRequest = { pendingMarkdownAsset = null },
@@ -792,106 +875,111 @@ fun ChatScreen(
 }
 
 @Composable
-private fun NativeConversationsDialog(
+private fun NativeConversationsPane(
     conversations: List<NativeChatConversation>,
     activeConversationId: String,
     onNew: () -> Unit,
     onSelect: (String) -> Unit,
-    onDelete: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDelete: (String) -> Unit
 ) {
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
     val pendingDelete = conversations.firstOrNull { it.id == pendingDeleteId }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Native conversations") },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                FilledTonalButton(
-                    onClick = onNew,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("btn_new_native_conversation")
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("New conversation")
-                }
+    Surface(
+        tonalElevation = 1.dp,
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("native_conversations_pane")
+    ) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(16.dp)
+        ) {
+            Text(
+                text = "Native conversations",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
 
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 360.dp)
-                ) {
-                    items(conversations, key = { it.id }) { conversation ->
-                        val isActive = conversation.id == activeConversationId
-                        val userTurns = conversation.messages.count { it.sender == CHAT_ROLE_USER }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.fillMaxWidth()
+            FilledTonalButton(
+                onClick = onNew,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("btn_new_native_conversation")
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("New conversation")
+            }
+
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                items(conversations, key = { it.id }) { conversation ->
+                    val isActive = conversation.id == activeConversationId
+                    val userTurns = conversation.messages.count { it.sender == CHAT_ROLE_USER }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Surface(
+                            shape = MaterialTheme.shapes.medium,
+                            color = if (isActive) {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { onSelect(conversation.id) }
+                                .testTag("native_conversation_${conversation.id}")
                         ) {
-                            Surface(
-                                shape = MaterialTheme.shapes.medium,
-                                color = if (isActive) {
-                                    MaterialTheme.colorScheme.secondaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { onSelect(conversation.id) }
-                                    .testTag("native_conversation_${conversation.id}")
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
-                                ) {
-                                    if (isActive) {
-                                        Icon(
-                                            Icons.Default.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            conversation.title,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
-                                        )
-                                        Text(
-                                            "${conversation.selectedProvider.shortName} • $userTurns ${if (userTurns == 1) "turn" else "turns"}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                if (isActive) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        conversation.title,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
+                                    )
+                                    Text(
+                                        "${conversation.selectedProvider.shortName} • $userTurns ${if (userTurns == 1) "turn" else "turns"}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
-                            IconButton(
-                                onClick = { pendingDeleteId = conversation.id },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(Icons.Outlined.Delete, contentDescription = "Delete conversation")
-                            }
+                        }
+                        IconButton(
+                            onClick = { pendingDeleteId = conversation.id },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(Icons.Outlined.Delete, contentDescription = "Delete conversation")
                         }
                     }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
         }
-    )
+    }
 
     pendingDelete?.let { conversation ->
         AlertDialog(
