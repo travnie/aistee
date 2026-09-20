@@ -6,7 +6,9 @@ import androidx.compose.ui.unit.dp
 import androidx.glance.Button
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.appwidget.AppWidgetId
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.lazy.LazyColumn
@@ -22,6 +24,7 @@ import androidx.glance.layout.padding
 import androidx.glance.text.Text
 import ais.tee.R
 import ais.tee.data.model.NativeChatArchive
+import ais.tee.data.preferences.AisteeWidgetPreferencesStore
 import ais.tee.data.preferences.NativeChatStore
 import ais.tee.navigation.AisteeQuickActionNavigation
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +37,12 @@ internal data class NativeChatWidgetConversation(
     val id: String,
     val title: String,
 )
+
+internal fun privacySafeWidgetConversationTitle(
+    title: String,
+    hiddenTitle: String,
+    showConversationTitles: Boolean,
+): String = if (showConversationTitles) title else hiddenTitle
 
 internal fun recentNativeConversationsForWidget(
     archive: NativeChatArchive,
@@ -71,14 +80,26 @@ internal object NativeChatWidgetUpdater {
 
 class AisteeWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val conversations = withContext(Dispatchers.IO) {
-            NativeChatStore(context.noBackupFilesDir)
+        val appWidgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
+        val (conversations, showConversationTitles) = withContext(Dispatchers.IO) {
+            val recent = NativeChatStore(context.noBackupFilesDir)
                 .load()
                 ?.let(::recentNativeConversationsForWidget)
                 .orEmpty()
+            val showTitles = AisteeWidgetPreferencesStore(context).showConversationTitles(appWidgetId)
+            recent to showTitles
+        }
+        val visibleConversations = conversations.mapIndexed { index, conversation ->
+            conversation.copy(
+                title = privacySafeWidgetConversationTitle(
+                    title = conversation.title,
+                    hiddenTitle = context.getString(R.string.widget_recent_chat_hidden, index + 1),
+                    showConversationTitles = showConversationTitles,
+                )
+            )
         }
         provideContent {
-            WidgetContent(context, conversations)
+            WidgetContent(context, visibleConversations)
         }
     }
 
@@ -146,4 +167,10 @@ class AisteeWidget : GlanceAppWidget() {
 
 class AisteeWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = AisteeWidget()
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        val preferences = AisteeWidgetPreferencesStore(context)
+        appWidgetIds.forEach(preferences::remove)
+    }
 }

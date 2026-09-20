@@ -50,6 +50,26 @@ class AisteeWidgetTest {
     }
 
     @Test
+    fun widgetConversationTitlesAreRedactedUnlessExplicitlyEnabled() {
+        assertEquals(
+            "Recent chat 1",
+            privacySafeWidgetConversationTitle(
+                title = "Sensitive project name",
+                hiddenTitle = "Recent chat 1",
+                showConversationTitles = false,
+            ),
+        )
+        assertEquals(
+            "Sensitive project name",
+            privacySafeWidgetConversationTitle(
+                title = "Sensitive project name",
+                hiddenTitle = "Recent chat 1",
+                showConversationTitles = true,
+            ),
+        )
+    }
+
+    @Test
     fun recentConversationSummaryDoesNotExposeMessageBodies() {
         val summary = recentNativeConversationsForWidget(
             NativeChatArchive(

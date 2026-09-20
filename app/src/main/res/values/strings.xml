@@ -3,6 +3,7 @@
     <string name="widget_description">Quick access to Aistee and recent local chats.</string>
     <string name="widget_recent_chats">Recent chats</string>
     <string name="widget_no_recent_chats">Open Compare to start a local chat.</string>
+    <string name="widget_recent_chat_hidden">Recent chat %1$d</string>
     <string name="shortcut_web_ai_short">Web AI</string>
     <string name="shortcut_web_ai_long">Open Web AI</string>
     <string name="shortcut_compare_short">Compare</string>
