@@ -3,6 +3,7 @@ package ais.tee.data.preferences
 import android.util.AtomicFile
 import ais.tee.data.model.NativeChatArchive
 import ais.tee.data.model.NativeChatArchiveCodec
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -51,6 +52,7 @@ internal class NativeChatStore(directory: File) {
 
 internal class NativeChatWriter private constructor(
     private val save: (NativeChatArchive) -> Boolean,
+    private val afterSave: suspend (NativeChatArchive) -> Unit,
     scope: CoroutineScope
 ) {
     private val archives = Channel<NativeChatArchive>(Channel.CONFLATED)
@@ -61,7 +63,18 @@ internal class NativeChatWriter private constructor(
             for (archive in archives) {
                 var retryDelayMs = RETRY_DELAY_MS
                 while (latestArchive.get() == archive) {
-                    if (save(archive)) break
+                    if (save(archive)) {
+                        if (latestArchive.get() == archive) {
+                            try {
+                                afterSave(archive)
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (_: Exception) {
+                                // Widget or other post-save work must not stop chat persistence.
+                            }
+                        }
+                        break
+                    }
                     delay(retryDelayMs)
                     retryDelayMs = minOf(retryDelayMs * 2, MAX_RETRY_DELAY_MS)
                 }
@@ -80,10 +93,14 @@ internal class NativeChatWriter private constructor(
         @Volatile
         private var instance: NativeChatWriter? = null
 
-        fun getInstance(store: NativeChatStore): NativeChatWriter =
+        fun getInstance(
+            store: NativeChatStore,
+            afterSave: suspend (NativeChatArchive) -> Unit = {},
+        ): NativeChatWriter =
             instance ?: synchronized(this) {
                 instance ?: NativeChatWriter(
                     save = store::save,
+                    afterSave = afterSave,
                     scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
                 ).also { instance = it }
             }
@@ -92,8 +109,9 @@ internal class NativeChatWriter private constructor(
 
         internal fun createForTest(
             save: (NativeChatArchive) -> Boolean,
-            scope: CoroutineScope
-        ): NativeChatWriter = NativeChatWriter(save, scope)
+            scope: CoroutineScope,
+            afterSave: suspend (NativeChatArchive) -> Unit = {},
+        ): NativeChatWriter = NativeChatWriter(save, afterSave, scope)
 
         internal fun replaceInstanceForTest(writer: NativeChatWriter?) {
             instance = writer

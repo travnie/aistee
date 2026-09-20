@@ -9,7 +9,10 @@ import androidx.glance.GlanceModifier
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.action.actionStartActivity
+import androidx.glance.appwidget.lazy.LazyColumn
+import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
+import androidx.glance.appwidget.updateAll
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
@@ -17,17 +20,73 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.padding
 import androidx.glance.text.Text
+import ais.tee.R
+import ais.tee.data.model.NativeChatArchive
+import ais.tee.data.preferences.NativeChatStore
 import ais.tee.navigation.AisteeQuickActionNavigation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicReference
+
+private const val MAX_WIDGET_CONVERSATIONS = 3
+
+internal data class NativeChatWidgetConversation(
+    val id: String,
+    val title: String,
+)
+
+internal fun recentNativeConversationsForWidget(
+    archive: NativeChatArchive,
+    limit: Int = MAX_WIDGET_CONVERSATIONS,
+): List<NativeChatWidgetConversation> {
+    if (limit <= 0) return emptyList()
+    return archive.conversations
+        .sortedWith(
+            compareByDescending<ais.tee.data.model.NativeChatConversation> { it.updatedAtEpochMs }
+                .thenByDescending { it.createdAtEpochMs }
+                .thenBy { it.id }
+        )
+        .take(limit)
+        .map { conversation ->
+            NativeChatWidgetConversation(
+                id = conversation.id,
+                title = conversation.title,
+            )
+        }
+}
+
+private fun widgetItemId(conversationId: String): Long =
+    conversationId.hashCode().toLong() and Long.MAX_VALUE
+
+internal object NativeChatWidgetUpdater {
+    private val lastSummary = AtomicReference<List<NativeChatWidgetConversation>?>(null)
+
+    suspend fun onArchiveSaved(context: Context, archive: NativeChatArchive) {
+        val summary = recentNativeConversationsForWidget(archive)
+        if (lastSummary.get() == summary) return
+        AisteeWidget().updateAll(context.applicationContext)
+        lastSummary.set(summary)
+    }
+}
 
 class AisteeWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val conversations = withContext(Dispatchers.IO) {
+            NativeChatStore(context.noBackupFilesDir)
+                .load()
+                ?.let(::recentNativeConversationsForWidget)
+                .orEmpty()
+        }
         provideContent {
-            QuickActions(context)
+            WidgetContent(context, conversations)
         }
     }
 
     @Composable
-    private fun QuickActions(context: Context) {
+    private fun WidgetContent(
+        context: Context,
+        conversations: List<NativeChatWidgetConversation>,
+    ) {
         Column(
             modifier = GlanceModifier.fillMaxSize().padding(12.dp),
             verticalAlignment = Alignment.Top,
@@ -42,6 +101,38 @@ class AisteeWidget : GlanceAppWidget() {
                 WidgetButton(context, "Compare", AisteeQuickActionNavigation.DESTINATION_COMPARE)
                 WidgetButton(context, "Studio", AisteeQuickActionNavigation.DESTINATION_STUDIO)
             }
+            Text(
+                text = context.getString(R.string.widget_recent_chats),
+                modifier = GlanceModifier.fillMaxWidth().padding(top = 8.dp),
+            )
+            if (conversations.isEmpty()) {
+                Text(
+                    text = context.getString(R.string.widget_no_recent_chats),
+                    modifier = GlanceModifier.fillMaxWidth().padding(top = 4.dp),
+                )
+            } else {
+                LazyColumn(
+                    modifier = GlanceModifier.fillMaxWidth().padding(top = 4.dp),
+                ) {
+                    items(
+                        items = conversations,
+                        itemId = { conversation -> widgetItemId(conversation.id) },
+                    ) { conversation ->
+                        Button(
+                            text = conversation.title,
+                            onClick = actionStartActivity(
+                                AisteeQuickActionNavigation.nativeConversationLaunchIntent(
+                                    context,
+                                    conversation.id,
+                                )
+                            ),
+                            modifier = GlanceModifier.fillMaxWidth().padding(top = 2.dp),
+                            maxLines = 1,
+                            key = "native-chat-${conversation.id}",
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -50,6 +141,7 @@ class AisteeWidget : GlanceAppWidget() {
         Button(
             text = label,
             onClick = actionStartActivity(AisteeQuickActionNavigation.launchIntent(context, destination)),
+            key = "quick-action-$destination",
         )
     }
 }

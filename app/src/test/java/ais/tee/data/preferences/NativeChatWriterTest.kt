@@ -43,6 +43,42 @@ class NativeChatWriterTest {
     }
 
     @Test
+    fun postSaveCallbackSkipsSupersededArchive() {
+        val firstSaveStarted = CountDownLatch(1)
+        val releaseFirstSave = CountDownLatch(1)
+        val latestCallback = CountDownLatch(1)
+        val callbackArchive = java.util.concurrent.atomic.AtomicReference<NativeChatArchive?>()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val writer = NativeChatWriter.createForTest(
+            save = { archive ->
+                if (archive.activeConversationId == "first") {
+                    firstSaveStarted.countDown()
+                    releaseFirstSave.await(2, TimeUnit.SECONDS)
+                }
+                true
+            },
+            scope = scope,
+            afterSave = { archive ->
+                callbackArchive.set(archive)
+                latestCallback.countDown()
+            },
+        )
+        try {
+            val first = NativeChatArchive(activeConversationId = "first")
+            val latest = NativeChatArchive(activeConversationId = "latest")
+            writer.enqueue(first)
+            assertTrue(firstSaveStarted.await(2, TimeUnit.SECONDS))
+            writer.enqueue(latest)
+            releaseFirstSave.countDown()
+            assertTrue(latestCallback.await(2, TimeUnit.SECONDS))
+            assertSame(latest, callbackArchive.get())
+        } finally {
+            releaseFirstSave.countDown()
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun latestArchiveKeepsRetryingAfterInitialFailures() {
         val attempts = AtomicInteger(0)
         val saved = CountDownLatch(1)

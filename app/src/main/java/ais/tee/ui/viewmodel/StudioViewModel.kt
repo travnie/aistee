@@ -22,6 +22,7 @@ import ais.tee.share.PendingWebShare
 import ais.tee.share.claimText
 import ais.tee.share.completeTextClaim
 import ais.tee.share.releaseTextClaim
+import ais.tee.widget.NativeChatWidgetUpdater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -137,7 +138,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val studioStateStore = StudioStateStore(application.applicationContext)
     private val webChatPreferencesStore = WebChatPreferencesStore(application.applicationContext)
     private val nativeChatStore = NativeChatStore(application.noBackupFilesDir)
-    private val nativeChatWriter = NativeChatWriter.getInstance(nativeChatStore)
+    private val nativeChatWriter = NativeChatWriter.getInstance(nativeChatStore) { archive ->
+        NativeChatWidgetUpdater.onArchiveSaved(application.applicationContext, archive)
+    }
     private val localSkillStore = LocalSkillLibraryStore(
         File(application.noBackupFilesDir, LocalSkillLibraryStore.LIBRARY_DIRECTORY_NAME)
     )
