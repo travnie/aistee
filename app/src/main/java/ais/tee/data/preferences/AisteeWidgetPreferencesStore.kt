@@ -36,17 +36,16 @@ internal class AisteeWidgetPreferencesStore(context: Context) {
         )
 
     fun save(appWidgetId: Int, configuration: AisteeWidgetPreferences) {
-        preferences.edit().apply {
-            putString(modeKey(appWidgetId), configuration.mode.id)
-            putBoolean(showTitlesKey(appWidgetId), configuration.showConversationTitles)
-            val pinnedConversationId = configuration.pinnedConversationId?.trim()?.takeIf { it.isNotEmpty() }
-            if (pinnedConversationId == null) {
-                remove(pinnedConversationKey(appWidgetId))
-            } else {
-                putString(pinnedConversationKey(appWidgetId), pinnedConversationId)
-            }
-            apply()
+        val editor = preferences.edit()
+            .putString(modeKey(appWidgetId), configuration.mode.id)
+            .putBoolean(showTitlesKey(appWidgetId), configuration.showConversationTitles)
+        val pinnedConversationId = configuration.pinnedConversationId?.trim()?.takeIf { it.isNotEmpty() }
+        if (pinnedConversationId == null) {
+            editor.remove(pinnedConversationKey(appWidgetId))
+        } else {
+            editor.putString(pinnedConversationKey(appWidgetId), pinnedConversationId)
         }
+        editor.apply()
     }
 
     fun remove(appWidgetId: Int) {
