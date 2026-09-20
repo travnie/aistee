@@ -128,7 +128,6 @@ class AisteeWidget : GlanceAppWidget() {
                             ),
                             modifier = GlanceModifier.fillMaxWidth().padding(top = 2.dp),
                             maxLines = 1,
-                            key = "native-chat-${conversation.id}",
                         )
                     }
                 }
@@ -141,7 +140,6 @@ class AisteeWidget : GlanceAppWidget() {
         Button(
             text = label,
             onClick = actionStartActivity(AisteeQuickActionNavigation.launchIntent(context, destination)),
-            key = "quick-action-$destination",
         )
     }
 }
