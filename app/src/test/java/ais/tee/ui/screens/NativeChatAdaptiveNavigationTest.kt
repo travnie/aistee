@@ -2,9 +2,9 @@ package ais.tee.ui.screens
 
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 class NativeChatAdaptiveNavigationTest {
