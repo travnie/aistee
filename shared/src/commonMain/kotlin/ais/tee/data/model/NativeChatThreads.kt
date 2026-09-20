@@ -14,6 +14,7 @@ data class NativeChatConversation(
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long = createdAtEpochMs,
     val messages: List<ModelChatMessage> = emptyList(),
+    val draft: String = "",
     val selectedProvider: AiProvider = AiProvider.ALL,
     val selectedModel: String = "all",
     val includeSystemProfile: Boolean = true

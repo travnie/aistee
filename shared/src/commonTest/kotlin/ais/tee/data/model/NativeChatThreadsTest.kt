@@ -78,6 +78,23 @@ class NativeChatThreadsTest {
     }
 
     @Test
+    fun codecPersistsConversationDraft() {
+        val conversation = NativeChatConversation(
+            id = "c1",
+            createdAtEpochMs = 1,
+            draft = "half-written prompt\nwith details"
+        )
+        val archive = NativeChatArchive(
+            activeConversationId = conversation.id,
+            conversations = listOf(conversation)
+        )
+
+        val decoded = assertNotNull(NativeChatArchiveCodec.decode(NativeChatArchiveCodec.encode(archive)))
+
+        assertEquals("half-written prompt\nwith details", assertNotNull(decoded.activeConversation).draft)
+    }
+
+    @Test
     fun unsupportedArchiveVersionIsRejected() {
         val archive = NativeChatArchive(
             version = NATIVE_CHAT_ARCHIVE_VERSION + 1,

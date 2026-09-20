@@ -116,7 +116,7 @@ fun ChatScreen(
     val recoveryStore = remember(context.applicationContext) {
         MarkdownWorkspaceRecoveryStore(context.noBackupFilesDir)
     }
-    var promptInput by remember { mutableStateOf("") }
+    val promptInput = uiState.nativeChatDraft
     var showModelMenu by remember { mutableStateOf(false) }
     var showChatActionsMenu by remember { mutableStateOf(false) }
     var showConversationDialog by remember { mutableStateOf(false) }
@@ -163,7 +163,7 @@ fun ChatScreen(
         if (promptInput.isNotBlank() && promptInput != markdown) {
             pendingMarkdownPromptReplacement = markdown
         } else {
-            promptInput = markdown
+            viewModel.updateNativeConversationDraft(markdown)
         }
     }
 
@@ -179,16 +179,6 @@ fun ChatScreen(
         "Summarize the key design principles of .ai profiles"
     )
 
-    val latestAcceptedUserMessage = uiState.chatMessages.lastOrNull { it.sender == CHAT_ROLE_USER }
-    LaunchedEffect(latestAcceptedUserMessage?.id) {
-        if (
-            latestAcceptedUserMessage != null &&
-            promptInput.trim() == latestAcceptedUserMessage.text
-        ) {
-            promptInput = ""
-        }
-    }
-
     var previousMessageCount by remember { mutableIntStateOf(0) }
     var previousConversationId by remember { mutableStateOf<String?>(null) }
     val activeConversationId = uiState.nativeChat.activeConversationId
@@ -203,10 +193,6 @@ fun ChatScreen(
     }
 
     // Follow new messages only while the user is already at (or very near) the latest turn.
-    LaunchedEffect(activeConversationId) {
-        promptInput = ""
-    }
-
     LaunchedEffect(activeConversationId, uiState.chatMessages.size, uiState.isChatGenerating) {
         val currentMessageCount = uiState.chatMessages.size
         val lastVisibleItemIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
@@ -595,7 +581,7 @@ fun ChatScreen(
                     ) {
                         OutlinedTextField(
                             value = promptInput,
-                            onValueChange = { promptInput = it },
+                            onValueChange = viewModel::updateNativeConversationDraft,
                             placeholder = {
                                 val destination = when (uiState.selectedChatProvider) {
                                     AiProvider.ALL -> "Ask Gemini, ChatGPT, Claude, DeepSeek & Kimi..."
@@ -780,7 +766,7 @@ fun ChatScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        promptInput = markdown
+                        viewModel.updateNativeConversationDraft(markdown)
                         pendingMarkdownPromptReplacement = null
                     },
                     modifier = Modifier.testTag("btn_confirm_markdown_prompt_replace")
