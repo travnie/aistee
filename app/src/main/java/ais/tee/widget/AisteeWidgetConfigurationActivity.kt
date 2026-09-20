@@ -28,7 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.glance.appwidget.AppWidgetId
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.lifecycle.lifecycleScope
 import ais.tee.R
 import ais.tee.data.preferences.AisteeWidgetPreferencesStore
@@ -76,7 +76,9 @@ class AisteeWidgetConfigurationActivity : ComponentActivity() {
         preferences.saveShowConversationTitles(appWidgetId, showConversationTitles)
         lifecycleScope.launch {
             runCatching {
-                AisteeWidget().update(this@AisteeWidgetConfigurationActivity, AppWidgetId(appWidgetId))
+                val glanceId = GlanceAppWidgetManager(this@AisteeWidgetConfigurationActivity)
+                    .getGlanceIdBy(appWidgetId)
+                AisteeWidget().update(this@AisteeWidgetConfigurationActivity, glanceId)
             }
             setResult(
                 Activity.RESULT_OK,
