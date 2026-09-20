@@ -23,10 +23,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.glance.appwidget.AppWidgetId
 import androidx.lifecycle.lifecycleScope
@@ -100,11 +101,11 @@ private fun WidgetPrivacyConfiguration(
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Text(
-            text = "Aistee widget",
+            text = stringResource(R.string.widget_config_title),
             style = MaterialTheme.typography.headlineSmall,
         )
         Text(
-            text = "Conversation titles are hidden by default. You can expose them on the launcher for this widget only.",
+            text = stringResource(R.string.widget_config_privacy_summary),
             style = MaterialTheme.typography.bodyMedium,
         )
         Row(
@@ -113,11 +114,11 @@ private fun WidgetPrivacyConfiguration(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Show conversation titles",
+                    text = stringResource(R.string.widget_config_show_titles),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "When off, recent chats appear as Recent chat 1, 2, and 3.",
+                    text = stringResource(R.string.widget_config_show_titles_summary),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -132,13 +133,13 @@ private fun WidgetPrivacyConfiguration(
             horizontalArrangement = Arrangement.End,
         ) {
             TextButton(onClick = onCancel) {
-                Text("Cancel")
+                Text(stringResource(R.string.widget_config_cancel))
             }
             Button(
                 onClick = { onSave(showTitles) },
                 modifier = Modifier.padding(start = 8.dp),
             ) {
-                Text("Save")
+                Text(stringResource(R.string.widget_config_save))
             }
         }
     }
