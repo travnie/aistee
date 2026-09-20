@@ -23,6 +23,7 @@ import androidx.glance.layout.padding
 import androidx.glance.text.Text
 import ais.tee.R
 import ais.tee.data.model.NativeChatArchive
+import ais.tee.data.preferences.AisteeWidgetMode
 import ais.tee.data.preferences.AisteeWidgetPreferencesStore
 import ais.tee.data.preferences.NativeChatStore
 import ais.tee.navigation.AisteeQuickActionNavigation
@@ -35,6 +36,11 @@ private const val MAX_WIDGET_CONVERSATIONS = 3
 internal data class NativeChatWidgetConversation(
     val id: String,
     val title: String,
+)
+
+internal data class NativeChatWidgetArchiveFingerprint(
+    val recentConversations: List<NativeChatWidgetConversation>,
+    val conversationDirectory: List<NativeChatWidgetConversation>,
 )
 
 internal fun privacySafeWidgetConversationTitle(
@@ -63,48 +69,105 @@ internal fun recentNativeConversationsForWidget(
         }
 }
 
+internal fun pinnedNativeConversationForWidget(
+    archive: NativeChatArchive,
+    conversationId: String?,
+): NativeChatWidgetConversation? {
+    val id = conversationId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val conversation = archive.conversations.firstOrNull { it.id == id } ?: return null
+    return NativeChatWidgetConversation(
+        id = conversation.id,
+        title = conversation.title,
+    )
+}
+
+internal fun nativeChatWidgetArchiveFingerprint(
+    archive: NativeChatArchive,
+): NativeChatWidgetArchiveFingerprint =
+    NativeChatWidgetArchiveFingerprint(
+        recentConversations = recentNativeConversationsForWidget(archive),
+        conversationDirectory = archive.conversations
+            .map { conversation ->
+                NativeChatWidgetConversation(
+                    id = conversation.id,
+                    title = conversation.title,
+                )
+            }
+            .sortedBy { it.id },
+    )
+
 private fun widgetItemId(conversationId: String): Long =
     conversationId.hashCode().toLong() and Long.MAX_VALUE
 
 internal object NativeChatWidgetUpdater {
-    private val lastSummary = AtomicReference<List<NativeChatWidgetConversation>?>(null)
+    private val lastFingerprint = AtomicReference<NativeChatWidgetArchiveFingerprint?>(null)
 
     suspend fun onArchiveSaved(context: Context, archive: NativeChatArchive) {
-        val summary = recentNativeConversationsForWidget(archive)
-        if (lastSummary.get() == summary) return
+        val fingerprint = nativeChatWidgetArchiveFingerprint(archive)
+        if (lastFingerprint.get() == fingerprint) return
         AisteeWidget().updateAll(context.applicationContext)
-        lastSummary.set(summary)
+        lastFingerprint.set(fingerprint)
     }
 }
 
 class AisteeWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val appWidgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
-        val (conversations, showConversationTitles) = withContext(Dispatchers.IO) {
-            val recent = NativeChatStore(context.noBackupFilesDir)
-                .load()
-                ?.let(::recentNativeConversationsForWidget)
-                .orEmpty()
-            val showTitles = AisteeWidgetPreferencesStore(context).showConversationTitles(appWidgetId)
-            recent to showTitles
+        val (archive, preferences) = withContext(Dispatchers.IO) {
+            val loadedArchive = NativeChatStore(context.noBackupFilesDir).load() ?: NativeChatArchive()
+            val widgetPreferences = AisteeWidgetPreferencesStore(context).load(appWidgetId)
+            loadedArchive to widgetPreferences
         }
-        val visibleConversations = conversations.mapIndexed { index, conversation ->
+
+        val rawConversations = when (preferences.mode) {
+            AisteeWidgetMode.RECENT_CHATS -> recentNativeConversationsForWidget(archive)
+            AisteeWidgetMode.PINNED_CHAT ->
+                listOfNotNull(
+                    pinnedNativeConversationForWidget(
+                        archive,
+                        preferences.pinnedConversationId,
+                    )
+                )
+        }
+        val visibleConversations = rawConversations.mapIndexed { index, conversation ->
+            val hiddenTitle = when (preferences.mode) {
+                AisteeWidgetMode.RECENT_CHATS ->
+                    context.getString(R.string.widget_recent_chat_hidden, index + 1)
+                AisteeWidgetMode.PINNED_CHAT ->
+                    context.getString(R.string.widget_pinned_chat)
+            }
             conversation.copy(
                 title = privacySafeWidgetConversationTitle(
                     title = conversation.title,
-                    hiddenTitle = context.getString(R.string.widget_recent_chat_hidden, index + 1),
-                    showConversationTitles = showConversationTitles,
+                    hiddenTitle = hiddenTitle,
+                    showConversationTitles = preferences.showConversationTitles,
                 )
             )
         }
+        val sectionTitle = when (preferences.mode) {
+            AisteeWidgetMode.RECENT_CHATS -> context.getString(R.string.widget_recent_chats)
+            AisteeWidgetMode.PINNED_CHAT -> context.getString(R.string.widget_pinned_chat)
+        }
+        val emptyText = when (preferences.mode) {
+            AisteeWidgetMode.RECENT_CHATS -> context.getString(R.string.widget_no_recent_chats)
+            AisteeWidgetMode.PINNED_CHAT -> context.getString(R.string.widget_pinned_chat_unavailable)
+        }
+
         provideContent {
-            WidgetContent(context, visibleConversations)
+            WidgetContent(
+                context = context,
+                sectionTitle = sectionTitle,
+                emptyText = emptyText,
+                conversations = visibleConversations,
+            )
         }
     }
 
     @Composable
     private fun WidgetContent(
         context: Context,
+        sectionTitle: String,
+        emptyText: String,
         conversations: List<NativeChatWidgetConversation>,
     ) {
         Column(
@@ -122,12 +185,12 @@ class AisteeWidget : GlanceAppWidget() {
                 WidgetButton(context, "Studio", AisteeQuickActionNavigation.DESTINATION_STUDIO)
             }
             Text(
-                text = context.getString(R.string.widget_recent_chats),
+                text = sectionTitle,
                 modifier = GlanceModifier.fillMaxWidth().padding(top = 8.dp),
             )
             if (conversations.isEmpty()) {
                 Text(
-                    text = context.getString(R.string.widget_no_recent_chats),
+                    text = emptyText,
                     modifier = GlanceModifier.fillMaxWidth().padding(top = 4.dp),
                 )
             } else {
