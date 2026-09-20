@@ -56,6 +56,7 @@ private data class NativeChatPromptContext(
 )
 
 private const val STREAMING_UI_FLUSH_INTERVAL_MS = 50L
+private const val NATIVE_CHAT_DRAFT_PERSIST_DELAY_MS = 300L
 
 data class StudioUiState(
     val baseProfile: Profile = PresetProfiles.DefaultBaseProfile,
@@ -90,6 +91,8 @@ data class StudioUiState(
         get() = nativeChat.activeConversation
     val chatMessages: List<ModelChatMessage>
         get() = activeNativeConversation?.messages.orEmpty()
+    val nativeChatDraft: String
+        get() = activeNativeConversation?.draft.orEmpty()
     val selectedChatProvider: AiProvider
         get() = activeNativeConversation?.selectedProvider ?: AiProvider.ALL
     val selectedChatModel: String
@@ -137,6 +140,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val streamingTextBatcher = StreamingTextBatcher()
     private var streamingUiFlushJob: Job? = null
     private var studioPersistenceJob: Job? = null
+    private var nativeChatDraftPersistenceJob: Job? = null
     private var studioPersistenceOwnerId: Long? = null
     private val activeChatGenerationId = AtomicLong(0)
     private val incomingShareId = AtomicLong(0)
@@ -426,6 +430,22 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             state.copy(nativeChat = state.nativeChat.updateActiveConversation(transform))
         }
         if (persist) persistNativeChat()
+    }
+
+    private fun scheduleNativeChatDraftPersistence() {
+        nativeChatDraftPersistenceJob?.cancel()
+        nativeChatDraftPersistenceJob = viewModelScope.launch {
+            delay(NATIVE_CHAT_DRAFT_PERSIST_DELAY_MS)
+            nativeChatDraftPersistenceJob = null
+            persistNativeChat()
+        }
+    }
+
+    fun updateNativeConversationDraft(draft: String) {
+        val state = _uiState.value
+        if (!state.isNativeConversationStoreReady || state.activeNativeConversation?.draft == draft) return
+        updateActiveNativeConversation(persist = false) { it.copy(draft = draft) }
+        scheduleNativeChatDraftPersistence()
     }
 
     fun newNativeConversation() {
@@ -835,7 +855,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             active.copy(
                                 title = if (firstUserTurn) nativeConversationTitle(trimmed) else active.title,
                                 updatedAtEpochMs = now,
-                                messages = active.messages + userMessage
+                                messages = active.messages + userMessage,
+                                draft = if (active.draft.trim() == trimmed) "" else active.draft
                             )
                         },
                         activeGeneratingProviders = providersToRun.toSet()
@@ -1196,6 +1217,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             uiState.value
         }
         val latestSnapshot = latestState.toStudioStateSnapshot()
+        nativeChatDraftPersistenceJob?.cancel()
         studioPersistenceJob?.cancel()
         studioPersistenceOwnerId?.let { ownerId ->
             studioStateWriter?.enqueue(latestSnapshot, ownerId)
