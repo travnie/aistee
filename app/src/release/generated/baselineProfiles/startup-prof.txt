@@ -70,7 +70,7 @@ SPLais/tee/MainActivity;->access$onCreate$lambda$0$0$4$2$0$2(Landroidx/compose/r
 SPLais/tee/MainActivity;->getMarkdownWorkspaceViewModel()Lais/tee/ui/viewmodel/MarkdownWorkspaceViewModel;
 SPLais/tee/MainActivity;->getViewModel()Lais/tee/ui/viewmodel/StudioViewModel;
 SPLais/tee/MainActivity;->handleIncomingShareIntent(Landroid/content/Intent;)V
-SPLais/tee/MainActivity;->handleQuickActionNavigationIntent(Landroid/content/Intent;)V
+SPLais/tee/MainActivity;->handleNavigationIntent(Landroid/content/Intent;)V
 SPLais/tee/MainActivity;->onCreate$lambda$0$0$0(Landroidx/compose/runtime/State;)Lais/tee/ui/viewmodel/StudioUiState;
 SPLais/tee/MainActivity;->onCreate$lambda$0$0$4$0(ZLandroidx/compose/runtime/Composer;I)Lkotlin/Unit;
 SPLais/tee/MainActivity;->onCreate$lambda$0$0$4$1(Landroidx/compose/material3/SnackbarHostState;Landroidx/compose/runtime/Composer;I)Lkotlin/Unit;
@@ -752,6 +752,7 @@ Lais/tee/navigation/AisteeQuickActionNavigation;
 SPLais/tee/navigation/AisteeQuickActionNavigation;-><clinit>()V
 SPLais/tee/navigation/AisteeQuickActionNavigation;-><init>()V
 SPLais/tee/navigation/AisteeQuickActionNavigation;->isOpenDestinationAction(Ljava/lang/String;)Z
+SPLais/tee/navigation/AisteeQuickActionNavigation;->isOpenNativeConversationAction(Ljava/lang/String;)Z
 Lais/tee/share/PendingWebShare;
 SPLais/tee/share/PendingWebShare;-><clinit>()V
 Lais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;
@@ -1255,10 +1256,10 @@ SPLais/tee/ui/viewmodel/StudioStatePersistenceKt;->restoreStudioSnapshot(Lais/te
 SPLais/tee/ui/viewmodel/StudioStatePersistenceKt;->toStudioStateSnapshot(Lais/tee/ui/viewmodel/StudioUiState;)Lais/tee/data/model/StudioStateSnapshot;
 Lais/tee/ui/viewmodel/StudioUiState;
 SPLais/tee/ui/viewmodel/StudioUiState;-><clinit>()V
-SPLais/tee/ui/viewmodel/StudioUiState;-><init>(Lais/tee/data/model/Profile;Lais/tee/data/model/ProfileOverlay;Ljava/util/List;Lais/tee/data/model/Profile;Ljava/lang/String;Ljava/lang/String;Lais/tee/data/engine/ValidationResult;Ljava/lang/String;Ljava/util/List;ZLais/tee/ui/viewmodel/NavigationTab;Lais/tee/data/model/WebAiService;Ljava/util/Set;Ljava/lang/String;Lais/tee/share/IncomingSharePayload;JLais/tee/share/PendingWebShare;Lais/tee/data/model/NativeChatArchive;ZLais/tee/data/model/ApiKeyConfig;ZLjava/util/Set;ZLjava/util/Map;Ljava/util/Set;)V
-SPLais/tee/ui/viewmodel/StudioUiState;-><init>(Lais/tee/data/model/Profile;Lais/tee/data/model/ProfileOverlay;Ljava/util/List;Lais/tee/data/model/Profile;Ljava/lang/String;Ljava/lang/String;Lais/tee/data/engine/ValidationResult;Ljava/lang/String;Ljava/util/List;ZLais/tee/ui/viewmodel/NavigationTab;Lais/tee/data/model/WebAiService;Ljava/util/Set;Ljava/lang/String;Lais/tee/share/IncomingSharePayload;JLais/tee/share/PendingWebShare;Lais/tee/data/model/NativeChatArchive;ZLais/tee/data/model/ApiKeyConfig;ZLjava/util/Set;ZLjava/util/Map;Ljava/util/Set;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
-SPLais/tee/ui/viewmodel/StudioUiState;->copy$default(Lais/tee/ui/viewmodel/StudioUiState;Lais/tee/data/model/Profile;Lais/tee/data/model/ProfileOverlay;Ljava/util/List;Lais/tee/data/model/Profile;Ljava/lang/String;Ljava/lang/String;Lais/tee/data/engine/ValidationResult;Ljava/lang/String;Ljava/util/List;ZLais/tee/ui/viewmodel/NavigationTab;Lais/tee/data/model/WebAiService;Ljava/util/Set;Ljava/lang/String;Lais/tee/share/IncomingSharePayload;JLais/tee/share/PendingWebShare;Lais/tee/data/model/NativeChatArchive;ZLais/tee/data/model/ApiKeyConfig;ZLjava/util/Set;ZLjava/util/Map;Ljava/util/Set;ILjava/lang/Object;)Lais/tee/ui/viewmodel/StudioUiState;
-SPLais/tee/ui/viewmodel/StudioUiState;->copy(Lais/tee/data/model/Profile;Lais/tee/data/model/ProfileOverlay;Ljava/util/List;Lais/tee/data/model/Profile;Ljava/lang/String;Ljava/lang/String;Lais/tee/data/engine/ValidationResult;Ljava/lang/String;Ljava/util/List;ZLais/tee/ui/viewmodel/NavigationTab;Lais/tee/data/model/WebAiService;Ljava/util/Set;Ljava/lang/String;Lais/tee/share/IncomingSharePayload;JLais/tee/share/PendingWebShare;Lais/tee/data/model/NativeChatArchive;ZLais/tee/data/model/ApiKeyConfig;ZLjava/util/Set;ZLjava/util/Map;Ljava/util/Set;)Lais/tee/ui/viewmodel/StudioUiState;
+SPLais/tee/ui/viewmodel/StudioUiState;-><init>(Lais/tee/data/model/Profile;Lais/tee/data/model/ProfileOverlay;Ljava/util/List;Lais/tee/data/model/Profile;Ljava/lang/String;Ljava/lang/String;Lais/tee/data/engine/ValidationResult;Ljava/lang/String;Ljava/util/List;ZLais/tee/ui/viewmodel/NavigationTab;Lais/tee/data/model/WebAiService;Ljava/util/Set;Ljava/lang/String;Lais/tee/share/IncomingSharePayload;JLais/tee/share/PendingWebShare;Lais/tee/data/model/NativeChatArchive;ZLais/tee/ui/viewmodel/NativeChatNavigationRequest;Lais/tee/data/model/ApiKeyConfig;ZLjava/util/Set;ZLjava/util/Map;Ljava/util/Set;)V
+SPLais/tee/ui/viewmodel/StudioUiState;-><init>(Lais/tee/data/model/Profile;Lais/tee/data/model/ProfileOverlay;Ljava/util/List;Lais/tee/data/model/Profile;Ljava/lang/String;Ljava/lang/String;Lais/tee/data/engine/ValidationResult;Ljava/lang/String;Ljava/util/List;ZLais/tee/ui/viewmodel/NavigationTab;Lais/tee/data/model/WebAiService;Ljava/util/Set;Ljava/lang/String;Lais/tee/share/IncomingSharePayload;JLais/tee/share/PendingWebShare;Lais/tee/data/model/NativeChatArchive;ZLais/tee/ui/viewmodel/NativeChatNavigationRequest;Lais/tee/data/model/ApiKeyConfig;ZLjava/util/Set;ZLjava/util/Map;Ljava/util/Set;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+SPLais/tee/ui/viewmodel/StudioUiState;->copy$default(Lais/tee/ui/viewmodel/StudioUiState;Lais/tee/data/model/Profile;Lais/tee/data/model/ProfileOverlay;Ljava/util/List;Lais/tee/data/model/Profile;Ljava/lang/String;Ljava/lang/String;Lais/tee/data/engine/ValidationResult;Ljava/lang/String;Ljava/util/List;ZLais/tee/ui/viewmodel/NavigationTab;Lais/tee/data/model/WebAiService;Ljava/util/Set;Ljava/lang/String;Lais/tee/share/IncomingSharePayload;JLais/tee/share/PendingWebShare;Lais/tee/data/model/NativeChatArchive;ZLais/tee/ui/viewmodel/NativeChatNavigationRequest;Lais/tee/data/model/ApiKeyConfig;ZLjava/util/Set;ZLjava/util/Map;Ljava/util/Set;ILjava/lang/Object;)Lais/tee/ui/viewmodel/StudioUiState;
+SPLais/tee/ui/viewmodel/StudioUiState;->copy(Lais/tee/data/model/Profile;Lais/tee/data/model/ProfileOverlay;Ljava/util/List;Lais/tee/data/model/Profile;Ljava/lang/String;Ljava/lang/String;Lais/tee/data/engine/ValidationResult;Ljava/lang/String;Ljava/util/List;ZLais/tee/ui/viewmodel/NavigationTab;Lais/tee/data/model/WebAiService;Ljava/util/Set;Ljava/lang/String;Lais/tee/share/IncomingSharePayload;JLais/tee/share/PendingWebShare;Lais/tee/data/model/NativeChatArchive;ZLais/tee/ui/viewmodel/NativeChatNavigationRequest;Lais/tee/data/model/ApiKeyConfig;ZLjava/util/Set;ZLjava/util/Map;Ljava/util/Set;)Lais/tee/ui/viewmodel/StudioUiState;
 SPLais/tee/ui/viewmodel/StudioUiState;->equals(Ljava/lang/Object;)Z
 SPLais/tee/ui/viewmodel/StudioUiState;->getAvailableOverlays()Ljava/util/List;
 SPLais/tee/ui/viewmodel/StudioUiState;->getBaseProfile()Lais/tee/data/model/Profile;
@@ -1273,12 +1274,15 @@ SPLais/tee/ui/viewmodel/StudioUiState;->getRenderedInstructions()Ljava/lang/Stri
 SPLais/tee/ui/viewmodel/StudioUiState;->getSelectedOverlay()Lais/tee/data/model/ProfileOverlay;
 SPLais/tee/ui/viewmodel/StudioUiState;->getSelectedWebService()Lais/tee/data/model/WebAiService;
 SPLais/tee/ui/viewmodel/StudioUiState;->getSnackbarMessage()Ljava/lang/String;
+SPLais/tee/ui/viewmodel/StudioUiState;->isNativeConversationStoreReady()Z
 Lais/tee/ui/viewmodel/StudioViewModel;
 SPLais/tee/ui/viewmodel/StudioViewModel;-><clinit>()V
 SPLais/tee/ui/viewmodel/StudioViewModel;-><init>(Landroid/app/Application;)V
+SPLais/tee/ui/viewmodel/StudioViewModel;->access$applyPendingNativeConversationTarget(Lais/tee/ui/viewmodel/StudioViewModel;)V
 SPLais/tee/ui/viewmodel/StudioViewModel;->access$getNativeChatStore$p(Lais/tee/ui/viewmodel/StudioViewModel;)Lais/tee/data/preferences/NativeChatStore;
 SPLais/tee/ui/viewmodel/StudioViewModel;->access$getNativeChatWriter$p(Lais/tee/ui/viewmodel/StudioViewModel;)Lais/tee/data/preferences/NativeChatWriter;
 SPLais/tee/ui/viewmodel/StudioViewModel;->access$get_uiState$p(Lais/tee/ui/viewmodel/StudioViewModel;)Lkotlinx/coroutines/flow/MutableStateFlow;
+SPLais/tee/ui/viewmodel/StudioViewModel;->applyPendingNativeConversationTarget()V
 SPLais/tee/ui/viewmodel/StudioViewModel;->createNativeConversation$default(Lais/tee/ui/viewmodel/StudioViewModel;Lais/tee/data/model/NativeChatConversation;JILjava/lang/Object;)Lais/tee/data/model/NativeChatConversation;
 SPLais/tee/ui/viewmodel/StudioViewModel;->createNativeConversation(Lais/tee/data/model/NativeChatConversation;J)Lais/tee/data/model/NativeChatConversation;
 SPLais/tee/ui/viewmodel/StudioViewModel;->getUiState()Lkotlinx/coroutines/flow/StateFlow;

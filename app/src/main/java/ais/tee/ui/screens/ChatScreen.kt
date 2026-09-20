@@ -136,6 +136,13 @@ fun ChatScreen(
         initialDestinationHistory = initialDestinationHistory
     )
     val conversations = uiState.nativeChat.conversations.sortedByDescending { it.updatedAtEpochMs }
+    val navigationRequest = uiState.nativeChatNavigationRequest
+
+    LaunchedEffect(navigationRequest?.id) {
+        val request = navigationRequest ?: return@LaunchedEffect
+        navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, request.conversationId)
+        viewModel.consumeNativeConversationNavigationRequest(request.id)
+    }
 
     fun showConversation(conversationId: String) {
         viewModel.switchNativeConversation(conversationId)

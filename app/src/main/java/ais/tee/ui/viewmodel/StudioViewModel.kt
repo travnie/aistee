@@ -35,6 +35,19 @@ import java.io.File
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+
+data class NativeChatNavigationRequest(
+    val id: Long,
+    val conversationId: String
+)
+
+internal fun resolveNativeConversationTarget(
+    archive: NativeChatArchive,
+    requestedId: String
+): String? = requestedId.trim().takeIf { candidate ->
+    candidate.isNotEmpty() && archive.conversations.any { it.id == candidate }
+}
 
 data class ChatMessage(
     val id: String,
@@ -80,6 +93,7 @@ data class StudioUiState(
     // Integrated Multi-Provider AI Chat
     val nativeChat: NativeChatArchive = NativeChatArchive(),
     val isNativeConversationStoreReady: Boolean = false,
+    val nativeChatNavigationRequest: NativeChatNavigationRequest? = null,
     val apiKeyConfig: ApiKeyConfig = ApiKeyConfig(),
     val isChatGenerating: Boolean = false,
     val activeGeneratingProviders: Set<AiProvider> = emptySet(),
@@ -145,6 +159,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val activeChatGenerationId = AtomicLong(0)
     private val incomingShareId = AtomicLong(0)
     private val pendingWebShareId = AtomicLong(0)
+    private val nativeChatNavigationRequestId = AtomicLong(0)
+    private val pendingNativeConversationId = AtomicReference<String?>(null)
     val uiState: StateFlow<StudioUiState> = _uiState.asStateFlow()
 
     init {
@@ -230,6 +246,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update {
                 it.copy(nativeChat = cached, isNativeConversationStoreReady = true)
             }
+            applyPendingNativeConversationTarget()
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -241,11 +258,47 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 it.copy(nativeChat = restored, isNativeConversationStoreReady = true)
             }
             nativeChatWriter.enqueue(restored)
+            applyPendingNativeConversationTarget()
         }
     }
 
     fun selectTab(tab: NavigationTab) {
         _uiState.update { it.copy(currentTab = tab) }
+    }
+
+    fun openNativeConversation(conversationId: String) {
+        val target = conversationId.trim()
+        if (target.isEmpty()) return
+        selectTab(NavigationTab.COMPARE_HUB)
+        pendingNativeConversationId.set(target)
+        applyPendingNativeConversationTarget()
+    }
+
+    private fun applyPendingNativeConversationTarget() {
+        val state = _uiState.value
+        if (!state.isNativeConversationStoreReady) return
+        val requestedId = pendingNativeConversationId.getAndSet(null) ?: return
+        val conversationId = resolveNativeConversationTarget(state.nativeChat, requestedId)
+        if (conversationId == null) {
+            showSnackbar("Conversation is no longer available.")
+            return
+        }
+        switchNativeConversation(conversationId)
+        val request = NativeChatNavigationRequest(
+            id = nativeChatNavigationRequestId.incrementAndGet(),
+            conversationId = conversationId
+        )
+        _uiState.update { it.copy(nativeChatNavigationRequest = request) }
+    }
+
+    fun consumeNativeConversationNavigationRequest(requestId: Long) {
+        _uiState.update { state ->
+            if (state.nativeChatNavigationRequest?.id == requestId) {
+                state.copy(nativeChatNavigationRequest = null)
+            } else {
+                state
+            }
+        }
     }
 
     fun selectWebService(service: WebAiService) {
