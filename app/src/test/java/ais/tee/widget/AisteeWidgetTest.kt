@@ -1,5 +1,7 @@
 package ais.tee.widget
 
+import ais.tee.data.model.CHAT_ROLE_ASSISTANT
+import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatArchive
 import ais.tee.data.model.NativeChatConversation
 import org.junit.Assert.assertEquals
@@ -99,6 +101,41 @@ class AisteeWidgetTest {
         assertNotEquals(
             nativeChatWidgetArchiveFingerprint(archive),
             nativeChatWidgetArchiveFingerprint(renamedArchive),
+        )
+    }
+
+    @Test
+    fun widgetRefreshFingerprintTracksLatestMessages() {
+        val conversation = newestConversation.copy(
+            messages = listOf(
+                ModelChatMessage(
+                    id = "assistant-1",
+                    sender = CHAT_ROLE_ASSISTANT,
+                    text = "First answer",
+                    timestamp = 100L,
+                )
+            )
+        )
+        val archive = NativeChatArchive(
+            activeConversationId = conversation.id,
+            conversations = listOf(conversation),
+        )
+        val updatedArchive = archive.copy(
+            conversations = listOf(
+                conversation.copy(
+                    messages = conversation.messages + ModelChatMessage(
+                        id = "assistant-2",
+                        sender = CHAT_ROLE_ASSISTANT,
+                        text = "Second answer",
+                        timestamp = 200L,
+                    )
+                )
+            )
+        )
+
+        assertNotEquals(
+            nativeChatWidgetArchiveFingerprint(archive),
+            nativeChatWidgetArchiveFingerprint(updatedArchive),
         )
     }
 
