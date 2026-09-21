@@ -35,6 +35,8 @@ import ais.tee.data.model.webChatSections
 import ais.tee.data.security.TextInspectionResult
 import ais.tee.data.security.TextInspector
 import ais.tee.navigation.AisteeQuickActionNavigation
+import ais.tee.notifications.NativeChatNotificationPublisher
+import ais.tee.notifications.NativeChatNotificationVisibility
 import ais.tee.share.CreateMessageAppAction
 import ais.tee.share.IncomingSharePayload
 import ais.tee.share.PendingWebShare
@@ -229,6 +231,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        NativeChatNotificationVisibility.setAppVisible(true)
+    }
+
+    override fun onStop() {
+        NativeChatNotificationVisibility.setAppVisible(false)
+        super.onStop()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         retainedShareIntentHandled = false
@@ -252,7 +264,10 @@ class MainActivity : ComponentActivity() {
                     dataHost = intent.data?.host,
                     dataLastPathSegment = intent.data?.lastPathSegment,
                 )
-                conversationId?.let(viewModel::openNativeConversation)
+                conversationId?.let { resolvedConversationId ->
+                    NativeChatNotificationPublisher.cancelConversation(this, resolvedConversationId)
+                    viewModel.openNativeConversation(resolvedConversationId)
+                }
                 consumeNavigationIntent(intent)
             }
             AisteeQuickActionNavigation.isOpenDestinationAction(intent.action) -> {

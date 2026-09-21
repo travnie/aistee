@@ -1,12 +1,4 @@
 <resources>
-    <string name="web_find_title">Find in page</string>
-    <string name="web_find_close">Close search</string>
-    <string name="web_find_loaded_text">Search text loaded on this page</string>
-    <string name="web_find_searching">Searching…</string>
-    <string name="web_find_no_matches">No matches</string>
-    <string name="web_find_result">%1$d / %2$d</string>
-    <string name="web_find_previous">Previous match</string>
-    <string name="web_find_next">Next match</string>
     <string name="app_name">Aistee</string>
     <string name="widget_description">Quick access to Aistee and recent local chats.</string>
     <string name="widget_recent_chats">Recent chats</string>
@@ -39,4 +31,26 @@
     <string name="shortcut_compare_long">Open Compare</string>
     <string name="shortcut_studio_short">Studio</string>
     <string name="shortcut_studio_long">Open Studio</string>
+    <string name="notification_channel_ai_conversations_name">AI conversations</string>
+    <string name="notification_channel_ai_conversations_description">Completed responses from local native and API chats.</string>
+    <string name="notification_settings_menu">Notifications</string>
+    <string name="notification_settings_title">Chat notifications</string>
+    <string name="notification_settings_enabled">Enable notifications</string>
+    <string name="notification_settings_enabled_summary">Notify when an AI response finishes after Aistee leaves the foreground.</string>
+    <string name="notification_settings_show_titles">Show conversation titles</string>
+    <string name="notification_settings_show_titles_summary">Off keeps conversation names hidden in notifications.</string>
+    <string name="notification_settings_show_previews">Show message previews</string>
+    <string name="notification_settings_show_previews_summary">Off replaces message bodies with privacy-safe labels.</string>
+    <string name="notification_settings_save">Save</string>
+    <string name="notification_settings_cancel">Cancel</string>
+    <string name="notification_permission_denied">Notification permission was not granted.</string>
+    <string name="notification_system_disabled">Notifications are disabled for Aistee in Android settings.</string>
+    <string name="web_find_title">Find in page</string>
+    <string name="web_find_close">Close search</string>
+    <string name="web_find_loaded_text">Search text loaded on this page</string>
+    <string name="web_find_searching">Searching…</string>
+    <string name="web_find_no_matches">No matches</string>
+    <string name="web_find_result">%1$d / %2$d</string>
+    <string name="web_find_previous">Previous match</string>
+    <string name="web_find_next">Next match</string>
 </resources>

@@ -8,7 +8,6 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.text.AnnotatedString
 import java.util.concurrent.atomic.AtomicBoolean
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -48,7 +47,7 @@ class WebChatFindTest {
         composeRule.onNodeWithTag("web_find_query").performTextReplacement("")
         composeRule.onNodeWithTag("btn_web_find_previous").assertIsNotEnabled()
         composeRule.onNodeWithTag("btn_web_find_close").performClick()
-        composeRule.onNodeWithTag("web_find_query").assertDoesNotExist()
+        assertFindClosed()
         composeRule.runOnIdle { assertSame(webView, visibleWebView(composeRule.activity.window.decorView)) }
     }
 
@@ -59,9 +58,9 @@ class WebChatFindTest {
         composeRule.onNodeWithTag("web_find_query").performTextReplacement("nebula")
         awaitResult("1 / 3")
         switchProvider("claude")
-        composeRule.onNodeWithTag("web_find_query").assertDoesNotExist()
+        assertFindClosed()
         switchProvider("chatgpt")
-        composeRule.onNodeWithTag("web_find_query").assertDoesNotExist()
+        assertFindClosed()
         openFind()
         composeRule.onNodeWithTag("web_find_query").assert(
             SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(""))
@@ -112,7 +111,7 @@ class WebChatFindTest {
             ViewModelProvider(composeRule.activity)[StudioViewModel::class.java]
                 .selectWebService(WebAiService.CLAUDE)
         }
-        composeRule.onNodeWithTag("web_find_query").assertDoesNotExist()
+        assertFindClosed()
         openFind()
         composeRule.onNodeWithTag("web_find_query").assert(
             SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(""))
@@ -147,6 +146,12 @@ class WebChatFindTest {
         composeRule.onNodeWithTag("btn_web_more").performClick()
         composeRule.onNodeWithTag("btn_web_find").performClick()
         composeRule.onNodeWithTag("web_find_query").assertIsDisplayed()
+    }
+
+    private fun assertFindClosed() {
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("web_find_query").fetchSemanticsNodes().isEmpty()
+        }
     }
 
     private fun awaitResult(text: String) {

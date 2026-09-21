@@ -22,6 +22,7 @@ import ais.tee.share.PendingWebShare
 import ais.tee.share.claimText
 import ais.tee.share.completeTextClaim
 import ais.tee.share.releaseTextClaim
+import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.widget.NativeChatWidgetUpdater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -549,6 +550,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
         persistNativeChat()
+        NativeChatNotificationPublisher.cancelConversation(getApplication(), conversationId)
     }
 
     fun setChatProvider(provider: AiProvider) {
@@ -674,6 +676,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun clearChatHistory() {
         if (!_uiState.value.isNativeConversationStoreReady) return
         cancelChatGeneration()
+        val conversationId = _uiState.value.nativeChat.activeConversationId
         val now = System.currentTimeMillis()
         updateActiveNativeConversation { conversation ->
             conversation.copy(
@@ -682,6 +685,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 messages = welcomeChatMessages()
             )
         }
+        NativeChatNotificationPublisher.cancelConversation(getApplication(), conversationId)
         showSnackbar("Current conversation cleared.")
     }
 
@@ -950,6 +954,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         targetProvider,
                         _uiState.value.selectedChatModel,
                         allowSimulationFallback = true
+                    )
+                }
+                _uiState.value.activeNativeConversation?.let { conversation ->
+                    NativeChatNotificationPublisher.publishConversation(
+                        getApplication(),
+                        conversation,
                     )
                 }
             } finally {
