@@ -43,7 +43,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -53,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import ais.tee.data.model.WebAiService
+import ais.tee.R
 import ais.tee.data.model.webChatSections
 import ais.tee.data.model.WebChatActivityStatus
 import ais.tee.data.model.WebChatGenerationObservation
@@ -155,6 +159,17 @@ fun WebChatScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    var findSession by remember { mutableStateOf<WebFindInPageSession?>(null) }
+
+    fun closeFindInPage(rendererGone: Boolean = false) {
+        val session = findSession ?: return
+        findSession = null
+        session.close(rendererGone)
+        focusManager.clearFocus()
+        keyboard?.hide()
+    }
     val navigationSuiteType = NavigationSuiteScaffoldDefaults.navigationSuiteType(
         currentWindowAdaptiveInfoV2()
     )
@@ -347,6 +362,7 @@ fun WebChatScreen(
     }
 
     fun handleRendererGone(service: WebAiService, deadView: WebView, didCrash: Boolean) {
+        if (findSession?.webView === deadView) closeFindInPage(rendererGone = true)
         val isCurrentInstance = webViewMap[service] === deadView
         releaseSharedTextClaimFor(deadView)
         if (isCurrentInstance) {
@@ -477,6 +493,7 @@ fun WebChatScreen(
     ) {
         val previousService = currentSelectedService
         if (previousService != service) {
+            closeFindInPage()
             webViewMap[previousService]?.let { webView ->
                 setProviderGenerationTrackerSelected(webView, previousService, isSelected = false)
             }
@@ -693,6 +710,7 @@ fun WebChatScreen(
 
     DisposableEffect(webViewMap) {
         onDispose {
+            closeFindInPage()
             pendingFileCallback.value?.onReceiveValue(null)
             pendingFileCallback.value = null
             pendingFileService.value = null
@@ -712,6 +730,7 @@ fun WebChatScreen(
     val activeWebView = webViewMap[selectedService]
     LaunchedEffect(isActive, activeWebView) {
         if (!isActive) {
+            closeFindInPage()
             activeWebView?.let { webView ->
                 webView.clearFocus()
                 val inputMethodManager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
@@ -867,12 +886,16 @@ fun WebChatScreen(
         )
     }
 
-    BackHandler(enabled = isActive && canGoBack && drawerState.currentValue == DrawerValue.Closed) {
+    BackHandler(enabled = isActive && findSession == null && canGoBack && drawerState.currentValue == DrawerValue.Closed) {
         activeWebView?.let {
             if (it.canGoBack()) {
                 it.goBack()
             }
         }
+    }
+
+    BackHandler(enabled = isActive && findSession != null && drawerState.currentValue == DrawerValue.Closed) {
+        closeFindInPage()
     }
 
     val providerDrawerContent: @Composable (Boolean) -> Unit = { persistent ->
@@ -914,36 +937,43 @@ fun WebChatScreen(
         Scaffold(
             topBar = {
                 if (isActive) {
-                    WebChatToolbar(
-                        activeWebView = activeWebView,
-                        selectedService = selectedService,
-                        activityStatus = activityStatuses[selectedService] ?: WebChatActivityStatus.IDLE,
-                        providerFavicon = providerFavicons[selectedService],
-                        currentUrl = currentUrl,
-                        canGoBack = canGoBack,
-                        canGoForward = canGoForward,
-                        isDesktopMode = isDesktopMode,
-                        isLoading = isLoading,
-                        loadingProgress = loadingProgress,
-                        showProviderDrawerButton = !persistentProviderNavigation,
-                        onOpenDrawer = { drawerScope.launch { drawerState.open() } },
-                        onApplyStudio = ::applyStudioPrompt,
-                        onShowPromptHelper = { showPromptHelperDialog = true },
-                        onShowDiagnostics = ::openProviderDiagnostics,
-                        onToggleDesktopMode = {
-                            val service = selectedService
-                            val currentMode = pendingDesktopModes[service] ?: isDesktopMode
-                            val nextDesktopMode = !currentMode
-                            if (webViewMap[service] == null) {
-                                pendingDesktopModes.remove(service)
-                                desktopModes[service] = nextDesktopMode
-                            } else {
-                                pendingDesktopModes[service] = nextDesktopMode
-                                probeServiceActivity(service)
-                            }
-                        },
-                        onShowSnackbar = viewModel::showSnackbar
-                    )
+                    Column {
+                        WebChatToolbar(
+                            activeWebView = activeWebView,
+                            selectedService = selectedService,
+                            activityStatus = activityStatuses[selectedService] ?: WebChatActivityStatus.IDLE,
+                            providerFavicon = providerFavicons[selectedService],
+                            currentUrl = currentUrl,
+                            canGoBack = canGoBack,
+                            canGoForward = canGoForward,
+                            isDesktopMode = isDesktopMode,
+                            isLoading = isLoading,
+                            loadingProgress = loadingProgress,
+                            showProviderDrawerButton = !persistentProviderNavigation,
+                            onOpenDrawer = { drawerScope.launch { drawerState.open() } },
+                            onApplyStudio = ::applyStudioPrompt,
+                            onShowPromptHelper = { showPromptHelperDialog = true },
+                            onShowDiagnostics = ::openProviderDiagnostics,
+                            onFindInPage = {
+                                closeFindInPage()
+                                activeWebView?.let { findSession = WebFindInPageSession(it) }
+                            },
+                            onToggleDesktopMode = {
+                                val service = selectedService
+                                val currentMode = pendingDesktopModes[service] ?: isDesktopMode
+                                val nextDesktopMode = !currentMode
+                                if (webViewMap[service] == null) {
+                                    pendingDesktopModes.remove(service)
+                                    desktopModes[service] = nextDesktopMode
+                                } else {
+                                    pendingDesktopModes[service] = nextDesktopMode
+                                    probeServiceActivity(service)
+                                }
+                            },
+                            onShowSnackbar = viewModel::showSnackbar
+                        )
+                        findSession?.let { WebFindInPageBar(it, onClose = { closeFindInPage() }) }
+                    }
                 }
             },
             modifier = Modifier.fillMaxSize()
@@ -990,6 +1020,7 @@ fun WebChatScreen(
                                     rendererInactivityConfirmed[service] == true
                                 },
                                 onDocumentStarted = {
+                                    if (findSession?.webView === webViewMap[service]) closeFindInPage()
                                     invalidateRendererWaiveEligibility(service)
                                     documentRevisions[service] = (documentRevisions[service] ?: 0) + 1
                                     if (selectedService == service && showProviderDiagnosticsDialog) {
@@ -999,6 +1030,7 @@ fun WebChatScreen(
                                 onUrlChanged = { url ->
                                     lastKnownUrls[service] = url
                                     if (selectedService == service) {
+                                        if (currentUrl != url) closeFindInPage()
                                         currentUrl = url
                                     }
                                 },
@@ -1147,6 +1179,7 @@ fun WebChatScreen(
                         onRelease = { wv ->
                             releaseSharedTextClaimFor(wv)
                             if (webViewMap.remove(service) === wv) {
+                                if (findSession?.webView === wv) closeFindInPage()
                                 releaseWebView(wv)
                             }
                         },
@@ -1368,6 +1401,7 @@ private fun WebChatToolbar(
     onApplyStudio: () -> Unit,
     onShowPromptHelper: () -> Unit,
     onShowDiagnostics: () -> Unit,
+    onFindInPage: () -> Unit,
     onToggleDesktopMode: () -> Unit,
     onShowSnackbar: (String) -> Unit
 ) {
@@ -1443,6 +1477,16 @@ private fun WebChatToolbar(
                         expanded = menuExpanded,
                         onDismissRequest = { menuExpanded = false }
                     ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.web_find_title)) },
+                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                            enabled = activeWebView != null,
+                            onClick = {
+                                menuExpanded = false
+                                onFindInPage()
+                            },
+                            modifier = Modifier.testTag("btn_web_find")
+                        )
                         DropdownMenuItem(
                             text = { Text("Back") },
                             leadingIcon = { Icon(Icons.Default.ArrowBack, contentDescription = null) },
