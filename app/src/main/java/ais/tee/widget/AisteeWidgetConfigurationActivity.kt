@@ -134,6 +134,9 @@ private fun WidgetConfiguration(
     var showTitles by rememberSaveable {
         mutableStateOf(initialPreferences.showConversationTitles)
     }
+    var showMessagePreviews by rememberSaveable {
+        mutableStateOf(initialPreferences.showMessagePreviews)
+    }
     val mode = AisteeWidgetMode.entries.firstOrNull { it.name == modeName }
         ?: AisteeWidgetMode.RECENT_CHATS
     val canSave = mode != AisteeWidgetMode.PINNED_CHAT || pinnedConversationId != null
@@ -159,6 +162,12 @@ private fun WidgetConfiguration(
             selected = mode == AisteeWidgetMode.RECENT_CHATS,
             enabled = true,
             onSelect = { modeName = AisteeWidgetMode.RECENT_CHATS.name },
+        )
+        WidgetModeChoice(
+            label = stringResource(R.string.widget_config_mode_messages),
+            selected = mode == AisteeWidgetMode.MESSAGES,
+            enabled = true,
+            onSelect = { modeName = AisteeWidgetMode.MESSAGES.name },
         )
         WidgetModeChoice(
             label = stringResource(R.string.widget_config_mode_pinned),
@@ -221,6 +230,28 @@ private fun WidgetConfiguration(
             )
         }
 
+        if (mode == AisteeWidgetMode.MESSAGES) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.widget_config_show_message_previews),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = stringResource(R.string.widget_config_show_message_previews_summary),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(
+                    checked = showMessagePreviews,
+                    onCheckedChange = { showMessagePreviews = it },
+                )
+            }
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.End,
@@ -238,6 +269,7 @@ private fun WidgetConfiguration(
                                     mode == AisteeWidgetMode.PINNED_CHAT
                                 },
                             showConversationTitles = showTitles,
+                            showMessagePreviews = showMessagePreviews,
                         )
                     )
                 },

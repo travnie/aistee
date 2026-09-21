@@ -2,6 +2,11 @@
     <string name="app_name">Aistee</string>
     <string name="widget_description">Quick access to Aistee and recent local chats.</string>
     <string name="widget_recent_chats">Recent chats</string>
+    <string name="widget_messages">Messages</string>
+    <string name="widget_no_messages">No local messages yet.</string>
+    <string name="widget_user_message">Your message</string>
+    <string name="widget_assistant_message">Assistant message</string>
+    <string name="widget_message_with_conversation">%1$s · %2$s</string>
     <string name="widget_pinned_chat">Pinned chat</string>
     <string name="widget_pinned_chat_unavailable">The pinned chat is no longer available. Reconfigure this widget to choose another one.</string>
     <string name="widget_no_recent_chats">Open Compare to start a local chat.</string>
@@ -9,12 +14,15 @@
     <string name="widget_config_title">Aistee widget</string>
     <string name="widget_config_mode">Widget mode</string>
     <string name="widget_config_mode_recent">Recent chats</string>
+    <string name="widget_config_mode_messages">Messages</string>
     <string name="widget_config_mode_pinned">Pinned chat</string>
     <string name="widget_config_pinned_conversation">Pinned conversation</string>
     <string name="widget_config_no_conversations">No local conversations are available yet.</string>
     <string name="widget_config_privacy_summary">Conversation titles are hidden by default. You can expose them on the launcher for this widget only.</string>
     <string name="widget_config_show_titles">Show conversation titles</string>
     <string name="widget_config_show_titles_summary">When off, chat titles are replaced with privacy-safe labels.</string>
+    <string name="widget_config_show_message_previews">Show message previews</string>
+    <string name="widget_config_show_message_previews_summary">When off, message bodies are replaced with privacy-safe sender labels.</string>
     <string name="widget_config_cancel">Cancel</string>
     <string name="widget_config_save">Save</string>
     <string name="shortcut_web_ai_short">Web AI</string>
