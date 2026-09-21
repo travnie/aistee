@@ -3,6 +3,11 @@ package ais.tee.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
@@ -50,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.ContextCompat
 import ais.tee.data.document.MarkdownDocumentFileAccess
 import ais.tee.data.document.MarkdownWorkspaceRecoveryStore
 import ais.tee.data.model.AiProvider
@@ -58,6 +64,10 @@ import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatConversation
 import ais.tee.data.model.renderChatMarkdown
 import ais.tee.data.model.isCompletedAssistantResponse
+import ais.tee.notifications.NativeChatNotificationPreferences
+import ais.tee.notifications.NativeChatNotificationPreferencesStore
+import ais.tee.notifications.NativeChatNotificationPublisher
+import ais.tee.notifications.NativeChatNotificationSettingsDialog
 import ais.tee.ui.theme.*
 import ais.tee.ui.viewmodel.ExternalMarkdownOpenResult
 import ais.tee.ui.viewmodel.MarkdownWorkspaceViewModel
@@ -227,6 +237,33 @@ private fun NativeChatDetailPane(
     val promptInput = uiState.nativeChatDraft
     var showModelMenu by remember { mutableStateOf(false) }
     var showChatActionsMenu by remember { mutableStateOf(false) }
+    val notificationPreferencesStore = remember(context.applicationContext) {
+        NativeChatNotificationPreferencesStore(context.applicationContext)
+    }
+    var notificationPreferences by remember {
+        mutableStateOf(notificationPreferencesStore.load())
+    }
+    var showNotificationSettings by remember { mutableStateOf(false) }
+    var pendingNotificationPreferences by remember {
+        mutableStateOf<NativeChatNotificationPreferences?>(null)
+    }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val pending = pendingNotificationPreferences ?: return@rememberLauncherForActivityResult
+        val saved = if (granted) pending else pending.copy(enabled = false)
+        notificationPreferencesStore.save(saved)
+        notificationPreferences = saved
+        pendingNotificationPreferences = null
+        if (granted) {
+            NativeChatNotificationPublisher.ensureChannel(context)
+            if (!NativeChatNotificationPublisher.systemNotificationsAllowed(context)) {
+                viewModel.showSnackbar(context.getString(R.string.notification_system_disabled))
+            }
+        } else {
+            viewModel.showSnackbar(context.getString(R.string.notification_permission_denied))
+        }
+    }
     var pendingMarkdownAsset by remember { mutableStateOf<PendingMarkdownAsset?>(null) }
     var pendingMarkdownPromptReplacement by remember { mutableStateOf<String?>(null) }
     var isPreparingChatMarkdown by remember { mutableStateOf(false) }
@@ -255,6 +292,37 @@ private fun NativeChatDetailPane(
             ExternalMarkdownOpenResult.TOO_LARGE -> viewModel.showSnackbar(
                 "Markdown asset is larger than the 8 MiB workspace limit."
             )
+        }
+    }
+
+    fun applyNotificationPreferences(next: NativeChatNotificationPreferences) {
+        showNotificationSettings = false
+        if (!next.enabled) {
+            notificationPreferencesStore.save(next)
+            notificationPreferences = next
+            NativeChatNotificationPublisher.cancelConversations(
+                context,
+                uiState.nativeChat.conversations.map { it.id },
+            )
+            return
+        }
+
+        NativeChatNotificationPublisher.ensureChannel(context)
+        val needsRuntimePermission =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS,
+                ) != PackageManager.PERMISSION_GRANTED
+        if (needsRuntimePermission) {
+            pendingNotificationPreferences = next
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            notificationPreferencesStore.save(next)
+            notificationPreferences = next
+            if (!NativeChatNotificationPublisher.systemNotificationsAllowed(context)) {
+                viewModel.showSnackbar(context.getString(R.string.notification_system_disabled))
+            }
         }
     }
 
@@ -313,6 +381,14 @@ private fun NativeChatDetailPane(
         if (shouldFollow && currentMessageCount > 0) {
             listState.animateScrollToItem(currentMessageCount - 1)
         }
+    }
+
+    if (showNotificationSettings) {
+        NativeChatNotificationSettingsDialog(
+            initialPreferences = notificationPreferences,
+            onDismiss = { showNotificationSettings = false },
+            onSave = ::applyNotificationPreferences,
+        )
     }
 
     Scaffold(
@@ -506,6 +582,25 @@ private fun NativeChatDetailPane(
                                             }
                                         },
                                         modifier = Modifier.testTag("btn_open_chat_markdown")
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.notification_settings_menu)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = if (notificationPreferences.enabled) {
+                                                    Icons.Default.Notifications
+                                                } else {
+                                                    Icons.Outlined.Notifications
+                                                },
+                                                contentDescription = null,
+                                            )
+                                        },
+                                        onClick = {
+                                            showChatActionsMenu = false
+                                            notificationPreferences = notificationPreferencesStore.load()
+                                            showNotificationSettings = true
+                                        },
+                                        modifier = Modifier.testTag("btn_chat_notifications")
                                     )
                                     DropdownMenuItem(
                                         text = { Text("Clear conversation") },
