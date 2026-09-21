@@ -4,6 +4,7 @@ import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatArchive
 import ais.tee.data.model.NativeChatConversation
+import ais.tee.data.model.NATIVE_CHAT_WELCOME_MESSAGE_ID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -129,7 +130,7 @@ class AisteeWidgetTest {
                 newestConversation.copy(
                     messages = listOf(
                         ModelChatMessage(
-                            id = "welcome_assistant_intro",
+                            id = NATIVE_CHAT_WELCOME_MESSAGE_ID,
                             sender = CHAT_ROLE_ASSISTANT,
                             text = "Welcome to the AI Chat Hub",
                             timestamp = 600L,

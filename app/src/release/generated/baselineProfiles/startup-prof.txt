@@ -1394,6 +1394,8 @@ Lais/tee/widget/AisteeWidget;
 SPLais/tee/widget/AisteeWidget;-><clinit>()V
 SPLais/tee/widget/AisteeWidget;-><init>()V
 Lais/tee/widget/AisteeWidgetKt;
+SPLais/tee/widget/AisteeWidgetKt;->latestNativeMessagesForWidget$default(Lais/tee/data/model/NativeChatArchive;IILjava/lang/Object;)Ljava/util/List;
+SPLais/tee/widget/AisteeWidgetKt;->latestNativeMessagesForWidget(Lais/tee/data/model/NativeChatArchive;I)Ljava/util/List;
 SPLais/tee/widget/AisteeWidgetKt;->nativeChatWidgetArchiveFingerprint(Lais/tee/data/model/NativeChatArchive;)Lais/tee/widget/NativeChatWidgetArchiveFingerprint;
 SPLais/tee/widget/AisteeWidgetKt;->recentNativeConversationsForWidget$default(Lais/tee/data/model/NativeChatArchive;IILjava/lang/Object;)Ljava/util/List;
 SPLais/tee/widget/AisteeWidgetKt;->recentNativeConversationsForWidget(Lais/tee/data/model/NativeChatArchive;I)Ljava/util/List;
@@ -1409,10 +1411,13 @@ SPLais/tee/widget/AisteeWidgetReceiver;-><init>()V
 SPLais/tee/widget/AisteeWidgetReceiver;->getGlanceAppWidget()Landroidx/glance/appwidget/GlanceAppWidget;
 Lais/tee/widget/NativeChatWidgetArchiveFingerprint;
 SPLais/tee/widget/NativeChatWidgetArchiveFingerprint;-><clinit>()V
-SPLais/tee/widget/NativeChatWidgetArchiveFingerprint;-><init>(Ljava/util/List;Ljava/util/List;)V
+SPLais/tee/widget/NativeChatWidgetArchiveFingerprint;-><init>(Ljava/util/List;Ljava/util/List;Ljava/util/List;)V
 Lais/tee/widget/NativeChatWidgetConversation;
 SPLais/tee/widget/NativeChatWidgetConversation;-><clinit>()V
 SPLais/tee/widget/NativeChatWidgetConversation;-><init>(Ljava/lang/String;Ljava/lang/String;)V
+Lais/tee/widget/NativeChatWidgetMessage;
+SPLais/tee/widget/NativeChatWidgetMessage;-><clinit>()V
+SPLais/tee/widget/NativeChatWidgetMessage;-><init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V
 Lais/tee/widget/NativeChatWidgetUpdater;
 SPLais/tee/widget/NativeChatWidgetUpdater;-><clinit>()V
 SPLais/tee/widget/NativeChatWidgetUpdater;-><init>()V
