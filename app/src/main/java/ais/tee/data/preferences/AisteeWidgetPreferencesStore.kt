@@ -4,6 +4,7 @@ import android.content.Context
 
 internal enum class AisteeWidgetMode(val id: String) {
     RECENT_CHATS("recent_chats"),
+    MESSAGES("messages"),
     PINNED_CHAT("pinned_chat"),
 }
 
@@ -15,6 +16,7 @@ internal data class AisteeWidgetPreferences(
     val mode: AisteeWidgetMode = AisteeWidgetMode.RECENT_CHATS,
     val pinnedConversationId: String? = null,
     val showConversationTitles: Boolean = false,
+    val showMessagePreviews: Boolean = false,
 )
 
 /**
@@ -33,12 +35,14 @@ internal class AisteeWidgetPreferencesStore(context: Context) {
             pinnedConversationId = preferences.getString(pinnedConversationKey(appWidgetId), null)
                 ?.takeIf { it.isNotBlank() },
             showConversationTitles = preferences.getBoolean(showTitlesKey(appWidgetId), false),
+            showMessagePreviews = preferences.getBoolean(showMessagePreviewsKey(appWidgetId), false),
         )
 
     fun save(appWidgetId: Int, configuration: AisteeWidgetPreferences) {
         val editor = preferences.edit()
             .putString(modeKey(appWidgetId), configuration.mode.id)
             .putBoolean(showTitlesKey(appWidgetId), configuration.showConversationTitles)
+            .putBoolean(showMessagePreviewsKey(appWidgetId), configuration.showMessagePreviews)
         val pinnedConversationId = configuration.pinnedConversationId?.trim()?.takeIf { it.isNotEmpty() }
         if (pinnedConversationId == null) {
             editor.remove(pinnedConversationKey(appWidgetId))
@@ -53,12 +57,14 @@ internal class AisteeWidgetPreferencesStore(context: Context) {
             .remove(modeKey(appWidgetId))
             .remove(pinnedConversationKey(appWidgetId))
             .remove(showTitlesKey(appWidgetId))
+            .remove(showMessagePreviewsKey(appWidgetId))
             .apply()
     }
 
     private fun modeKey(appWidgetId: Int): String = "mode_$appWidgetId"
     private fun pinnedConversationKey(appWidgetId: Int): String = "pinned_conversation_$appWidgetId"
     private fun showTitlesKey(appWidgetId: Int): String = "show_conversation_titles_$appWidgetId"
+    private fun showMessagePreviewsKey(appWidgetId: Int): String = "show_message_previews_$appWidgetId"
 
     private companion object {
         const val PREFERENCES_NAME = "aistee_widget_preferences"

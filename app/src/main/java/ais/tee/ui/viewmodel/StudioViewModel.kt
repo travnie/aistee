@@ -210,7 +210,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         return listOf(
             ModelChatMessage(
-                id = "welcome_assistant_intro",
+                id = NATIVE_CHAT_WELCOME_MESSAGE_ID,
                 sender = CHAT_ROLE_ASSISTANT,
                 provider = AiProvider.ALL,
                 modelName = "Multi-Model Hub",

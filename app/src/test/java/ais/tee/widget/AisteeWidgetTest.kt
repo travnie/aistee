@@ -1,7 +1,10 @@
 package ais.tee.widget
 
+import ais.tee.data.model.CHAT_ROLE_ASSISTANT
+import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatArchive
 import ais.tee.data.model.NativeChatConversation
+import ais.tee.data.model.NATIVE_CHAT_WELCOME_MESSAGE_ID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -99,6 +102,132 @@ class AisteeWidgetTest {
         assertNotEquals(
             nativeChatWidgetArchiveFingerprint(archive),
             nativeChatWidgetArchiveFingerprint(renamedArchive),
+        )
+    }
+
+    @Test
+    fun latestMessagesAreSortedAcrossChatsAndSkipUnsafeTransientEntries() {
+        val archive = NativeChatArchive(
+            activeConversationId = "newest",
+            conversations = listOf(
+                oldConversation.copy(
+                    messages = listOf(
+                        ModelChatMessage(
+                            id = "user-old",
+                            sender = "user",
+                            text = "Older question",
+                            timestamp = 100L,
+                        ),
+                        ModelChatMessage(
+                            id = "partial",
+                            sender = CHAT_ROLE_ASSISTANT,
+                            text = "Streaming...",
+                            timestamp = 400L,
+                            isPartial = true,
+                        ),
+                    )
+                ),
+                newestConversation.copy(
+                    messages = listOf(
+                        ModelChatMessage(
+                            id = NATIVE_CHAT_WELCOME_MESSAGE_ID,
+                            sender = CHAT_ROLE_ASSISTANT,
+                            text = "Welcome to the AI Chat Hub",
+                            timestamp = 600L,
+                        ),
+                        ModelChatMessage(
+                            id = "error",
+                            sender = CHAT_ROLE_ASSISTANT,
+                            text = "Provider failure",
+                            timestamp = 500L,
+                            isError = true,
+                        ),
+                        ModelChatMessage(
+                            id = "assistant-new",
+                            sender = CHAT_ROLE_ASSISTANT,
+                            text = "Newest answer",
+                            timestamp = 300L,
+                        ),
+                    )
+                ),
+            )
+        )
+
+        assertEquals(
+            listOf(
+                NativeChatWidgetMessage(
+                    conversationId = "newest",
+                    messageId = "assistant-new",
+                    conversationTitle = "Newest",
+                    sender = CHAT_ROLE_ASSISTANT,
+                    text = "Newest answer",
+                    timestamp = 300L,
+                ),
+                NativeChatWidgetMessage(
+                    conversationId = "old",
+                    messageId = "user-old",
+                    conversationTitle = "Old",
+                    sender = "user",
+                    text = "Older question",
+                    timestamp = 100L,
+                ),
+            ),
+            latestNativeMessagesForWidget(archive),
+        )
+    }
+
+    @Test
+    fun messageBodyIsRedactedUnlessPreviewIsExplicitlyEnabled() {
+        assertEquals(
+            "Assistant message",
+            privacySafeWidgetMessagePreview(
+                text = "Sensitive answer",
+                hiddenText = "Assistant message",
+                showMessagePreviews = false,
+            ),
+        )
+        assertEquals(
+            "Sensitive answer",
+            privacySafeWidgetMessagePreview(
+                text = "Sensitive answer",
+                hiddenText = "Assistant message",
+                showMessagePreviews = true,
+            ),
+        )
+    }
+
+    @Test
+    fun widgetRefreshFingerprintTracksLatestMessages() {
+        val conversation = newestConversation.copy(
+            messages = listOf(
+                ModelChatMessage(
+                    id = "assistant-1",
+                    sender = CHAT_ROLE_ASSISTANT,
+                    text = "First answer",
+                    timestamp = 100L,
+                )
+            )
+        )
+        val archive = NativeChatArchive(
+            activeConversationId = conversation.id,
+            conversations = listOf(conversation),
+        )
+        val updatedArchive = archive.copy(
+            conversations = listOf(
+                conversation.copy(
+                    messages = conversation.messages + ModelChatMessage(
+                        id = "assistant-2",
+                        sender = CHAT_ROLE_ASSISTANT,
+                        text = "Second answer",
+                        timestamp = 200L,
+                    )
+                )
+            )
+        )
+
+        assertNotEquals(
+            nativeChatWidgetArchiveFingerprint(archive),
+            nativeChatWidgetArchiveFingerprint(updatedArchive),
         )
     }
 
