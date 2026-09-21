@@ -353,6 +353,8 @@ SPLais/tee/data/model/ModelChatMessage;-><init>(Ljava/lang/String;Ljava/lang/Str
 SPLais/tee/data/model/ModelChatMessage;->_childSerializers$_anonymous_$0()Lkotlinx/serialization/KSerializer;
 SPLais/tee/data/model/ModelChatMessage;->_childSerializers$_anonymous_()Lkotlinx/serialization/KSerializer;
 SPLais/tee/data/model/ModelChatMessage;->access$get$childSerializers$cp()[Lkotlin/Lazy;
+SPLais/tee/data/model/ModelChatMessage;->getId()Ljava/lang/String;
+SPLais/tee/data/model/ModelChatMessage;->getSender()Ljava/lang/String;
 SPLais/tee/data/model/ModelChatMessage;->write$Self$Aistee_shared(Lais/tee/data/model/ModelChatMessage;Lkotlinx/serialization/encoding/CompositeEncoder;Lkotlinx/serialization/descriptors/SerialDescriptor;)V
 Lais/tee/data/model/ModelChatMessage$$ExternalSyntheticLambda0;
 SPLais/tee/data/model/ModelChatMessage$$ExternalSyntheticLambda0;-><init>()V
@@ -423,6 +425,7 @@ SPLais/tee/data/model/NativeChatConversation;->access$get$childSerializers$cp()[
 SPLais/tee/data/model/NativeChatConversation;->copy$default(Lais/tee/data/model/NativeChatConversation;Ljava/lang/String;Ljava/lang/String;JJLjava/util/List;Ljava/lang/String;Lais/tee/data/model/AiProvider;Ljava/lang/String;ZILjava/lang/Object;)Lais/tee/data/model/NativeChatConversation;
 SPLais/tee/data/model/NativeChatConversation;->copy(Ljava/lang/String;Ljava/lang/String;JJLjava/util/List;Ljava/lang/String;Lais/tee/data/model/AiProvider;Ljava/lang/String;Z)Lais/tee/data/model/NativeChatConversation;
 SPLais/tee/data/model/NativeChatConversation;->getId()Ljava/lang/String;
+SPLais/tee/data/model/NativeChatConversation;->getMessages()Ljava/util/List;
 SPLais/tee/data/model/NativeChatConversation;->getSelectedProvider()Lais/tee/data/model/AiProvider;
 SPLais/tee/data/model/NativeChatConversation;->getTitle()Ljava/lang/String;
 SPLais/tee/data/model/NativeChatConversation;->write$Self$Aistee_shared(Lais/tee/data/model/NativeChatConversation;Lkotlinx/serialization/encoding/CompositeEncoder;Lkotlinx/serialization/descriptors/SerialDescriptor;)V
