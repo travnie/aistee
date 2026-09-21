@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.content.ContextCompat
+import ais.tee.MainActivity
 import ais.tee.R
 import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
@@ -211,6 +212,7 @@ internal object NativeChatNotificationPublisher {
 
         val launchIntent =
             AisteeQuickActionNavigation.nativeConversationLaunchIntent(appContext, content.conversationId)
+                .setClass(appContext, MainActivity::class.java)
         val contentIntent = PendingIntent.getActivity(
             appContext,
             0,
@@ -230,14 +232,17 @@ internal object NativeChatNotificationPublisher {
             .setShowWhen(true)
             .build()
 
-        return runCatching {
+        return try {
             NotificationManagerCompat.from(appContext).notify(
                 notificationTag(content.conversationId),
                 NOTIFICATION_ID,
                 notification,
             )
             true
-        }.getOrDefault(false)
+        } catch (_: SecurityException) {
+            // Permission can be revoked after the eligibility check above.
+            false
+        }
     }
 
     fun cancelConversation(context: Context, conversationId: String) {
