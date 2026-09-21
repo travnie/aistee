@@ -105,6 +105,91 @@ class AisteeWidgetTest {
     }
 
     @Test
+    fun latestMessagesAreSortedAcrossChatsAndSkipUnsafeTransientEntries() {
+        val archive = NativeChatArchive(
+            activeConversationId = "newest",
+            conversations = listOf(
+                oldConversation.copy(
+                    messages = listOf(
+                        ModelChatMessage(
+                            id = "user-old",
+                            sender = "user",
+                            text = "Older question",
+                            timestamp = 100L,
+                        ),
+                        ModelChatMessage(
+                            id = "partial",
+                            sender = CHAT_ROLE_ASSISTANT,
+                            text = "Streaming...",
+                            timestamp = 400L,
+                            isPartial = true,
+                        ),
+                    )
+                ),
+                newestConversation.copy(
+                    messages = listOf(
+                        ModelChatMessage(
+                            id = "error",
+                            sender = CHAT_ROLE_ASSISTANT,
+                            text = "Provider failure",
+                            timestamp = 500L,
+                            isError = true,
+                        ),
+                        ModelChatMessage(
+                            id = "assistant-new",
+                            sender = CHAT_ROLE_ASSISTANT,
+                            text = "Newest answer",
+                            timestamp = 300L,
+                        ),
+                    )
+                ),
+            )
+        )
+
+        assertEquals(
+            listOf(
+                NativeChatWidgetMessage(
+                    conversationId = "newest",
+                    messageId = "assistant-new",
+                    conversationTitle = "Newest",
+                    sender = CHAT_ROLE_ASSISTANT,
+                    text = "Newest answer",
+                    timestamp = 300L,
+                ),
+                NativeChatWidgetMessage(
+                    conversationId = "old",
+                    messageId = "user-old",
+                    conversationTitle = "Old",
+                    sender = "user",
+                    text = "Older question",
+                    timestamp = 100L,
+                ),
+            ),
+            latestNativeMessagesForWidget(archive),
+        )
+    }
+
+    @Test
+    fun messageBodyIsRedactedUnlessPreviewIsExplicitlyEnabled() {
+        assertEquals(
+            "Assistant message",
+            privacySafeWidgetMessagePreview(
+                text = "Sensitive answer",
+                hiddenText = "Assistant message",
+                showMessagePreviews = false,
+            ),
+        )
+        assertEquals(
+            "Sensitive answer",
+            privacySafeWidgetMessagePreview(
+                text = "Sensitive answer",
+                hiddenText = "Assistant message",
+                showMessagePreviews = true,
+            ),
+        )
+    }
+
+    @Test
     fun widgetRefreshFingerprintTracksLatestMessages() {
         val conversation = newestConversation.copy(
             messages = listOf(
