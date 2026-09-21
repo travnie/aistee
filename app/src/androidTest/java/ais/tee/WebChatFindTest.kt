@@ -18,6 +18,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.lifecycle.ViewModelProvider
+import ais.tee.data.model.WebAiService
+import ais.tee.ui.viewmodel.StudioViewModel
 import org.junit.Assert.assertSame
 import org.junit.Rule
 import org.junit.Test
@@ -78,6 +81,42 @@ class WebChatFindTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag("web_find_query").fetchSemanticsNodes().isEmpty()
         }
+    }
+
+    @Test
+    fun sameDocumentConversationNavigationClosesFind() {
+        val webView = loadConversationFixture()
+        openFind()
+        composeRule.onNodeWithTag("web_find_query").performTextReplacement("nebula")
+        awaitResult("1 / 3")
+        composeRule.runOnIdle {
+            webView.evaluateJavascript(
+                "history.pushState({}, '', '/another-chat'); document.body.innerHTML = '<p>New chat</p>';",
+                null,
+            )
+        }
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("web_find_query").fetchSemanticsNodes().isEmpty()
+        }
+    }
+
+    @Test
+    fun externallySelectedWarmProviderClosesFind() {
+        switchProvider("claude")
+        loadConversationFixture()
+        openFind()
+        composeRule.onNodeWithTag("web_find_query").performTextReplacement("nebula")
+        awaitResult("1 / 3")
+        // Incoming shares change the ViewModel selection without using the drawer callback.
+        composeRule.runOnIdle {
+            ViewModelProvider(composeRule.activity)[StudioViewModel::class.java]
+                .selectWebService(WebAiService.CLAUDE)
+        }
+        composeRule.onNodeWithTag("web_find_query").assertDoesNotExist()
+        openFind()
+        composeRule.onNodeWithTag("web_find_query").assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(""))
+        )
     }
 
     private fun loadConversationFixture(): WebView {

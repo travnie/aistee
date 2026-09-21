@@ -729,6 +729,7 @@ fun WebChatScreen(
 
     val activeWebView = webViewMap[selectedService]
     LaunchedEffect(isActive, activeWebView) {
+        if (findSession?.webView !== activeWebView) closeFindInPage()
         if (!isActive) {
             closeFindInPage()
             activeWebView?.let { webView ->
@@ -972,7 +973,9 @@ fun WebChatScreen(
                             },
                             onShowSnackbar = viewModel::showSnackbar
                         )
-                        findSession?.let { WebFindInPageBar(it, onClose = { closeFindInPage() }) }
+                        findSession?.takeIf { it.webView === activeWebView }?.let {
+                            WebFindInPageBar(it, onClose = { closeFindInPage() })
+                        }
                     }
                 }
             },
@@ -1030,7 +1033,9 @@ fun WebChatScreen(
                                 onUrlChanged = { url ->
                                     lastKnownUrls[service] = url
                                     if (selectedService == service) {
-                                        if (currentUrl != url) closeFindInPage()
+                                        findSession?.takeIf { it.webView === webViewMap[service] }?.let {
+                                            if (it.pageUrl != url) closeFindInPage()
+                                        }
                                         currentUrl = url
                                     }
                                 },
@@ -1968,6 +1973,11 @@ private fun createConfiguredWebView(
         }
 
         webViewClient = object : WebViewClient() {
+            override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                url?.let(onUrlChanged)
+                onNavStateChanged(view?.canGoBack() ?: false, view?.canGoForward() ?: false)
+            }
+
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 onDocumentStarted()
                 url?.let { pageUrl ->

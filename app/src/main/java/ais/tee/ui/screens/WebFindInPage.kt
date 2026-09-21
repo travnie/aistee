@@ -23,6 +23,7 @@ import ais.tee.R
 
 /** One foreground search; never stores queries or extracts page content. Close before destroying its WebView. */
 internal class WebFindInPageSession(val webView: WebView) {
+    val pageUrl: String? = webView.url
     var query by mutableStateOf("")
         private set
     var matchCount by mutableIntStateOf(0)
