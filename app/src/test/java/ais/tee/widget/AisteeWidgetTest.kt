@@ -129,6 +129,12 @@ class AisteeWidgetTest {
                 newestConversation.copy(
                     messages = listOf(
                         ModelChatMessage(
+                            id = "welcome_assistant_intro",
+                            sender = CHAT_ROLE_ASSISTANT,
+                            text = "Welcome to the AI Chat Hub",
+                            timestamp = 600L,
+                        ),
+                        ModelChatMessage(
                             id = "error",
                             sender = CHAT_ROLE_ASSISTANT,
                             text = "Provider failure",
