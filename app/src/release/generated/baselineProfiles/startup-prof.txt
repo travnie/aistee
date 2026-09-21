@@ -1416,8 +1416,6 @@ Lais/tee/widget/NativeChatWidgetConversation;
 SPLais/tee/widget/NativeChatWidgetConversation;-><clinit>()V
 SPLais/tee/widget/NativeChatWidgetConversation;-><init>(Ljava/lang/String;Ljava/lang/String;)V
 Lais/tee/widget/NativeChatWidgetMessage;
-SPLais/tee/widget/NativeChatWidgetMessage;-><clinit>()V
-SPLais/tee/widget/NativeChatWidgetMessage;-><init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V
 Lais/tee/widget/NativeChatWidgetUpdater;
 SPLais/tee/widget/NativeChatWidgetUpdater;-><clinit>()V
 SPLais/tee/widget/NativeChatWidgetUpdater;-><init>()V
