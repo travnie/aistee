@@ -89,7 +89,8 @@ internal fun buildNativeChatNotificationContent(
 ): NativeChatNotificationContent? {
     if (limit <= 0) return null
     val latestAssistantIndex = conversation.messages.indexOfLast { it.isNotifiableAssistantResponse() }
-    if (latestAssistantIndex < 0) return null
+    val latestUserIndex = conversation.messages.indexOfLast { it.sender == CHAT_ROLE_USER }
+    if (latestAssistantIndex < 0 || latestAssistantIndex < latestUserIndex) return null
 
     val visibleMessages = conversation.messages
         .take(latestAssistantIndex + 1)

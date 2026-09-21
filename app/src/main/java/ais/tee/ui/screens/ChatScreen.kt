@@ -249,6 +249,8 @@ private fun NativeChatDetailPane(
     var pendingNotificationPreferences by remember {
         mutableStateOf<NativeChatNotificationPreferences?>(null)
     }
+    val notificationsDisabledMessage = stringResource(R.string.notification_system_disabled)
+    val notificationPermissionDeniedMessage = stringResource(R.string.notification_permission_denied)
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -260,10 +262,10 @@ private fun NativeChatDetailPane(
         if (granted) {
             NativeChatNotificationPublisher.ensureChannel(context)
             if (!NativeChatNotificationPublisher.systemNotificationsAllowed(context)) {
-                viewModel.showSnackbar(context.getString(R.string.notification_system_disabled))
+                viewModel.showSnackbar(notificationsDisabledMessage)
             }
         } else {
-            viewModel.showSnackbar(context.getString(R.string.notification_permission_denied))
+            viewModel.showSnackbar(notificationPermissionDeniedMessage)
         }
     }
     var pendingMarkdownAsset by remember { mutableStateOf<PendingMarkdownAsset?>(null) }
@@ -323,7 +325,7 @@ private fun NativeChatDetailPane(
             notificationPreferencesStore.save(next)
             notificationPreferences = next
             if (!NativeChatNotificationPublisher.systemNotificationsAllowed(context)) {
-                viewModel.showSnackbar(context.getString(R.string.notification_system_disabled))
+                viewModel.showSnackbar(notificationsDisabledMessage)
             }
         }
     }

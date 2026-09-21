@@ -150,6 +150,23 @@ class NativeChatNotificationsTest {
     }
 
     @Test
+    fun failedOrPartialNewTurnDoesNotNotifyAnOlderAnswer() {
+        val nextQuestion = userMessage.copy(id = "user-2", timestamp = 300L)
+        for (unfinished in listOf(
+            assistantMessage.copy(id = "error-2", isError = true),
+            assistantMessage.copy(id = "partial-2", isPartial = true),
+            assistantMessage.copy(id = "simulated-2", isSimulated = true),
+        )) {
+            assertNull(
+                buildNativeChatNotificationContent(
+                    conversation(listOf(userMessage, assistantMessage, nextQuestion, unfinished)),
+                    NativeChatNotificationPreferences(enabled = true),
+                )
+            )
+        }
+    }
+
+    @Test
     fun publisherGateRequiresOptInPermissionAndBackgroundState() {
         assertTrue(
             shouldPostNativeChatNotification(
