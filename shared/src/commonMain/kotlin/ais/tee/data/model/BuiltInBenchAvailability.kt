@@ -18,10 +18,26 @@ enum class BenchToolAvailabilityBlocker {
  */
 data class BuiltInBenchToolAvailability(
     val blockers: Set<BenchToolAvailabilityBlocker>,
-    val missingRequiredPermissions: Set<BenchToolPermission>
+    val missingRequiredPermissions: Set<BenchToolPermission>,
+    private val supportsExplicitUserAction: Boolean = false,
 ) {
+    /** Denial wins over consent; a user-only route never becomes model-callable after a grant. */
+    val decision: CapabilityDecision
+        get() = when {
+            blockers.any {
+                it != BenchToolAvailabilityBlocker.MISSING_REQUIRED_PERMISSION &&
+                    it != BenchToolAvailabilityBlocker.UNSUPPORTED_INVOCATION_MODE
+            } -> CapabilityDecision.DENY
+            BenchToolAvailabilityBlocker.UNSUPPORTED_INVOCATION_MODE in blockers ->
+                if (supportsExplicitUserAction) CapabilityDecision.REQUIRES_USER_INTERACTION
+                else CapabilityDecision.DENY
+            missingRequiredPermissions.isNotEmpty() -> CapabilityDecision.ASK
+            blockers.isEmpty() -> CapabilityDecision.ALLOW
+            else -> CapabilityDecision.DENY
+        }
+
     val canOffer: Boolean
-        get() = blockers.isEmpty()
+        get() = decision == CapabilityDecision.ALLOW
 }
 
 /** Evaluate the canonical registry policy for one concrete tool route and input kind. */
@@ -61,6 +77,7 @@ fun BuiltInBenchTool.availability(
     }
     return BuiltInBenchToolAvailability(
         blockers = blockers,
-        missingRequiredPermissions = missingPermissions
+        missingRequiredPermissions = missingPermissions,
+        supportsExplicitUserAction = BenchToolInvocationMode.EXPLICIT_USER_ACTION in capabilities.invocationModes,
     )
 }
