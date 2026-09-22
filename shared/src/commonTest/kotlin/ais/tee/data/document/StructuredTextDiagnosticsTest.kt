@@ -120,6 +120,15 @@ class StructuredTextDiagnosticsTest {
     }
 
     @Test
+    fun json5FormattingPreservesDuplicateKeys() {
+        val source = "{flag:true, flag:false,}"
+        val result = StructuredTextDiagnostics.formatJson5(source)
+
+        assertTrue(result.isSuccess)
+        assertEquals(2, Regex("""\bflag\s*:""").findAll(result.text).count())
+    }
+
+    @Test
     fun excessiveJson5NestingIsRejectedBeforeAstFormatting() {
         val source = "[".repeat(129) + "0" + "]".repeat(129)
         val validation = StructuredTextDiagnostics.validate(source, StructuredTextFormat.JSON5)
