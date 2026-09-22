@@ -145,7 +145,11 @@ class WebChatFindTest {
     private fun openFind() {
         composeRule.onNodeWithTag("btn_web_more").performClick()
         composeRule.onNodeWithTag("btn_web_find").performClick()
-        composeRule.onNodeWithTag("web_find_query").assertIsDisplayed()
+        composeRule.waitUntil(5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("web_find_query").assertIsDisplayed()
+            }.isSuccess
+        }
     }
 
     private fun assertFindClosed() {
