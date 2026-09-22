@@ -1,0 +1,129 @@
+package ais.tee
+
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
+import android.os.SystemClock
+import androidx.core.app.NotificationCompat
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import ais.tee.data.model.AiProvider
+import ais.tee.data.model.CHAT_ROLE_ASSISTANT
+import ais.tee.data.model.CHAT_ROLE_USER
+import ais.tee.data.model.ModelChatMessage
+import ais.tee.data.model.NativeChatConversation
+import ais.tee.notifications.NativeChatNotificationPreferences
+import ais.tee.notifications.NativeChatNotificationPreferencesStore
+import ais.tee.notifications.NativeChatNotificationPublisher
+import ais.tee.notifications.NativeChatNotificationVisibility
+import org.junit.After
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class NativeChatNotificationPrivacyTest {
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val manager = context.getSystemService(NotificationManager::class.java)
+    private val preferences = NativeChatNotificationPreferencesStore(context)
+    private val originalPreferences = preferences.load()
+    private val originalVisibility = NativeChatNotificationVisibility.isAppVisible()
+    private val disclosed = NativeChatNotificationPreferences(true, true, true)
+    private val chatId = "privacy-test-conversation"
+    private val unrelatedId = 9821
+    private val unrelatedChannel = "privacy-test-unrelated"
+
+    @Before
+    fun setUp() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(
+                context.packageName, Manifest.permission.POST_NOTIFICATIONS,
+            )
+        }
+        NativeChatNotificationVisibility.setAppVisible(false)
+        manager.createNotificationChannel(
+            NotificationChannel(unrelatedChannel, "Unrelated test notification", NotificationManager.IMPORTANCE_LOW)
+        )
+        manager.notify(
+            unrelatedId,
+            NotificationCompat.Builder(context, unrelatedChannel)
+                .setSmallIcon(R.drawable.ic_quick_settings)
+                .setContentTitle("Unrelated notification")
+                .build(),
+        )
+    }
+
+    @After
+    fun tearDown() {
+        NativeChatNotificationPublisher.cancelConversation(context, chatId)
+        manager.cancel(unrelatedId)
+        manager.deleteNotificationChannel(unrelatedChannel)
+        preferences.save(originalPreferences)
+        NativeChatNotificationVisibility.setAppVisible(originalVisibility)
+    }
+
+    @Test
+    fun tighteningEitherPreviewSettingRemovesAlreadyPostedChatsOnly() {
+        for (next in listOf(
+            disclosed.copy(showConversationTitles = false),
+            disclosed.copy(showMessagePreviews = false),
+            disclosed.copy(enabled = false),
+        )) {
+            preferences.save(disclosed)
+            postConversation()
+            awaitChatPresence(true)
+
+            // Use a new store, as settings and publisher use separate instances.
+            NativeChatNotificationPreferencesStore(context).save(next)
+
+            awaitChatPresence(false)
+            assertTrue(manager.activeNotifications.any { it.id == unrelatedId })
+        }
+    }
+
+    @Test
+    fun unchangedOrRelaxedPreferencesKeepExistingNotifications() {
+        val redacted = NativeChatNotificationPreferences(enabled = true)
+        preferences.save(redacted)
+        postConversation()
+        awaitChatPresence(true)
+
+        preferences.save(redacted)
+        assertTrue(chatIsPosted())
+        preferences.save(disclosed)
+        assertTrue(chatIsPosted())
+    }
+
+    private fun postConversation() {
+        val now = System.currentTimeMillis()
+        val conversation = NativeChatConversation(
+            id = chatId,
+            title = "Sensitive conversation title",
+            createdAtEpochMs = now,
+            updatedAtEpochMs = now,
+            messages = listOf(
+                ModelChatMessage(id = "question", sender = CHAT_ROLE_USER, text = "Private question", timestamp = now),
+                ModelChatMessage(
+                    id = "answer", sender = CHAT_ROLE_ASSISTANT, provider = AiProvider.CHATGPT,
+                    text = "Private answer", timestamp = now,
+                ),
+            ),
+        )
+        assertTrue(NativeChatNotificationPublisher.publishConversation(context, conversation))
+    }
+
+    private fun chatIsPosted(): Boolean =
+        manager.activeNotifications.any { it.tag == "native-chat:$chatId" }
+
+    private fun awaitChatPresence(expected: Boolean) {
+        val deadline = SystemClock.uptimeMillis() + 5_000
+        while (chatIsPosted() != expected && SystemClock.uptimeMillis() < deadline) {
+            SystemClock.sleep(50)
+        }
+        assertTrue("Expected posted chat presence: $expected", chatIsPosted() == expected)
+    }
+}
