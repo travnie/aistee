@@ -67,6 +67,8 @@ internal fun buildNativeChatReplyInput(
             .build()
     } catch (_: IllegalStateException) {
         null
+    } catch (_: IllegalArgumentException) {
+        null
     }
 
 internal fun canNativeChatDirectReply(
