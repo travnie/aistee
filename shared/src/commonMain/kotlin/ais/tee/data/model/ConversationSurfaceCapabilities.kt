@@ -14,9 +14,11 @@ enum class ConversationSurfaceCapability {
     DEEP_LINK
 }
 
-data class ConversationSurfaceCapabilities(
-    val supported: Set<ConversationSurfaceCapability>
+class ConversationSurfaceCapabilities internal constructor(
+    supported: Set<ConversationSurfaceCapability>
 ) {
+    private val supported = supported.toSet()
+
     fun supports(capability: ConversationSurfaceCapability): Boolean = capability in supported
 }
 
@@ -38,7 +40,7 @@ private val ACCOUNT_WEB_CONVERSATION_CAPABILITIES = ConversationSurfaceCapabilit
  * provider key are checked separately; this function describes the transport feature boundary.
  */
 fun AiProvider.conversationSurfaceCapabilities(): ConversationSurfaceCapabilities =
-    NATIVE_CONVERSATION_CAPABILITIES.copy(supported = NATIVE_CONVERSATION_CAPABILITIES.supported.toSet())
+    NATIVE_CONVERSATION_CAPABILITIES
 
 /**
  * Account-backed WebViews keep provider-owned history and sessions. Aistee can reopen the provider
@@ -46,6 +48,4 @@ fun AiProvider.conversationSurfaceCapabilities(): ConversationSurfaceCapabilitie
  * until those bridges are explicitly implemented and verified.
  */
 fun WebAiService.conversationSurfaceCapabilities(): ConversationSurfaceCapabilities =
-    ACCOUNT_WEB_CONVERSATION_CAPABILITIES.copy(
-        supported = ACCOUNT_WEB_CONVERSATION_CAPABILITIES.supported.toSet()
-    )
+    ACCOUNT_WEB_CONVERSATION_CAPABILITIES
