@@ -15,11 +15,17 @@ import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatConversation
+import ais.tee.data.model.ApiKeyConfig
+import ais.tee.data.security.ApiKeyStore
 import ais.tee.notifications.NativeChatNotificationPreferences
 import ais.tee.notifications.NativeChatNotificationPreferencesStore
 import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.notifications.NativeChatNotificationVisibility
 import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import ais.tee.notifications.buildNativeChatReplyInput
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -31,6 +37,8 @@ class NativeChatNotificationPrivacyTest {
     private val manager = context.getSystemService(NotificationManager::class.java)
     private val preferences = NativeChatNotificationPreferencesStore(context)
     private val originalPreferences = preferences.load()
+    private val apiKeyStore = ApiKeyStore(context)
+    private val originalApiKeys = apiKeyStore.load()
     private val originalVisibility = NativeChatNotificationVisibility.isAppVisible()
     private val disclosed = NativeChatNotificationPreferences(true, true, true)
     private val chatId = "privacy-test-conversation"
@@ -63,7 +71,16 @@ class NativeChatNotificationPrivacyTest {
         manager.cancel(unrelatedId)
         manager.deleteNotificationChannel(unrelatedChannel)
         preferences.save(originalPreferences)
+        apiKeyStore.save(originalApiKeys)
         NativeChatNotificationVisibility.setAppVisible(originalVisibility)
+    }
+
+    @Test
+    fun replyPayloadUsesSerializedByteLimitWithoutCrashing() {
+        assertNotNull(buildNativeChatReplyInput("reply", "chat", "a".repeat(4_000)))
+        assertNotNull(buildNativeChatReplyInput("reply", "chat", "😀".repeat(100)))
+        assertNull(buildNativeChatReplyInput("reply", "chat", "界".repeat(4_000)))
+        assertNull(buildNativeChatReplyInput("reply", "x".repeat(12_000), "hello"))
     }
 
     @Test
@@ -96,6 +113,28 @@ class NativeChatNotificationPrivacyTest {
         assertTrue(chatIsPosted())
         preferences.save(disclosed)
         assertTrue(chatIsPosted())
+    }
+
+    @Test
+    fun configuredNativeChatNotificationOffersRemoteInputReply() {
+        preferences.save(disclosed)
+        apiKeyStore.save(ApiKeyConfig(openAiKey = "test-key"))
+        postConversation()
+        awaitChatPresence(true)
+
+        val notification = manager.activeNotifications
+            .first { it.tag == "native-chat:$chatId" }
+            .notification
+        val replyAction = notification.actions
+            ?.firstOrNull { it.title?.toString() == context.getString(R.string.notification_reply_action) }
+
+        assertNotNull(replyAction)
+        val remoteInputs = replyAction!!.remoteInputs
+        assertEquals(1, remoteInputs?.size)
+        assertEquals(
+            ais.tee.notifications.NATIVE_CHAT_DIRECT_REPLY_RESULT_KEY,
+            remoteInputs?.firstOrNull()?.resultKey,
+        )
     }
 
     private fun postConversation() {

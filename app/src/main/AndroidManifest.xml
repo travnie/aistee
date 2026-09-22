@@ -71,6 +71,9 @@
             </intent-filter>
         </activity>
         <receiver
+            android:name=".notifications.NativeChatDirectReplyReceiver"
+            android:exported="false" />
+        <receiver
             android:name=".widget.AisteeWidgetReceiver"
             android:exported="true">
             <intent-filter>
