@@ -50,7 +50,7 @@ internal class DocbenchTextTransformUiState {
         get() = source.isNotEmpty() && inputError == null && !working && !merging && !exporting
 
     val canMerge: Boolean
-        get() = !working && !merging && !exporting
+        get() = inputError == null && !working && !merging && !exporting
 
     val canExport: Boolean
         get() = canTransform
