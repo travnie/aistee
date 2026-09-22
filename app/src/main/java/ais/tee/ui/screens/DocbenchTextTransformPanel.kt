@@ -41,12 +41,16 @@ internal class DocbenchTextTransformUiState {
     var message by mutableStateOf<String?>(null)
     var inputError by mutableStateOf<String?>(null)
     var working by mutableStateOf(false)
+    var merging by mutableStateOf(false)
     var exporting by mutableStateOf(false)
     var includeUtf8Bom by mutableStateOf(false)
     var structuredFormat by mutableStateOf(StructuredTextFormat.JSON)
 
     val canTransform: Boolean
-        get() = source.isNotEmpty() && inputError == null && !working && !exporting
+        get() = source.isNotEmpty() && inputError == null && !working && !merging && !exporting
+
+    val canMerge: Boolean
+        get() = !working && !merging && !exporting
 
     val canExport: Boolean
         get() = canTransform
@@ -76,6 +80,7 @@ internal class DocbenchTextTransformUiState {
 internal fun DocbenchTextTransformPanel(
     state: DocbenchTextTransformUiState,
     isEnabled: () -> Boolean,
+    onMergeFiles: () -> Unit,
     onExport: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -86,7 +91,7 @@ internal fun DocbenchTextTransformPanel(
         modifier = modifier.padding(16.dp)
     ) {
         Text(
-            "Format JSON or JSON5, normalize line endings or export the transformed text locally.",
+            "Merge local Markdown/text files into this editor, format JSON or JSON5, normalize line endings, then export locally.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -95,7 +100,7 @@ internal fun DocbenchTextTransformPanel(
             onValueChange = state::updateSource,
             label = { Text("Text to transform") },
             minLines = 5,
-            enabled = !state.exporting,
+            enabled = !state.merging && !state.exporting,
             isError = state.inputError != null,
             supportingText = {
                 state.inputError?.let { error -> Text(error) }
@@ -104,12 +109,19 @@ internal fun DocbenchTextTransformPanel(
                 .fillMaxWidth()
                 .testTag("docbench_json_formatter_input")
         )
+        OutlinedButton(
+            onClick = onMergeFiles,
+            enabled = state.canMerge,
+            modifier = Modifier.testTag("docbench_merge_text_files")
+        ) {
+            Text(if (state.merging) "Merging…" else "Merge text files")
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(StructuredTextFormat.JSON, StructuredTextFormat.JSON5).forEach { format ->
                 FilterChip(
                     selected = state.structuredFormat == format,
                     onClick = { state.structuredFormat = format },
-                    enabled = !state.working && !state.exporting,
+                    enabled = !state.working && !state.merging && !state.exporting,
                     label = { Text(format.name) },
                     modifier = Modifier.testTag(
                         "docbench_json_mode_${format.name.lowercase()}"
@@ -143,7 +155,7 @@ internal fun DocbenchTextTransformPanel(
             FilterChip(
                 selected = state.includeUtf8Bom,
                 onClick = { state.includeUtf8Bom = !state.includeUtf8Bom },
-                enabled = !state.working && !state.exporting,
+                enabled = !state.working && !state.merging && !state.exporting,
                 label = {
                     Text(if (state.includeUtf8Bom) "UTF-8 BOM" else "UTF-8 no BOM")
                 },
