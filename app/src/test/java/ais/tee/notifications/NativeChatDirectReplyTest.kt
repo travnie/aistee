@@ -8,7 +8,6 @@ import ais.tee.data.model.NativeChatArchive
 import ais.tee.data.model.NativeChatConversation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -49,13 +48,13 @@ class NativeChatDirectReplyTest {
     fun preparingReplyIsIdempotentAndPreservesDraft() {
         val chat = conversation()
         val archive = NativeChatArchive(activeConversationId = chat.id, conversations = listOf(chat))
-        val first = assertNotNull(
+        val first = requireNotNull(
             prepareNativeChatDirectReply(archive, chat.id, "reply-1", "  hello  ", 10L)
         )
         assertEquals("hello", first.userMessage.text)
         assertEquals("keep my draft", first.conversation.draft)
 
-        val retried = assertNotNull(
+        val retried = requireNotNull(
             prepareNativeChatDirectReply(first.archive, chat.id, "reply-1", "hello", 20L)
         )
         assertEquals(1, retried.conversation.messages.count { it.id == first.userMessage.id })
@@ -65,7 +64,7 @@ class NativeChatDirectReplyTest {
     fun responseMergeStaysAttachedToItsReplyTurn() {
         val chat = conversation()
         val archive = NativeChatArchive(activeConversationId = chat.id, conversations = listOf(chat))
-        val prepared = assertNotNull(
+        val prepared = requireNotNull(
             prepareNativeChatDirectReply(archive, chat.id, "reply-1", "hello", 10L)
         )
         val laterUser = prepared.userMessage.copy(id = "later-user", text = "later", timestamp = 11L)
@@ -81,7 +80,7 @@ class NativeChatDirectReplyTest {
             text = "answer",
             timestamp = 12L,
         )
-        val merged = assertNotNull(
+        val merged = requireNotNull(
             mergeNativeChatDirectReplyResponses(
                 withLaterTurn,
                 chat.id,
