@@ -5,6 +5,7 @@ import kotlinx.serialization.json.Json
 
 const val NATIVE_CHAT_ARCHIVE_VERSION = 1
 const val DEFAULT_NATIVE_CONVERSATION_TITLE = "New conversation"
+const val NATIVE_CHAT_WELCOME_MESSAGE_ID = "welcome_assistant_intro"
 private const val MAX_NATIVE_CONVERSATION_TITLE_CHARS = 56
 
 @Serializable
@@ -14,6 +15,7 @@ data class NativeChatConversation(
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long = createdAtEpochMs,
     val messages: List<ModelChatMessage> = emptyList(),
+    val draft: String = "",
     val selectedProvider: AiProvider = AiProvider.ALL,
     val selectedModel: String = "all",
     val includeSystemProfile: Boolean = true

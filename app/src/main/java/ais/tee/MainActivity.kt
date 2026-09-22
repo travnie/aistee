@@ -35,6 +35,8 @@ import ais.tee.data.model.webChatSections
 import ais.tee.data.security.TextInspectionResult
 import ais.tee.data.security.TextInspector
 import ais.tee.navigation.AisteeQuickActionNavigation
+import ais.tee.notifications.NativeChatNotificationPublisher
+import ais.tee.notifications.NativeChatNotificationVisibility
 import ais.tee.share.CreateMessageAppAction
 import ais.tee.share.IncomingSharePayload
 import ais.tee.share.PendingWebShare
@@ -135,7 +137,7 @@ class MainActivity : ComponentActivity() {
         markdownWorkspaceViewModel.attachLifecycle(this)
         retainedShareIntentHandled = savedInstanceState?.getBoolean(KEY_SHARE_INTENT_HANDLED) == true
         restoreShareState(savedInstanceState)
-        handleQuickActionNavigationIntent(intent)
+        handleNavigationIntent(intent)
         if (!retainedShareIntentHandled) handleIncomingShareIntent(intent)
 
         setContent {
@@ -229,11 +231,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        NativeChatNotificationVisibility.setAppVisible(true)
+    }
+
+    override fun onStop() {
+        NativeChatNotificationVisibility.setAppVisible(false)
+        super.onStop()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         retainedShareIntentHandled = false
         setIntent(intent)
-        handleQuickActionNavigationIntent(intent)
+        handleNavigationIntent(intent)
         handleIncomingShareIntent(intent)
     }
 
@@ -243,17 +255,38 @@ class MainActivity : ComponentActivity() {
         saveShareState(outState)
     }
 
-    private fun handleQuickActionNavigationIntent(intent: Intent) {
-        if (!AisteeQuickActionNavigation.isOpenDestinationAction(intent.action)) return
-        val destinationId = AisteeQuickActionNavigation.destinationId(
-            currentExtra = intent.getStringExtra(AisteeQuickActionNavigation.EXTRA_DESTINATION),
-            legacyExtra = intent.getStringExtra(AisteeQuickActionNavigation.LEGACY_WIDGET_EXTRA_DESTINATION),
-            dataLastPathSegment = intent.data?.lastPathSegment,
-        )
-        AisteeQuickActionNavigation.destination(destinationId)?.let(viewModel::selectTab)
+    private fun handleNavigationIntent(intent: Intent) {
+        when {
+            AisteeQuickActionNavigation.isOpenNativeConversationAction(intent.action) -> {
+                val conversationId = AisteeQuickActionNavigation.nativeConversationId(
+                    currentExtra = intent.getStringExtra(AisteeQuickActionNavigation.EXTRA_NATIVE_CONVERSATION_ID),
+                    dataScheme = intent.data?.scheme,
+                    dataHost = intent.data?.host,
+                    dataLastPathSegment = intent.data?.lastPathSegment,
+                )
+                conversationId?.let { resolvedConversationId ->
+                    NativeChatNotificationPublisher.cancelConversation(this, resolvedConversationId)
+                    viewModel.openNativeConversation(resolvedConversationId)
+                }
+                consumeNavigationIntent(intent)
+            }
+            AisteeQuickActionNavigation.isOpenDestinationAction(intent.action) -> {
+                val destinationId = AisteeQuickActionNavigation.destinationId(
+                    currentExtra = intent.getStringExtra(AisteeQuickActionNavigation.EXTRA_DESTINATION),
+                    legacyExtra = intent.getStringExtra(AisteeQuickActionNavigation.LEGACY_WIDGET_EXTRA_DESTINATION),
+                    dataLastPathSegment = intent.data?.lastPathSegment,
+                )
+                AisteeQuickActionNavigation.destination(destinationId)?.let(viewModel::selectTab)
+                consumeNavigationIntent(intent)
+            }
+        }
+    }
+
+    private fun consumeNavigationIntent(intent: Intent) {
         intent.action = Intent.ACTION_MAIN
         intent.data = null
         intent.removeExtra(AisteeQuickActionNavigation.EXTRA_DESTINATION)
+        intent.removeExtra(AisteeQuickActionNavigation.EXTRA_NATIVE_CONVERSATION_ID)
         intent.removeExtra(AisteeQuickActionNavigation.LEGACY_WIDGET_EXTRA_DESTINATION)
     }
 

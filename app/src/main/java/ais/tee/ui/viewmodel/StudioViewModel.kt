@@ -22,6 +22,8 @@ import ais.tee.share.PendingWebShare
 import ais.tee.share.claimText
 import ais.tee.share.completeTextClaim
 import ais.tee.share.releaseTextClaim
+import ais.tee.notifications.NativeChatNotificationPublisher
+import ais.tee.widget.NativeChatWidgetUpdater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -35,6 +37,19 @@ import java.io.File
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
+
+data class NativeChatNavigationRequest(
+    val id: Long,
+    val conversationId: String
+)
+
+internal fun resolveNativeConversationTarget(
+    archive: NativeChatArchive,
+    requestedId: String
+): String? = requestedId.trim().takeIf { candidate ->
+    candidate.isNotEmpty() && archive.conversations.any { it.id == candidate }
+}
 
 data class ChatMessage(
     val id: String,
@@ -56,6 +71,7 @@ private data class NativeChatPromptContext(
 )
 
 private const val STREAMING_UI_FLUSH_INTERVAL_MS = 50L
+private const val NATIVE_CHAT_DRAFT_PERSIST_DELAY_MS = 300L
 
 data class StudioUiState(
     val baseProfile: Profile = PresetProfiles.DefaultBaseProfile,
@@ -79,6 +95,7 @@ data class StudioUiState(
     // Integrated Multi-Provider AI Chat
     val nativeChat: NativeChatArchive = NativeChatArchive(),
     val isNativeConversationStoreReady: Boolean = false,
+    val nativeChatNavigationRequest: NativeChatNavigationRequest? = null,
     val apiKeyConfig: ApiKeyConfig = ApiKeyConfig(),
     val isChatGenerating: Boolean = false,
     val activeGeneratingProviders: Set<AiProvider> = emptySet(),
@@ -90,6 +107,8 @@ data class StudioUiState(
         get() = nativeChat.activeConversation
     val chatMessages: List<ModelChatMessage>
         get() = activeNativeConversation?.messages.orEmpty()
+    val nativeChatDraft: String
+        get() = activeNativeConversation?.draft.orEmpty()
     val selectedChatProvider: AiProvider
         get() = activeNativeConversation?.selectedProvider ?: AiProvider.ALL
     val selectedChatModel: String
@@ -120,7 +139,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val studioStateStore = StudioStateStore(application.applicationContext)
     private val webChatPreferencesStore = WebChatPreferencesStore(application.applicationContext)
     private val nativeChatStore = NativeChatStore(application.noBackupFilesDir)
-    private val nativeChatWriter = NativeChatWriter.getInstance(nativeChatStore)
+    private val nativeChatWriter = NativeChatWriter.getInstance(nativeChatStore) { archive ->
+        NativeChatWidgetUpdater.onArchiveSaved(application.applicationContext, archive)
+    }
     private val localSkillStore = LocalSkillLibraryStore(
         File(application.noBackupFilesDir, LocalSkillLibraryStore.LIBRARY_DIRECTORY_NAME)
     )
@@ -137,10 +158,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val streamingTextBatcher = StreamingTextBatcher()
     private var streamingUiFlushJob: Job? = null
     private var studioPersistenceJob: Job? = null
+    private var nativeChatDraftPersistenceJob: Job? = null
     private var studioPersistenceOwnerId: Long? = null
     private val activeChatGenerationId = AtomicLong(0)
     private val incomingShareId = AtomicLong(0)
     private val pendingWebShareId = AtomicLong(0)
+    private val nativeChatNavigationRequestId = AtomicLong(0)
+    private val pendingNativeConversationId = AtomicReference<String?>(null)
     val uiState: StateFlow<StudioUiState> = _uiState.asStateFlow()
 
     init {
@@ -187,7 +211,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         return listOf(
             ModelChatMessage(
-                id = "welcome_assistant_intro",
+                id = NATIVE_CHAT_WELCOME_MESSAGE_ID,
                 sender = CHAT_ROLE_ASSISTANT,
                 provider = AiProvider.ALL,
                 modelName = "Multi-Model Hub",
@@ -226,6 +250,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update {
                 it.copy(nativeChat = cached, isNativeConversationStoreReady = true)
             }
+            applyPendingNativeConversationTarget()
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
@@ -237,11 +262,47 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 it.copy(nativeChat = restored, isNativeConversationStoreReady = true)
             }
             nativeChatWriter.enqueue(restored)
+            applyPendingNativeConversationTarget()
         }
     }
 
     fun selectTab(tab: NavigationTab) {
         _uiState.update { it.copy(currentTab = tab) }
+    }
+
+    fun openNativeConversation(conversationId: String) {
+        val target = conversationId.trim()
+        if (target.isEmpty()) return
+        selectTab(NavigationTab.COMPARE_HUB)
+        pendingNativeConversationId.set(target)
+        applyPendingNativeConversationTarget()
+    }
+
+    private fun applyPendingNativeConversationTarget() {
+        val state = _uiState.value
+        if (!state.isNativeConversationStoreReady) return
+        val requestedId = pendingNativeConversationId.getAndSet(null) ?: return
+        val conversationId = resolveNativeConversationTarget(state.nativeChat, requestedId)
+        if (conversationId == null) {
+            showSnackbar("Conversation is no longer available.")
+            return
+        }
+        switchNativeConversation(conversationId)
+        val request = NativeChatNavigationRequest(
+            id = nativeChatNavigationRequestId.incrementAndGet(),
+            conversationId = conversationId
+        )
+        _uiState.update { it.copy(nativeChatNavigationRequest = request) }
+    }
+
+    fun consumeNativeConversationNavigationRequest(requestId: Long) {
+        _uiState.update { state ->
+            if (state.nativeChatNavigationRequest?.id == requestId) {
+                state.copy(nativeChatNavigationRequest = null)
+            } else {
+                state
+            }
+        }
     }
 
     fun selectWebService(service: WebAiService) {
@@ -428,6 +489,22 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (persist) persistNativeChat()
     }
 
+    private fun scheduleNativeChatDraftPersistence() {
+        nativeChatDraftPersistenceJob?.cancel()
+        nativeChatDraftPersistenceJob = viewModelScope.launch {
+            delay(NATIVE_CHAT_DRAFT_PERSIST_DELAY_MS)
+            nativeChatDraftPersistenceJob = null
+            persistNativeChat()
+        }
+    }
+
+    fun updateNativeConversationDraft(draft: String) {
+        val state = _uiState.value
+        if (!state.isNativeConversationStoreReady || state.activeNativeConversation?.draft == draft) return
+        updateActiveNativeConversation(persist = false) { it.copy(draft = draft) }
+        scheduleNativeChatDraftPersistence()
+    }
+
     fun newNativeConversation() {
         if (!_uiState.value.isNativeConversationStoreReady) return
         cancelChatGeneration()
@@ -473,6 +550,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
         persistNativeChat()
+        NativeChatNotificationPublisher.cancelConversation(getApplication(), conversationId)
     }
 
     fun setChatProvider(provider: AiProvider) {
@@ -598,6 +676,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun clearChatHistory() {
         if (!_uiState.value.isNativeConversationStoreReady) return
         cancelChatGeneration()
+        val conversationId = _uiState.value.nativeChat.activeConversationId
         val now = System.currentTimeMillis()
         updateActiveNativeConversation { conversation ->
             conversation.copy(
@@ -606,6 +685,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 messages = welcomeChatMessages()
             )
         }
+        NativeChatNotificationPublisher.cancelConversation(getApplication(), conversationId)
         showSnackbar("Current conversation cleared.")
     }
 
@@ -835,7 +915,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             active.copy(
                                 title = if (firstUserTurn) nativeConversationTitle(trimmed) else active.title,
                                 updatedAtEpochMs = now,
-                                messages = active.messages + userMessage
+                                messages = active.messages + userMessage,
+                                draft = if (active.draft.trim() == trimmed) "" else active.draft
                             )
                         },
                         activeGeneratingProviders = providersToRun.toSet()
@@ -873,6 +954,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         targetProvider,
                         _uiState.value.selectedChatModel,
                         allowSimulationFallback = true
+                    )
+                }
+                _uiState.value.activeNativeConversation?.let { conversation ->
+                    NativeChatNotificationPublisher.publishConversation(
+                        getApplication(),
+                        conversation,
                     )
                 }
             } finally {
@@ -1196,6 +1283,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             uiState.value
         }
         val latestSnapshot = latestState.toStudioStateSnapshot()
+        nativeChatDraftPersistenceJob?.cancel()
         studioPersistenceJob?.cancel()
         studioPersistenceOwnerId?.let { ownerId ->
             studioStateWriter?.enqueue(latestSnapshot, ownerId)

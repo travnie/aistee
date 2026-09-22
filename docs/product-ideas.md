@@ -111,10 +111,9 @@ Treat Token Arena as the overlap between Bench tooling and a small experimental 
 - Native chat auto-scroll follows the reader only while they stay near the latest message; scrolling upward exposes a jump-to-latest control instead of yanking the list during streaming.
 - Streaming text is coalesced to a UI-friendly cadence, and the generating pulse updates alpha in the graphics layer instead of driving color recomposition.
 - Native message bubbles use an adaptive readable width with phone gutters and an expanded-screen cap.
+- Locally owned conversations use Material 3 Adaptive list-detail navigation: conversation history stays beside the active chat on wide windows, while compact layouts navigate between list and detail panes with normal back behavior.
 
 ### Next
-
-- Use a list-detail pattern for locally owned conversations on larger screens: conversation list on the leading pane, active chat in the main pane, and an optional supporting pane for tools/files/provider controls. Preserve pane and scroll state when resizing or rotating.
 - Use Material 3 Expressive selectively for discovery, prominent actions and transitions. Keep repeated chat/message interactions calmer and faster with standard motion instead of animating every surface.
 - Prefer Material typography over hard-coded tiny essential labels; keep touch targets and Android font-scaling/accessibility behavior intact.
 - Keep edge-to-edge, IME handling and predictive back coherent across chats, sheets, drawers and list-detail panes.
@@ -133,7 +132,7 @@ Treat Token Arena as the overlap between Bench tooling and a small experimental 
 ## Android widgets and conversation notifications
 
 - Build first-party home-screen widgets with Jetpack Glance and responsive layouts; update them from local state changes rather than aggressive polling.
-- Persist locally owned native/API conversations with stable conversation IDs before exposing message widgets or conversation notifications. The current native chat history lives in ViewModel state and is not durable enough to back a widget across process death/reboot.
+- Native/API conversations now persist locally with stable conversation IDs. Reuse that durable archive as the source for message widgets and conversation notifications instead of introducing a second history store.
 - Offer three configurable widget modes: **Chats** (recent/favorite conversations or provider shortcuts), **Messages** (latest locally known messages across chats), and **Pinned chat** (latest messages/status for one chosen conversation with a direct deep-link back into it).
 - Back collection widgets with `LazyColumn` and stable item IDs so list state survives updates where the platform supports it; resize by showing more or fewer rows rather than scaling text into mush.
 - Treat WebView account providers honestly: if Aistee does not own their conversation history, the widget may expose provider/chat shortcuts and locally tracked status, but must not periodically scrape remote pages just to manufacture a message list.

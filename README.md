@@ -72,6 +72,8 @@ Google documents the embedded-user-agent restriction in its [OAuth 2.0 policies]
 
 Account sessions persist, but Aistee must not keep every heavy provider SPA alive forever. The Android host uses a small LRU pool, pauses inactive WebViews and evicts them under memory pressure while cookies/session state remain provider-owned. Provider tweaks live in a small, auditable in-app registry: scripts are static, scoped to the matching provider host and applied after page load; remote userscript code is never fetched.
 
+**Find in page** is available from the web chat menu. It searches and highlights text already loaded in the current page, with previous/next navigation and a match count. It does not search unloaded or virtualized chat history. Search text stays in memory and is cleared on page/provider changes or when leaving web chats; it is never exported or sent through an API.
+
 Provider diagnostics expose only the provider host, WebView package/version, capability counts, activity-tracking support and file-picker events. They never collect page text, full URLs, form values, file names, cookies or authentication tokens.
 
 Aistee must not scrape passwords, session cookies, OAuth tokens or other login credentials. Authentication remains between the embedded provider page and that provider.

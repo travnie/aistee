@@ -50,6 +50,50 @@ class PrimaryNavigationTest {
     }
 
     @Test
+    fun nativeConversationRoutingAcceptsOnlyDedicatedAction() {
+        assertTrue(
+            AisteeQuickActionNavigation.isOpenNativeConversationAction(
+                AisteeQuickActionNavigation.ACTION_OPEN_NATIVE_CONVERSATION
+            )
+        )
+        assertFalse(
+            AisteeQuickActionNavigation.isOpenNativeConversationAction(
+                AisteeQuickActionNavigation.ACTION_OPEN_DESTINATION
+            )
+        )
+    }
+
+    @Test
+    fun nativeConversationIdPrefersExtraAndValidatesUriFallback() {
+        assertEquals(
+            "conversation-extra",
+            AisteeQuickActionNavigation.nativeConversationId(
+                currentExtra = " conversation-extra ",
+                dataScheme = null,
+                dataHost = null,
+                dataLastPathSegment = null,
+            )
+        )
+        assertEquals(
+            "conversation-uri",
+            AisteeQuickActionNavigation.nativeConversationId(
+                currentExtra = null,
+                dataScheme = "aistee",
+                dataHost = "native-chat",
+                dataLastPathSegment = "conversation-uri",
+            )
+        )
+        assertNull(
+            AisteeQuickActionNavigation.nativeConversationId(
+                currentExtra = null,
+                dataScheme = "https",
+                dataHost = "native-chat",
+                dataLastPathSegment = "conversation-uri",
+            )
+        )
+    }
+
+    @Test
     fun quickActionRoutingAcceptsCurrentAndLegacyActions() {
         assertTrue(
             AisteeQuickActionNavigation.isOpenDestinationAction(
