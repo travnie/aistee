@@ -107,6 +107,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.zxing.core)
     implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.work.runtime.ktx)
 
     testImplementation(libs.junit)
     testImplementation(libs.rhino)

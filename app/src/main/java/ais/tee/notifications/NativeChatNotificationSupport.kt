@@ -23,6 +23,9 @@ import ais.tee.data.model.isCompletedAssistantResponse
 import ais.tee.navigation.AisteeQuickActionNavigation
 import java.util.concurrent.atomic.AtomicBoolean
 
+// Keep preference revocation and background publication in one critical section.
+private val notificationPrivacyLock = Any()
+
 private const val PREFERENCES_NAME = "native_chat_notification_preferences"
 private const val KEY_ENABLED = "enabled"
 private const val KEY_SHOW_CONVERSATION_TITLES = "show_conversation_titles"
@@ -54,7 +57,7 @@ internal class NativeChatNotificationPreferencesStore(context: Context) {
             showMessagePreviews = preferences.getBoolean(KEY_SHOW_MESSAGE_PREVIEWS, false),
         )
 
-    fun save(value: NativeChatNotificationPreferences) {
+    fun save(value: NativeChatNotificationPreferences) = synchronized(notificationPrivacyLock) {
         val previous = load()
         preferences.edit()
             .putBoolean(KEY_ENABLED, value.enabled)
@@ -184,7 +187,7 @@ internal object NativeChatNotificationPublisher {
             NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
 
-    fun publishConversation(context: Context, conversation: NativeChatConversation): Boolean {
+    fun publishConversation(context: Context, conversation: NativeChatConversation): Boolean = synchronized(notificationPrivacyLock) {
         val appContext = context.applicationContext
         val preferences = NativeChatNotificationPreferencesStore(appContext).load()
         if (
@@ -194,10 +197,10 @@ internal object NativeChatNotificationPublisher {
                 systemNotificationsAllowed = systemNotificationsAllowed(appContext),
             )
         ) {
-            return false
+            return@synchronized false
         }
 
-        val content = buildNativeChatNotificationContent(conversation, preferences) ?: return false
+        val content = buildNativeChatNotificationContent(conversation, preferences) ?: return@synchronized false
         ensureChannel(appContext)
 
         val you = Person.Builder()
@@ -229,7 +232,7 @@ internal object NativeChatNotificationPublisher {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val latestMessage = content.messages.last()
-        val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(appContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_quick_settings)
             .setSubText(content.title)
             .setStyle(style)
@@ -239,19 +242,91 @@ internal object NativeChatNotificationPublisher {
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setWhen(latestMessage.timestamp)
             .setShowWhen(true)
-            .build()
+        NativeChatDirectReply.action(appContext, conversation)?.let(builder::addAction)
 
-        return try {
-            NotificationManagerCompat.from(appContext).notify(
-                notificationTag(content.conversationId),
-                NOTIFICATION_ID,
-                notification,
+        return@synchronized notify(
+            appContext = appContext,
+            conversationId = content.conversationId,
+            notification = builder.build(),
+        )
+    }
+
+    fun publishReplyInProgress(context: Context, conversation: NativeChatConversation): Boolean =
+        publishReplyStatus(context, conversation, context.getString(R.string.notification_reply_sending))
+
+    fun publishReplyFailed(context: Context, conversation: NativeChatConversation): Boolean =
+        publishReplyStatus(context, conversation, context.getString(R.string.notification_reply_failed))
+
+    private fun publishReplyStatus(
+        context: Context,
+        conversation: NativeChatConversation,
+        status: String,
+    ): Boolean = synchronized(notificationPrivacyLock) {
+        val appContext = context.applicationContext
+        val preferences = NativeChatNotificationPreferencesStore(appContext).load()
+        if (
+            !shouldPostNativeChatNotification(
+                enabled = preferences.enabled,
+                appVisible = NativeChatNotificationVisibility.isAppVisible(),
+                systemNotificationsAllowed = systemNotificationsAllowed(appContext),
             )
-            true
-        } catch (_: SecurityException) {
-            // Permission can be revoked after the eligibility check above.
-            false
+        ) return@synchronized false
+        val latestAssistantIndex = conversation.messages.indexOfLast { it.isNotifiableAssistantResponse() }
+        if (latestAssistantIndex < 0) return@synchronized false
+        val statusConversation = conversation.copy(messages = conversation.messages.take(latestAssistantIndex + 1))
+        val content = buildNativeChatNotificationContent(statusConversation, preferences) ?: return@synchronized false
+        ensureChannel(appContext)
+
+        val you = Person.Builder().setName("You").build()
+        val assistant = Person.Builder().setName("Aistee").setBot(true).build()
+        val style = NotificationCompat.MessagingStyle(you).setGroupConversation(false)
+        content.messages.forEach { message ->
+            style.addMessage(
+                NotificationCompat.MessagingStyle.Message(
+                    message.text,
+                    message.timestamp,
+                    if (message.isAssistant) assistant else you,
+                )
+            )
         }
+        val launchIntent =
+            AisteeQuickActionNavigation.nativeConversationLaunchIntent(appContext, content.conversationId)
+                .setClass(appContext, MainActivity::class.java)
+        val contentIntent = PendingIntent.getActivity(
+            appContext,
+            0,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_quick_settings)
+            .setSubText(content.title)
+            .setContentText(status)
+            .setStyle(style)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setContentIntent(contentIntent)
+            .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setWhen(content.messages.last().timestamp)
+            .setShowWhen(true)
+            .build()
+        return@synchronized notify(appContext, content.conversationId, notification)
+    }
+
+    private fun notify(
+        appContext: Context,
+        conversationId: String,
+        notification: Notification,
+    ): Boolean = try {
+        NotificationManagerCompat.from(appContext).notify(
+            notificationTag(conversationId),
+            NOTIFICATION_ID,
+            notification,
+        )
+        true
+    } catch (_: SecurityException) {
+        false
     }
 
     fun cancelConversation(context: Context, conversationId: String) {
