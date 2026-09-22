@@ -88,6 +88,83 @@ class StructuredTextDiagnosticsTest {
         assertTrue(result.errorMessage.orEmpty().contains("limit", ignoreCase = true))
     }
 
+
+    @Test
+    fun validatesJson5ExtensionsThatStrictJsonRejects() {
+        val source = """
+            {
+              // comment stays source-visible
+              unquoted: 'single quoted',
+              hex: 0x1f90,
+              trailing: [1, 2,],
+            }
+        """.trimIndent()
+
+        assertFalse(
+            StructuredTextDiagnostics.validate(source, StructuredTextFormat.JSON).isValid
+        )
+        assertTrue(
+            StructuredTextDiagnostics.validate(source, StructuredTextFormat.JSON5).isValid
+        )
+    }
+
+    @Test
+    fun formatsJson5WithoutDroppingCommentsOrRawLiterals() {
+        val source = "{port:0x1f90,// default\nenabled:true,}"
+        val result = StructuredTextDiagnostics.formatJson5(source)
+
+        assertTrue(result.isSuccess)
+        assertTrue(result.changed)
+        assertTrue(result.text.contains("// default"))
+        assertTrue(result.text.contains("0x1f90"))
+    }
+
+    @Test
+    fun json5FormattingPreservesDuplicateKeys() {
+        val source = "{flag:true, flag:false,}"
+        val result = StructuredTextDiagnostics.formatJson5(source)
+
+        assertTrue(result.isSuccess)
+        assertEquals(2, Regex("""\bflag\s*:""").findAll(result.text).count())
+    }
+
+    @Test
+    fun excessiveJson5NestingIsRejectedBeforeAstFormatting() {
+        val source = "[".repeat(129) + "0" + "]".repeat(129)
+        val validation = StructuredTextDiagnostics.validate(source, StructuredTextFormat.JSON5)
+        val formatting = StructuredTextDiagnostics.formatJson5(source)
+
+        assertFalse(validation.isValid)
+        assertTrue(validation.errorMessage.orEmpty().contains("nesting", ignoreCase = true))
+        assertFalse(formatting.isSuccess)
+        assertEquals(source, formatting.text)
+    }
+
+    @Test
+    fun json5FormattingRejectsPotentialIndentationExplosionBeforeFormatting() {
+        val payload = List(35_000) { "0" }.joinToString(",")
+        val source = "[".repeat(128) + payload + "]".repeat(128)
+        val result = StructuredTextDiagnostics.formatJson5(source)
+
+        assertFalse(result.isSuccess)
+        assertFalse(result.changed)
+        assertEquals(source, result.text)
+        assertTrue(result.errorMessage.orEmpty().contains("limit", ignoreCase = true))
+    }
+
+    @Test
+    fun malformedJson5IsRejectedWithoutChangingSource() {
+        val source = "{a:1,]{"
+        val validation = StructuredTextDiagnostics.validate(source, StructuredTextFormat.JSON5)
+        val formatting = StructuredTextDiagnostics.formatJson5(source)
+
+        assertFalse(validation.isValid)
+        assertTrue(validation.errorMessage.orEmpty().contains("index", ignoreCase = true))
+        assertFalse(formatting.isSuccess)
+        assertFalse(formatting.changed)
+        assertEquals(source, formatting.text)
+    }
+
     @Test
     fun yamlSyntaxValidationAcceptsAnchorsEmptyDocumentsAndComplexKeys() {
         listOf(

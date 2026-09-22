@@ -10,6 +10,7 @@ class StructuredTextFormatDetectionTest {
     @Test
     fun detectsCanonicalFileExtensionsCaseInsensitively() {
         assertEquals(StructuredTextFormat.JSON, detectStructuredTextFormat("config.JSON"))
+        assertEquals(StructuredTextFormat.JSON5, detectStructuredTextFormat("config.Json5"))
         assertEquals(StructuredTextFormat.YAML, detectStructuredTextFormat("profile.yml"))
         assertEquals(StructuredTextFormat.YAML, detectStructuredTextFormat("profile.YAML"))
         assertEquals(StructuredTextFormat.XML, detectStructuredTextFormat("document.xml"))
@@ -28,6 +29,14 @@ class StructuredTextFormatDetectionTest {
         assertEquals(
             StructuredTextFormat.JSON,
             detectStructuredTextFormat(null, "application/json; note=\"escaped\\\"quote\"")
+        )
+        assertEquals(
+            StructuredTextFormat.JSON5,
+            detectStructuredTextFormat(null, "application/json5; charset=utf-8")
+        )
+        assertEquals(
+            StructuredTextFormat.JSON5,
+            detectStructuredTextFormat(null, "application/vnd.aistee+json5")
         )
         assertEquals(
             StructuredTextFormat.YAML,
