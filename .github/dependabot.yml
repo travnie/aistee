@@ -12,6 +12,10 @@ updates:
     rebase-strategy: "disabled"
     commit-message:
       prefix: "deps"
+    # Re-enable this release after CodeQL adds compiler support.
+    ignore:
+      - dependency-name: "org.jetbrains.kotlin*"
+        versions: ["2.4.20"]
     groups:
       kotlin:
         patterns:
