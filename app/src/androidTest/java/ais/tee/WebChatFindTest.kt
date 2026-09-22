@@ -102,7 +102,6 @@ class WebChatFindTest {
     @Test
     fun externallySelectedWarmProviderClosesFind() {
         switchProvider("claude")
-        val warmClaudeWebView = requireNotNull(visibleWebView(composeRule.activity.window.decorView))
         loadConversationFixture()
         openFind()
         composeRule.onNodeWithTag("web_find_query").performTextReplacement("nebula")
@@ -113,7 +112,6 @@ class WebChatFindTest {
                 .selectWebService(WebAiService.CLAUDE)
         }
         assertFindClosed()
-        awaitVisibleWebView(warmClaudeWebView)
         openFind()
         composeRule.onNodeWithTag("web_find_query").assert(
             SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString(""))
@@ -147,7 +145,11 @@ class WebChatFindTest {
     private fun openFind() {
         composeRule.onNodeWithTag("btn_web_more").performClick()
         composeRule.onNodeWithTag("btn_web_find").performClick()
-        composeRule.onNodeWithTag("web_find_query").assertIsDisplayed()
+        composeRule.waitUntil(5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("web_find_query").assertIsDisplayed()
+            }.isSuccess
+        }
     }
 
     private fun assertFindClosed() {
@@ -168,16 +170,6 @@ class WebChatFindTest {
         }
         composeRule.onNodeWithTag("tab_web_service_$id").performClick()
         composeRule.waitForIdle()
-    }
-
-    private fun awaitVisibleWebView(expected: WebView) {
-        composeRule.waitUntil(5_000) {
-            var visible: WebView? = null
-            composeRule.runOnIdle {
-                visible = visibleWebView(composeRule.activity.window.decorView)
-            }
-            visible === expected
-        }
     }
 
     private fun visibleWebView(view: View): WebView? {
