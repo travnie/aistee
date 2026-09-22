@@ -120,6 +120,30 @@ class StructuredTextDiagnosticsTest {
     }
 
     @Test
+    fun excessiveJson5NestingIsRejectedBeforeAstFormatting() {
+        val source = "[".repeat(129) + "0" + "]".repeat(129)
+        val validation = StructuredTextDiagnostics.validate(source, StructuredTextFormat.JSON5)
+        val formatting = StructuredTextDiagnostics.formatJson5(source)
+
+        assertFalse(validation.isValid)
+        assertTrue(validation.errorMessage.orEmpty().contains("nesting", ignoreCase = true))
+        assertFalse(formatting.isSuccess)
+        assertEquals(source, formatting.text)
+    }
+
+    @Test
+    fun json5FormattingRejectsPotentialIndentationExplosionBeforeFormatting() {
+        val payload = List(35_000) { "0" }.joinToString(",")
+        val source = "[".repeat(128) + payload + "]".repeat(128)
+        val result = StructuredTextDiagnostics.formatJson5(source)
+
+        assertFalse(result.isSuccess)
+        assertFalse(result.changed)
+        assertEquals(source, result.text)
+        assertTrue(result.errorMessage.orEmpty().contains("limit", ignoreCase = true))
+    }
+
+    @Test
     fun malformedJson5IsRejectedWithoutChangingSource() {
         val source = "{a:1,]{"
         val validation = StructuredTextDiagnostics.validate(source, StructuredTextFormat.JSON5)
