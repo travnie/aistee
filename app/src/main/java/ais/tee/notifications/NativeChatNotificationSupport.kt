@@ -43,8 +43,9 @@ internal data class NativeChatNotificationPreferences(
 )
 
 internal class NativeChatNotificationPreferencesStore(context: Context) {
+    private val appContext = context.applicationContext
     private val preferences =
-        context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     fun load(): NativeChatNotificationPreferences =
         NativeChatNotificationPreferences(
@@ -54,11 +55,18 @@ internal class NativeChatNotificationPreferencesStore(context: Context) {
         )
 
     fun save(value: NativeChatNotificationPreferences) {
+        val previous = load()
         preferences.edit()
             .putBoolean(KEY_ENABLED, value.enabled)
             .putBoolean(KEY_SHOW_CONVERSATION_TITLES, value.showConversationTitles)
             .putBoolean(KEY_SHOW_MESSAGE_PREVIEWS, value.showMessagePreviews)
             .apply()
+        if (!value.enabled ||
+            (previous.showConversationTitles && !value.showConversationTitles) ||
+            (previous.showMessagePreviews && !value.showMessagePreviews)
+        ) {
+            NativeChatNotificationPublisher.cancelPostedConversations(appContext)
+        }
     }
 }
 
@@ -255,6 +263,17 @@ internal object NativeChatNotificationPublisher {
 
     fun cancelConversations(context: Context, conversationIds: Iterable<String>) {
         conversationIds.forEach { conversationId -> cancelConversation(context, conversationId) }
+    }
+
+    fun cancelPostedConversations(context: Context) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.activeNotifications
+            .filter { posted ->
+                posted.id == NOTIFICATION_ID &&
+                    posted.tag?.startsWith(NOTIFICATION_TAG_PREFIX) == true &&
+                    posted.notification.channelId == CHANNEL_ID
+            }
+            .forEach { posted -> manager.cancel(posted.tag, posted.id) }
     }
 
     private fun notificationTag(conversationId: String): String =
