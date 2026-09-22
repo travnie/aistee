@@ -8,6 +8,16 @@ import kotlin.test.assertTrue
 
 class ProviderOnboardingTest {
     @Test
+    fun signInEntriesStayOnProviderOwnedPages() {
+        assertEquals("https://chat.qwen.ai/auth?action=signin", WebAiService.QWEN.onboardingCapabilities().signInUrl)
+        assertEquals("https://chat.z.ai/auth", WebAiService.ZAI.onboardingCapabilities().signInUrl)
+        assertEquals(WebAiService.COPILOT.url, WebAiService.COPILOT.onboardingCapabilities().signInUrl)
+        WebAiService.entries.filterNot { it.onboardingCapabilities().hasIdentityAssistedPath }.forEach {
+            assertNull(it.onboardingCapabilities().signInUrl)
+        }
+    }
+
+    @Test
     fun exposesOnlyVerifiedPreferredIdentityMethods() {
         assertEquals(
             listOf(ProviderIdentityMethod.GOOGLE, ProviderIdentityMethod.GITHUB),
