@@ -45,4 +45,12 @@
     <string name="notification_settings_cancel">Cancel</string>
     <string name="notification_permission_denied">Notification permission was not granted.</string>
     <string name="notification_system_disabled">Notifications are disabled for Aistee in Android settings.</string>
+    <string name="web_find_title">Find in page</string>
+    <string name="web_find_close">Close search</string>
+    <string name="web_find_loaded_text">Search text loaded on this page</string>
+    <string name="web_find_searching">Searching…</string>
+    <string name="web_find_no_matches">No matches</string>
+    <string name="web_find_result">%1$d / %2$d</string>
+    <string name="web_find_previous">Previous match</string>
+    <string name="web_find_next">Next match</string>
 </resources>
