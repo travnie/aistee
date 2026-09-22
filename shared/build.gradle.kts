@@ -27,6 +27,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.json5)
             implementation(libs.kotaml)
             implementation(libs.snakeyaml.engine.kmp)
             implementation(libs.normalize)

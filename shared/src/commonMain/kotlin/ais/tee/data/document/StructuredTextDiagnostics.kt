@@ -7,6 +7,8 @@ import it.krzeminski.snakeyaml.engine.kmp.events.NodeEvent
 import it.krzeminski.snakeyaml.engine.kmp.exceptions.YamlEngineException
 import it.krzeminski.snakeyaml.engine.kmp.parser.ParserImpl
 import it.krzeminski.snakeyaml.engine.kmp.scanner.StreamReader
+import li.songe.json5.Json5
+import li.songe.json5.Json5ParseException
 import nl.adaptivity.xmlutil.EventType
 import nl.adaptivity.xmlutil.XmlException
 import nl.adaptivity.xmlutil.XmlReader
@@ -15,6 +17,7 @@ import nl.adaptivity.xmlutil.xmlStreaming
 /** Structured text syntaxes currently validated by the portable document core. */
 enum class StructuredTextFormat {
     JSON,
+    JSON5,
     YAML,
     XML
 }
@@ -46,6 +49,7 @@ data class StructuredTextFormatResult(
 object StructuredTextDiagnostics {
     private const val MAX_JSON_NESTING = 128
     private const val MAX_JSON_FORMATTED_CHARS = 8 * 1024 * 1024
+    private const val MAX_JSON5_CHARS = 3 * 1024 * 1024
     private const val MAX_YAML_CODE_POINTS = 3 * 1024 * 1024
     private const val MAX_XML_CHARS = 3 * 1024 * 1024
     private const val MAX_XML_NESTING = 128
@@ -53,6 +57,7 @@ object StructuredTextDiagnostics {
     fun validate(text: String, format: StructuredTextFormat): StructuredTextValidationResult =
         when (format) {
             StructuredTextFormat.JSON -> validateJson(text)
+            StructuredTextFormat.JSON5 -> validateJson5(text)
             StructuredTextFormat.YAML -> validateYaml(text)
             StructuredTextFormat.XML -> validateXml(text)
         }
@@ -93,11 +98,64 @@ object StructuredTextDiagnostics {
         )
     }
 
+    /**
+     * Formats valid JSON5 through a source-aware lossless AST. Comments, duplicate keys and raw
+     * literals such as hexadecimal numbers remain represented instead of being collapsed through
+     * JsonElement.
+     */
+    fun formatJson5(text: String): StructuredTextFormatResult {
+        val validation = validateJson5(text)
+        if (!validation.isValid) {
+            return StructuredTextFormatResult(
+                text = text,
+                changed = false,
+                errorMessage = validation.errorMessage
+            )
+        }
+
+        val formatted = try {
+            Json5.format(text)
+        } catch (error: Json5ParseException) {
+            return StructuredTextFormatResult(
+                text = text,
+                changed = false,
+                errorMessage = error.message ?: "Invalid JSON5."
+            )
+        }
+        if (formatted.length > MAX_JSON_FORMATTED_CHARS) {
+            return StructuredTextFormatResult(
+                text = text,
+                changed = false,
+                errorMessage = "Formatting blocked: formatted JSON5 would exceed the 8 MiB safety limit."
+            )
+        }
+        return StructuredTextFormatResult(
+            text = formatted,
+            changed = formatted != text
+        )
+    }
+
     private fun validateJson(text: String): StructuredTextValidationResult {
         val inspection = StrictJsonParser(text).inspect()
         return StructuredTextValidationResult(
             format = StructuredTextFormat.JSON,
             errorMessage = inspection.errorMessage
+        )
+    }
+
+    private fun validateJson5(text: String): StructuredTextValidationResult {
+        if (text.length > MAX_JSON5_CHARS) {
+            return StructuredTextValidationResult(
+                format = StructuredTextFormat.JSON5,
+                errorMessage = "JSON5 input exceeds the supported 3 Mi character limit."
+            )
+        }
+        val diagnostic = Json5.parseToDocument(text).diagnostics.firstOrNull()
+        return StructuredTextValidationResult(
+            format = StructuredTextFormat.JSON5,
+            errorMessage = diagnostic?.let {
+                "${it.message} at index ${it.range.start}."
+            }
         )
     }
 
