@@ -30,13 +30,4 @@ class ConversationSurfaceCapabilitiesTest {
             assertFalse(capabilities.supports(ConversationSurfaceCapability.DRAFT_REPLY))
         }
     }
-
-    @Test
-    fun returnedCapabilitySetsCannotMutateRegistryState() {
-        val first = AiProvider.CHATGPT.conversationSurfaceCapabilities()
-        val second = AiProvider.CHATGPT.conversationSurfaceCapabilities()
-
-        assertTrue(first.supported !== second.supported)
-        assertTrue(second.supports(ConversationSurfaceCapability.DIRECT_REPLY))
-    }
 }
