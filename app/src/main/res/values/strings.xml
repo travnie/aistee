@@ -53,4 +53,15 @@
     <string name="web_find_result">%1$d / %2$d</string>
     <string name="web_find_previous">Previous match</string>
     <string name="web_find_next">Next match</string>
+    <string name="web_sign_in_help">Sign-in help</string>
+    <string name="web_sign_in_title">Sign in to %1$s</string>
+    <string name="web_sign_in_preference">Preferred sign-in method (saved on this device)</string>
+    <string name="web_sign_in_instruction">Choose %1$s on the provider’s page. This preference does not sign you in automatically; you can still use another option offered there.</string>
+    <string name="web_sign_in_google_hint">Google sign-in may block embedded browsers. Use the browser option to continue there.</string>
+    <string name="web_sign_in_app_hint">Open the provider’s entry page in this tab. Unsent text on the current page may be lost. Embedded sign-in has not been verified for this provider.</string>
+    <string name="web_sign_in_app">Open in Aistee</string>
+    <string name="web_sign_in_browser_hint">Continue in your browser using its own session. Signing in there will not sign in this Aistee tab.</string>
+    <string name="web_sign_in_browser">Open in browser</string>
+    <string name="web_sign_in_close">Close</string>
+    <string name="web_sign_in_browser_failure">Could not launch external browser</string>
 </resources>

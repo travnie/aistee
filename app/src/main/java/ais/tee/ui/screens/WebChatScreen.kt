@@ -56,6 +56,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import ais.tee.data.model.WebAiService
+import ais.tee.data.model.onboardingCapabilities
+import ais.tee.data.preferences.WebChatPreferencesStore
 import ais.tee.R
 import ais.tee.data.model.webChatSections
 import ais.tee.data.model.WebChatActivityStatus
@@ -175,6 +177,12 @@ fun WebChatScreen(
     )
     val persistentProviderNavigation = webProviderNavigationIsPersistent(navigationSuiteType)
     val selectedService by rememberUpdatedState(uiState.selectedWebService)
+    var showSignInHelp by remember(selectedService, isActive) { mutableStateOf(false) }
+    val webPreferences = remember(context.applicationContext) {
+        WebChatPreferencesStore(context.applicationContext)
+    }
+    var preferredIdentityMethod by remember { mutableStateOf(webPreferences.loadPreferredIdentityMethod()) }
+    val browserLaunchFailure = stringResource(R.string.web_sign_in_browser_failure)
     val currentPendingWebShare by rememberUpdatedState(uiState.pendingWebShare)
     var currentUrl by remember { mutableStateOf(selectedService.url) }
     var loadingProgress by remember { mutableIntStateOf(0) }
@@ -955,6 +963,10 @@ fun WebChatScreen(
                             onApplyStudio = ::applyStudioPrompt,
                             onShowPromptHelper = { showPromptHelperDialog = true },
                             onShowDiagnostics = ::openProviderDiagnostics,
+                            onShowSignInHelp = {
+                                preferredIdentityMethod = webPreferences.loadPreferredIdentityMethod()
+                                showSignInHelp = true
+                            },
                             onFindInPage = {
                                 closeFindInPage()
                                 activeWebView?.let { findSession = WebFindInPageSession(it) }
@@ -1286,6 +1298,31 @@ fun WebChatScreen(
         )
     }
 
+    val signInUrl = selectedService.onboardingCapabilities().signInUrl
+    if (isActive && showSignInHelp && signInUrl != null) {
+        WebProviderSignInDialog(
+            service = selectedService,
+            preferredMethod = preferredIdentityMethod,
+            canOpenInApp = activeWebView != null,
+            onChooseMethod = { method ->
+                webPreferences.savePreferredIdentityMethod(method)
+                preferredIdentityMethod = method
+            },
+            onOpenInApp = {
+                activeWebView?.loadUrl(signInUrl)
+                showSignInHelp = false
+            },
+            onOpenInBrowser = {
+                if (openExternalUri(context, Uri.parse(signInUrl))) {
+                    showSignInHelp = false
+                } else {
+                    viewModel.showSnackbar(browserLaunchFailure)
+                }
+            },
+            onDismiss = { showSignInHelp = false },
+        )
+    }
+
     if (isActive && showProviderDiagnosticsDialog) {
         val webViewPackage = WebView.getCurrentWebViewPackage()?.let { packageInfo ->
             listOfNotNull(packageInfo.packageName, packageInfo.versionName).joinToString(" ")
@@ -1406,6 +1443,7 @@ private fun WebChatToolbar(
     onApplyStudio: () -> Unit,
     onShowPromptHelper: () -> Unit,
     onShowDiagnostics: () -> Unit,
+    onShowSignInHelp: () -> Unit,
     onFindInPage: () -> Unit,
     onToggleDesktopMode: () -> Unit,
     onShowSnackbar: (String) -> Unit
@@ -1545,6 +1583,17 @@ private fun WebChatToolbar(
                                 onShowPromptHelper()
                             }
                         )
+                        if (selectedService.onboardingCapabilities().signInUrl != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.web_sign_in_help)) },
+                                leadingIcon = { Icon(Icons.Default.AccountCircle, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onShowSignInHelp()
+                                },
+                                modifier = Modifier.testTag("btn_web_sign_in_help"),
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Provider diagnostics") },
                             leadingIcon = { Icon(Icons.Default.BugReport, contentDescription = null) },

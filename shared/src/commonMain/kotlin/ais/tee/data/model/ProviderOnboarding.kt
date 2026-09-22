@@ -21,7 +21,9 @@ enum class EmbeddedSessionHandoff {
 
 data class ProviderOnboardingCapabilities(
     val preferredIdentityMethods: List<ProviderIdentityMethod> = emptyList(),
-    val embeddedSessionHandoff: EmbeddedSessionHandoff = EmbeddedSessionHandoff.UNVERIFIED
+    val embeddedSessionHandoff: EmbeddedSessionHandoff = EmbeddedSessionHandoff.UNVERIFIED,
+    /** Provider-owned entry page; never a constructed identity-provider OAuth request. */
+    val signInUrl: String? = null
 ) {
     val hasIdentityAssistedPath: Boolean
         get() = preferredIdentityMethods.isNotEmpty()
@@ -39,16 +41,19 @@ fun WebAiService.onboardingCapabilities(): ProviderOnboardingCapabilities = when
         preferredIdentityMethods = listOf(
             ProviderIdentityMethod.GOOGLE,
             ProviderIdentityMethod.GITHUB
-        )
+        ),
+        signInUrl = "https://chat.qwen.ai/auth?action=signin"
     )
     WebAiService.COPILOT -> ProviderOnboardingCapabilities(
-        preferredIdentityMethods = listOf(ProviderIdentityMethod.MICROSOFT)
+        preferredIdentityMethods = listOf(ProviderIdentityMethod.MICROSOFT),
+        signInUrl = url
     )
     WebAiService.ZAI -> ProviderOnboardingCapabilities(
         preferredIdentityMethods = listOf(
             ProviderIdentityMethod.GOOGLE,
             ProviderIdentityMethod.GITHUB
-        )
+        ),
+        signInUrl = "https://chat.z.ai/auth"
     )
     else -> ProviderOnboardingCapabilities(
         embeddedSessionHandoff = EmbeddedSessionHandoff.UNSUPPORTED
