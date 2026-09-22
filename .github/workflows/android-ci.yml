@@ -78,3 +78,13 @@ jobs:
             adb shell wm size 1280x800
             adb shell wm density 240
             ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.annotation=ais.tee.TestExpandedWidth --stacktrace
+
+      - name: Upload Android smoke test reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-smoke-test-reports
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          retention-days: 7
