@@ -25,6 +25,7 @@ import ais.tee.data.document.DocbenchJsonFormatActionResult
 import ais.tee.data.document.DocbenchLineEndingNormalizeAction
 import ais.tee.data.document.DocbenchLineEndingNormalizeActionResult
 import ais.tee.data.document.LineEnding
+import ais.tee.data.document.StructuredTextFormat
 import ais.tee.data.document.TextDocument
 import ais.tee.data.model.BenchToolPermission
 import ais.tee.data.model.BenchToolSurface
@@ -42,6 +43,7 @@ internal class DocbenchTextTransformUiState {
     var working by mutableStateOf(false)
     var exporting by mutableStateOf(false)
     var includeUtf8Bom by mutableStateOf(false)
+    var structuredFormat by mutableStateOf(StructuredTextFormat.JSON)
 
     val canTransform: Boolean
         get() = source.isNotEmpty() && inputError == null && !working && !exporting
@@ -84,7 +86,7 @@ internal fun DocbenchTextTransformPanel(
         modifier = modifier.padding(16.dp)
     ) {
         Text(
-            "Format strict JSON, normalize line endings or export the transformed text locally.",
+            "Format JSON or JSON5, normalize line endings or export the transformed text locally.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -102,12 +104,25 @@ internal fun DocbenchTextTransformPanel(
                 .fillMaxWidth()
                 .testTag("docbench_json_formatter_input")
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(StructuredTextFormat.JSON, StructuredTextFormat.JSON5).forEach { format ->
+                FilterChip(
+                    selected = state.structuredFormat == format,
+                    onClick = { state.structuredFormat = format },
+                    enabled = !state.working && !state.exporting,
+                    label = { Text(format.name) },
+                    modifier = Modifier.testTag(
+                        "docbench_json_mode_${format.name.lowercase()}"
+                    )
+                )
+            }
+        }
         Button(
             onClick = { launchJsonFormat(scope, state, isEnabled) },
             enabled = state.canTransform,
             modifier = Modifier.testTag("docbench_json_formatter_run")
         ) {
-            Text(if (state.working) "Working…" else "Format JSON")
+            Text(if (state.working) "Working…" else "Format ${state.structuredFormat.name}")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LineEnding.entries.forEach { target ->
@@ -154,6 +169,7 @@ private fun launchJsonFormat(
     isEnabled: () -> Boolean
 ) {
     val sourceToFormat = state.source
+    val formatToUse = state.structuredFormat
     val generation = state.sourceGeneration
     scope.launch {
         state.working = true
@@ -161,13 +177,14 @@ private fun launchJsonFormat(
             val action = withContext(Dispatchers.Default) {
                 DocbenchJsonFormatAction.execute(
                     text = sourceToFormat,
+                    format = formatToUse,
                     surface = BenchToolSurface.COMPANION_UI,
                     isEnabled = isEnabled(),
                     grantedPermissions = DOCUMENT_READ_GRANT
                 )
             }
             if (!isEnabled() || generation != state.sourceGeneration) return@launch
-            applyJsonFormatResult(state, action)
+            applyJsonFormatResult(state, formatToUse, action)
         } finally {
             state.working = false
         }
@@ -176,6 +193,7 @@ private fun launchJsonFormat(
 
 private fun applyJsonFormatResult(
     state: DocbenchTextTransformUiState,
+    format: StructuredTextFormat,
     action: DocbenchJsonFormatActionResult
 ) {
     when (action) {
@@ -187,7 +205,7 @@ private fun applyJsonFormatResult(
                 return
             }
             state.source = action.text
-            state.message = if (action.changed) "Formatted locally." else "Already formatted."
+            state.message = if (action.changed) "Formatted ${format.name} locally." else "${format.name} is already formatted."
         }
         is DocbenchJsonFormatActionResult.Rejected -> {
             state.message = docbenchValidationErrorPreview(action.message)

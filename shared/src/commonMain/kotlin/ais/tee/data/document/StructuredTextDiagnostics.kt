@@ -7,6 +7,10 @@ import it.krzeminski.snakeyaml.engine.kmp.events.NodeEvent
 import it.krzeminski.snakeyaml.engine.kmp.exceptions.YamlEngineException
 import it.krzeminski.snakeyaml.engine.kmp.parser.ParserImpl
 import it.krzeminski.snakeyaml.engine.kmp.scanner.StreamReader
+import li.songe.json5.Json5
+import li.songe.json5.Json5ParseException
+import li.songe.json5.Json5SyntaxKind
+import li.songe.json5.Json5SyntaxTokens
 import nl.adaptivity.xmlutil.EventType
 import nl.adaptivity.xmlutil.XmlException
 import nl.adaptivity.xmlutil.XmlReader
@@ -15,6 +19,7 @@ import nl.adaptivity.xmlutil.xmlStreaming
 /** Structured text syntaxes currently validated by the portable document core. */
 enum class StructuredTextFormat {
     JSON,
+    JSON5,
     YAML,
     XML
 }
@@ -46,6 +51,8 @@ data class StructuredTextFormatResult(
 object StructuredTextDiagnostics {
     private const val MAX_JSON_NESTING = 128
     private const val MAX_JSON_FORMATTED_CHARS = 8 * 1024 * 1024
+    private const val MAX_JSON5_CHARS = 3 * 1024 * 1024
+    private const val MAX_JSON5_NESTING = 128
     private const val MAX_YAML_CODE_POINTS = 3 * 1024 * 1024
     private const val MAX_XML_CHARS = 3 * 1024 * 1024
     private const val MAX_XML_NESTING = 128
@@ -53,6 +60,7 @@ object StructuredTextDiagnostics {
     fun validate(text: String, format: StructuredTextFormat): StructuredTextValidationResult =
         when (format) {
             StructuredTextFormat.JSON -> validateJson(text)
+            StructuredTextFormat.JSON5 -> validateJson5(text)
             StructuredTextFormat.YAML -> validateYaml(text)
             StructuredTextFormat.XML -> validateXml(text)
         }
@@ -93,12 +101,137 @@ object StructuredTextDiagnostics {
         )
     }
 
+    /**
+     * Formats valid JSON5 through a source-aware lossless AST. Comments, duplicate keys and raw
+     * literals such as hexadecimal numbers remain represented instead of being collapsed through
+     * JsonElement.
+     */
+    fun formatJson5(text: String): StructuredTextFormatResult {
+        json5InputError(text)?.let { error ->
+            return StructuredTextFormatResult(
+                text = text,
+                changed = false,
+                errorMessage = error
+            )
+        }
+        val syntax = Json5.scanSyntax(text)
+        json5ResourceError(syntax)?.let { error ->
+            return StructuredTextFormatResult(
+                text = text,
+                changed = false,
+                errorMessage = error
+            )
+        }
+        if (json5FormattedSizeUpperBound(syntax) > MAX_JSON_FORMATTED_CHARS.toLong()) {
+            return StructuredTextFormatResult(
+                text = text,
+                changed = false,
+                errorMessage = "Formatting blocked: JSON5 expansion could exceed the 8 MiB safety limit."
+            )
+        }
+
+        val formatted = try {
+            Json5.format(text)
+        } catch (error: Json5ParseException) {
+            return StructuredTextFormatResult(
+                text = text,
+                changed = false,
+                errorMessage = error.message ?: "Invalid JSON5."
+            )
+        }
+        return StructuredTextFormatResult(
+            text = formatted,
+            changed = formatted != text
+        )
+    }
+
     private fun validateJson(text: String): StructuredTextValidationResult {
         val inspection = StrictJsonParser(text).inspect()
         return StructuredTextValidationResult(
             format = StructuredTextFormat.JSON,
             errorMessage = inspection.errorMessage
         )
+    }
+
+    private fun validateJson5(text: String): StructuredTextValidationResult {
+        json5InputError(text)?.let { error ->
+            return StructuredTextValidationResult(
+                format = StructuredTextFormat.JSON5,
+                errorMessage = error
+            )
+        }
+        val syntax = Json5.scanSyntax(text)
+        json5ResourceError(syntax)?.let { error ->
+            return StructuredTextValidationResult(
+                format = StructuredTextFormat.JSON5,
+                errorMessage = error
+            )
+        }
+        val diagnostic = Json5.parseToDocument(text).diagnostics.firstOrNull()
+        return StructuredTextValidationResult(
+            format = StructuredTextFormat.JSON5,
+            errorMessage = diagnostic?.let {
+                "${it.message} at index ${it.range.start}."
+            }
+        )
+    }
+
+    private fun json5InputError(text: String): String? =
+        if (text.length > MAX_JSON5_CHARS) {
+            "JSON5 input exceeds the supported 3 Mi character limit."
+        } else {
+            null
+        }
+
+    /**
+     * Uses JSON5's tolerant lexer before building an AST. That keeps pathological nesting from
+     * reaching the parser/formatter and gives the formatter a conservative expansion bound.
+     */
+    private fun json5ResourceError(syntax: Json5SyntaxTokens): String? {
+        var depth = 0
+        for (index in syntax.indices) {
+            when (syntax.kindAt(index)) {
+                Json5SyntaxKind.LeftBrace,
+                Json5SyntaxKind.LeftBracket -> {
+                    depth++
+                    if (depth > MAX_JSON5_NESTING) {
+                        return "JSON5 nesting exceeds the supported limit of $MAX_JSON5_NESTING."
+                    }
+                }
+                Json5SyntaxKind.RightBrace,
+                Json5SyntaxKind.RightBracket -> if (depth > 0) depth--
+                else -> Unit
+            }
+        }
+        return null
+    }
+
+    /**
+     * Default Json5 formatting preserves raw token spelling and inserts at most one line break plus
+     * two indentation characters per nesting level between emitted tokens. Use that worst case to
+     * reject potentially explosive pretty-printing before Json5.format allocates its output buffer.
+     */
+    private fun json5FormattedSizeUpperBound(syntax: Json5SyntaxTokens): Long {
+        if (syntax.isEmpty()) return 0L
+        var payloadChars = 0L
+        var depth = 0
+        var maxDepth = 0
+        for (index in syntax.indices) {
+            payloadChars += (syntax.endAt(index) - syntax.startAt(index)).toLong()
+            when (syntax.kindAt(index)) {
+                Json5SyntaxKind.LeftBrace,
+                Json5SyntaxKind.LeftBracket -> {
+                    depth++
+                    if (depth > maxDepth) maxDepth = depth
+                }
+                Json5SyntaxKind.RightBrace,
+                Json5SyntaxKind.RightBracket -> if (depth > 0) depth--
+                else -> Unit
+            }
+        }
+        val gaps = (syntax.size - 1).coerceAtLeast(0).toLong()
+        val maxWhitespacePerGap = 2L + (2L * maxDepth)
+        return payloadChars + gaps * maxWhitespacePerGap + 2L
     }
 
     /**

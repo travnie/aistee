@@ -45,6 +45,24 @@ class DocbenchJsonFormatActionTest {
         assertTrue(completed.text.contains('\n'))
     }
 
+
+    @Test
+    fun json5FormattingPreservesCommentsAndExtendedLiterals() {
+        val source = "{port:0x1f90,// default\nenabled:true,}"
+        val result = DocbenchJsonFormatAction.execute(
+            text = source,
+            format = StructuredTextFormat.JSON5,
+            surface = BenchToolSurface.COMPANION_UI,
+            isEnabled = true,
+            grantedPermissions = DOCUMENT_READ_GRANT
+        )
+
+        val completed = assertIs<DocbenchJsonFormatActionResult.Completed>(result)
+        assertTrue(completed.changed)
+        assertTrue(completed.text.contains("// default"))
+        assertTrue(completed.text.contains("0x1f90"))
+    }
+
     @Test
     fun invalidOrAmbiguousJsonIsRejectedWithoutReturningModifiedText() {
         listOf(
