@@ -23,6 +23,9 @@ import ais.tee.data.model.isCompletedAssistantResponse
 import ais.tee.navigation.AisteeQuickActionNavigation
 import java.util.concurrent.atomic.AtomicBoolean
 
+// Keep preference revocation and background publication in one critical section.
+private val notificationPrivacyLock = Any()
+
 private const val PREFERENCES_NAME = "native_chat_notification_preferences"
 private const val KEY_ENABLED = "enabled"
 private const val KEY_SHOW_CONVERSATION_TITLES = "show_conversation_titles"
@@ -54,7 +57,7 @@ internal class NativeChatNotificationPreferencesStore(context: Context) {
             showMessagePreviews = preferences.getBoolean(KEY_SHOW_MESSAGE_PREVIEWS, false),
         )
 
-    fun save(value: NativeChatNotificationPreferences) {
+    fun save(value: NativeChatNotificationPreferences) = synchronized(notificationPrivacyLock) {
         val previous = load()
         preferences.edit()
             .putBoolean(KEY_ENABLED, value.enabled)
@@ -184,7 +187,7 @@ internal object NativeChatNotificationPublisher {
             NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
 
-    fun publishConversation(context: Context, conversation: NativeChatConversation): Boolean {
+    fun publishConversation(context: Context, conversation: NativeChatConversation): Boolean = synchronized(notificationPrivacyLock) {
         val appContext = context.applicationContext
         val preferences = NativeChatNotificationPreferencesStore(appContext).load()
         if (
@@ -194,10 +197,10 @@ internal object NativeChatNotificationPublisher {
                 systemNotificationsAllowed = systemNotificationsAllowed(appContext),
             )
         ) {
-            return false
+            return@synchronized false
         }
 
-        val content = buildNativeChatNotificationContent(conversation, preferences) ?: return false
+        val content = buildNativeChatNotificationContent(conversation, preferences) ?: return@synchronized false
         ensureChannel(appContext)
 
         val you = Person.Builder()
@@ -241,7 +244,7 @@ internal object NativeChatNotificationPublisher {
             .setShowWhen(true)
         NativeChatDirectReply.action(appContext, conversation)?.let(builder::addAction)
 
-        return notify(
+        return@synchronized notify(
             appContext = appContext,
             conversationId = content.conversationId,
             notification = builder.build(),
@@ -258,7 +261,7 @@ internal object NativeChatNotificationPublisher {
         context: Context,
         conversation: NativeChatConversation,
         status: String,
-    ): Boolean {
+    ): Boolean = synchronized(notificationPrivacyLock) {
         val appContext = context.applicationContext
         val preferences = NativeChatNotificationPreferencesStore(appContext).load()
         if (
@@ -267,11 +270,11 @@ internal object NativeChatNotificationPublisher {
                 appVisible = NativeChatNotificationVisibility.isAppVisible(),
                 systemNotificationsAllowed = systemNotificationsAllowed(appContext),
             )
-        ) return false
+        ) return@synchronized false
         val latestAssistantIndex = conversation.messages.indexOfLast { it.isNotifiableAssistantResponse() }
-        if (latestAssistantIndex < 0) return false
+        if (latestAssistantIndex < 0) return@synchronized false
         val statusConversation = conversation.copy(messages = conversation.messages.take(latestAssistantIndex + 1))
-        val content = buildNativeChatNotificationContent(statusConversation, preferences) ?: return false
+        val content = buildNativeChatNotificationContent(statusConversation, preferences) ?: return@synchronized false
         ensureChannel(appContext)
 
         val you = Person.Builder().setName("You").build()
@@ -308,7 +311,7 @@ internal object NativeChatNotificationPublisher {
             .setWhen(content.messages.last().timestamp)
             .setShowWhen(true)
             .build()
-        return notify(appContext, content.conversationId, notification)
+        return@synchronized notify(appContext, content.conversationId, notification)
     }
 
     private fun notify(

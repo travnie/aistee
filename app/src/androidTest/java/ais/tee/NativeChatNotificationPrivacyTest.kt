@@ -23,6 +23,8 @@ import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.notifications.NativeChatNotificationVisibility
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import ais.tee.notifications.buildNativeChatReplyInput
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -71,6 +73,14 @@ class NativeChatNotificationPrivacyTest {
         preferences.save(originalPreferences)
         apiKeyStore.save(originalApiKeys)
         NativeChatNotificationVisibility.setAppVisible(originalVisibility)
+    }
+
+    @Test
+    fun replyPayloadUsesSerializedByteLimitWithoutCrashing() {
+        assertNotNull(buildNativeChatReplyInput("reply", "chat", "a".repeat(4_000)))
+        assertNotNull(buildNativeChatReplyInput("reply", "chat", "😀".repeat(100)))
+        assertNull(buildNativeChatReplyInput("reply", "chat", "界".repeat(4_000)))
+        assertNull(buildNativeChatReplyInput("reply", "x".repeat(12_000), "hello"))
     }
 
     @Test

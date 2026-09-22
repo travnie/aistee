@@ -32,7 +32,6 @@ import ais.tee.data.model.PresetProfiles
 import ais.tee.data.model.StudioStateDecodeResult
 import ais.tee.data.model.configuredDirectProviders
 import ais.tee.data.model.hasKeyFor
-import ais.tee.data.model.normalized
 import ais.tee.data.preferences.NativeChatStore
 import ais.tee.data.preferences.NativeChatWriter
 import ais.tee.data.preferences.StudioStateStore
@@ -52,7 +51,23 @@ private const val EXTRA_CONVERSATION_ID = "native_chat_direct_reply_conversation
 private const val INPUT_REPLY_ID = "reply_id"
 private const val INPUT_CONVERSATION_ID = "conversation_id"
 private const val INPUT_REPLY_TEXT = "reply_text"
+private const val INPUT_REPLY_EPOCH = "reply_epoch"
 private const val MAX_REPLY_TEXT_CHARS = 4_000
+
+// WorkManager caps serialized Data at 10 KiB, not at a character count.
+internal fun buildNativeChatReplyInput(
+    replyId: String, conversationId: String, text: String, replyEpoch: Long = 0L,
+): Data? =
+    try {
+        Data.Builder()
+            .putString(INPUT_REPLY_ID, replyId)
+            .putString(INPUT_CONVERSATION_ID, conversationId)
+            .putString(INPUT_REPLY_TEXT, text)
+            .putLong(INPUT_REPLY_EPOCH, replyEpoch)
+            .build()
+    } catch (_: IllegalStateException) {
+        null
+    }
 
 internal fun canNativeChatDirectReply(
     conversation: NativeChatConversation,
@@ -74,10 +89,12 @@ internal fun prepareNativeChatDirectReply(
     replyId: String,
     rawText: String,
     now: Long,
+    expectedReplyEpoch: Long = 0L,
 ): PreparedNativeChatDirectReply? {
     val text = rawText.trim()
     if (text.isEmpty() || text.length > MAX_REPLY_TEXT_CHARS) return null
     val conversation = archive.conversations.firstOrNull { it.id == conversationId } ?: return null
+    if (conversation.replyEpoch != expectedReplyEpoch) return null
     val messageId = "direct_reply_user_$replyId"
     val existing = conversation.messages.firstOrNull { it.id == messageId }
     val userMessage = existing ?: ModelChatMessage(
@@ -147,6 +164,7 @@ internal object NativeChatDirectReply {
                     .build()
             )
             .putExtra(EXTRA_CONVERSATION_ID, conversation.id)
+            .putExtra(INPUT_REPLY_EPOCH, conversation.replyEpoch)
         val pendingIntent = PendingIntent.getBroadcast(
             appContext,
             0,
@@ -166,15 +184,11 @@ internal object NativeChatDirectReply {
             .build()
     }
 
-    fun enqueue(context: Context, conversationId: String, rawText: String): Boolean {
+    fun enqueue(context: Context, conversationId: String, rawText: String, replyEpoch: Long): Boolean {
         val text = rawText.trim()
         if (conversationId.isBlank() || text.isEmpty() || text.length > MAX_REPLY_TEXT_CHARS) return false
         val replyId = UUID.randomUUID().toString()
-        val input = Data.Builder()
-            .putString(INPUT_REPLY_ID, replyId)
-            .putString(INPUT_CONVERSATION_ID, conversationId)
-            .putString(INPUT_REPLY_TEXT, text)
-            .build()
+        val input = buildNativeChatReplyInput(replyId, conversationId, text, replyEpoch) ?: return false
         val request = OneTimeWorkRequestBuilder<NativeChatDirectReplyWorker>()
             .setInputData(input)
             .setConstraints(
@@ -201,7 +215,9 @@ class NativeChatDirectReplyReceiver : BroadcastReceiver() {
             ?.getCharSequence(NATIVE_CHAT_DIRECT_REPLY_RESULT_KEY)
             ?.toString()
             .orEmpty()
-        NativeChatDirectReply.enqueue(context, conversationId, reply)
+        if (!NativeChatDirectReply.enqueue(context, conversationId, reply, intent.getLongExtra(INPUT_REPLY_EPOCH, 0L))) {
+            publishFailureForStoredConversation(context, conversationId)
+        }
     }
 }
 
@@ -216,7 +232,7 @@ class NativeChatDirectReplyWorker(
         if (conversationId.isEmpty() || replyId.isEmpty()) return Result.success()
 
         return try {
-            processDirectReply(applicationContext, conversationId, replyId, replyText)
+            processDirectReply(applicationContext, conversationId, replyId, replyText, inputData.getLong(INPUT_REPLY_EPOCH, 0L))
             Result.success()
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -241,49 +257,58 @@ private suspend fun processDirectReply(
     conversationId: String,
     replyId: String,
     replyText: String,
+    replyEpoch: Long,
 ): Boolean {
     val store = NativeChatStore(context.noBackupFilesDir)
-    val initialArchive = (NativeChatWriter.currentArchive() ?: store.load())
-        ?.normalized()
-        ?: return false
-    val originalConversation = initialArchive.conversations.firstOrNull { it.id == conversationId }
-        ?: return false
-    val apiKeys = ApiKeyStore(context).load()
-    if (!canNativeChatDirectReply(originalConversation, apiKeys)) {
-        NativeChatNotificationPublisher.publishReplyFailed(context, originalConversation)
-        return false
+    val writer = NativeChatWriter.getInstance(store) { archive ->
+        NativeChatWidgetUpdater.onArchiveSaved(context.applicationContext, archive)
     }
-
-    val prepared = prepareNativeChatDirectReply(
-        archive = initialArchive,
-        conversationId = conversationId,
-        replyId = replyId,
-        rawText = replyText,
-        now = System.currentTimeMillis(),
-    ) ?: return false
-    if (!persistDirectReplyArchive(context, store, prepared.archive)) return false
+    val apiKeys = ApiKeyStore(context).load()
+    var prepared: PreparedNativeChatDirectReply? = null
+    val preparedArchive = writer.updateAndPersist { archive ->
+        val conversation = archive.conversations.firstOrNull { it.id == conversationId }
+            ?: return@updateAndPersist null
+        if (!canNativeChatDirectReply(conversation, apiKeys)) return@updateAndPersist null
+        prepareNativeChatDirectReply(
+            archive, conversationId, replyId, replyText, System.currentTimeMillis(), replyEpoch,
+        )?.also { prepared = it }?.archive
+    }
+    if (preparedArchive == null) {
+        publishFailureForStoredConversation(context, conversationId)
+        return false // Permanent rejection: deleted conversation, invalid input, or missing key.
+    }
+    val reply = requireNotNull(prepared)
+    val originalConversation = reply.conversation
     NativeChatNotificationPublisher.publishReplyInProgress(context, originalConversation)
 
-    val promptContext = loadDirectReplyPromptContext(context, prepared.conversation)
-    val providers = when (prepared.conversation.selectedProvider) {
+    val promptContext = loadDirectReplyPromptContext(context, reply.conversation)
+    val providers = when (reply.conversation.selectedProvider) {
         AiProvider.ALL -> apiKeys.configuredDirectProviders()
-        else -> listOf(prepared.conversation.selectedProvider)
+        else -> listOf(reply.conversation.selectedProvider)
     }
     if (providers.isEmpty()) {
         NativeChatNotificationPublisher.publishReplyFailed(context, originalConversation)
         return false
     }
 
-    val generated = executeNativeChatSend(
+    // A failed archive write leaves the generated turn in the shared writer.
+    // Reuse it on retry instead of making the same provider request again.
+    val existingResponses = reply.conversation.messages.filter { message ->
+        providers.any { message.id == "direct_reply_${replyId}_${it.id}" }
+    }
+    val missingProviders = providers.filter { provider ->
+        existingResponses.none { it.id == "direct_reply_${replyId}_${provider.id}" }
+    }
+    val generated = existingResponses + if (missingProviders.isEmpty()) emptyList() else executeNativeChatSend(
         request = NativeChatSendRequest(
-            prompt = prepared.userMessage.text,
-            targetProvider = prepared.conversation.selectedProvider,
-            providersToRun = providers,
-            selectedModel = prepared.conversation.selectedModel,
+            prompt = reply.userMessage.text,
+            targetProvider = reply.conversation.selectedProvider,
+            providersToRun = missingProviders,
+            selectedModel = reply.conversation.selectedModel,
             apiKeys = apiKeys,
             systemInstruction = promptContext.systemInstruction,
             profile = promptContext.activeProfile,
-            conversationHistory = prepared.conversation.messages,
+            conversationHistory = reply.conversation.messages,
             allowSingleProviderSimulationFallback = false,
         ),
         aiChatService = AiChatService(),
@@ -291,17 +316,15 @@ private suspend fun processDirectReply(
         result.message.copy(id = "direct_reply_${replyId}_${result.provider.id}")
     }
 
-    val latestArchive = (NativeChatWriter.currentArchive() ?: store.load())
-        ?.normalized()
-        ?: prepared.archive
-    val completedArchive = mergeNativeChatDirectReplyResponses(
-        archive = latestArchive,
-        conversationId = conversationId,
-        userMessageId = prepared.userMessage.id,
-        responses = generated,
-        now = System.currentTimeMillis(),
-    ) ?: return false
-    if (!persistDirectReplyArchive(context, store, completedArchive)) return false
+    val completedArchive = writer.updateAndPersist { latest ->
+        mergeNativeChatDirectReplyResponses(
+            archive = latest,
+            conversationId = conversationId,
+            userMessageId = reply.userMessage.id,
+            responses = generated,
+            now = System.currentTimeMillis(),
+        )
+    } ?: return false // Conversation or turn was explicitly removed while generating.
 
     val completedConversation = completedArchive.conversations.firstOrNull { it.id == conversationId }
         ?: return false
@@ -343,17 +366,6 @@ private suspend fun loadDirectReplyPromptContext(
         systemInstruction = composeLocalSkillSystemInstruction(baseInstruction, skills),
         activeProfile = mergedProfile,
     )
-}
-
-private suspend fun persistDirectReplyArchive(
-    context: Context,
-    store: NativeChatStore,
-    archive: NativeChatArchive,
-): Boolean {
-    if (!store.save(archive)) return false
-    NativeChatWriter.acceptExternalArchive(archive)
-    NativeChatWidgetUpdater.onArchiveSaved(context, archive)
-    return true
 }
 
 private fun publishFailureForStoredConversation(context: Context, conversationId: String) {

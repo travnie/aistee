@@ -140,6 +140,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val apiKeyStore = ApiKeyStore(application.applicationContext)
     private val studioStateStore = StudioStateStore(application.applicationContext)
     private val webChatPreferencesStore = WebChatPreferencesStore(application.applicationContext)
+    private val nativePersistenceLock = Any()
+    private var nativePersistenceBase: NativeChatArchive? = null
     private val nativeChatStore = NativeChatStore(application.noBackupFilesDir)
     private val nativeChatWriter = NativeChatWriter.getInstance(nativeChatStore) { archive ->
         NativeChatWidgetUpdater.onArchiveSaved(application.applicationContext, archive)
@@ -249,39 +251,45 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(nativeChat = initial) }
         val cached = NativeChatWriter.currentArchive()?.normalized()
         if (cached != null && cached.conversations.isNotEmpty()) {
-            _uiState.update {
-                it.copy(nativeChat = cached, isNativeConversationStoreReady = true)
+            synchronized(nativePersistenceLock) {
+                nativePersistenceBase = cached
+                _uiState.update {
+                    it.copy(nativeChat = cached, isNativeConversationStoreReady = true)
+                }
             }
             applyPendingNativeConversationTarget()
             return
         }
         viewModelScope.launch(Dispatchers.IO) {
-            val restored = nativeChatStore.load()
+            val restored = nativeChatWriter.read()
                 ?.normalized()
                 ?.takeIf { it.conversations.isNotEmpty() }
                 ?: initial
-            _uiState.update {
-                it.copy(nativeChat = restored, isNativeConversationStoreReady = true)
+            synchronized(nativePersistenceLock) {
+                // Initialize only an empty writer; a worker may already have restored it.
+                val latest = nativeChatWriter.currentArchive() ?: nativeChatWriter.enqueue(restored)
+                nativePersistenceBase = latest
+                _uiState.update {
+                    it.copy(nativeChat = latest, isNativeConversationStoreReady = true)
+                }
             }
-            nativeChatWriter.enqueue(restored)
             applyPendingNativeConversationTarget()
         }
     }
 
     fun refreshNativeChatFromPersistence() {
-        val current = _uiState.value
-        if (!current.isNativeConversationStoreReady || current.isChatGenerating) return
-        viewModelScope.launch(Dispatchers.IO) {
-            val refreshed = (NativeChatWriter.currentArchive() ?: nativeChatStore.load())
-                ?.normalized()
-                ?.takeIf { it.conversations.isNotEmpty() }
-                ?: return@launch
-            _uiState.update { state ->
-                if (state.isChatGenerating || state.nativeChat == refreshed) state
-                else state.copy(nativeChat = refreshed, isNativeConversationStoreReady = true)
+        synchronized(nativePersistenceLock) {
+            val state = _uiState.value
+            if (!state.isNativeConversationStoreReady || state.isChatGenerating) return
+            // Persist unsaved drafts against their baseline before showing worker changes.
+            val refreshed = nativeChatWriter.enqueue(state.nativeChat, nativePersistenceBase)
+            if (_uiState.compareAndSet(state, state.copy(nativeChat = refreshed))) {
+                nativePersistenceBase = refreshed
+            } else {
+                nativePersistenceBase = state.nativeChat
             }
-            applyPendingNativeConversationTarget()
         }
+        applyPendingNativeConversationTarget()
     }
 
     fun selectTab(tab: NavigationTab) {
@@ -491,9 +499,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     // --- Chat Screen Actions ---
 
     private fun persistNativeChat() {
-        val state = _uiState.value
-        if (state.isNativeConversationStoreReady) {
-            nativeChatWriter.enqueue(state.nativeChat)
+        synchronized(nativePersistenceLock) {
+            val state = _uiState.value
+            if (state.isNativeConversationStoreReady) {
+                nativeChatWriter.enqueue(state.nativeChat, nativePersistenceBase)
+                nativePersistenceBase = state.nativeChat
+            }
         }
     }
 
@@ -700,7 +711,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             conversation.copy(
                 title = DEFAULT_NATIVE_CONVERSATION_TITLE,
                 updatedAtEpochMs = now,
-                messages = welcomeChatMessages()
+                messages = welcomeChatMessages(),
+                replyEpoch = maxOf(now, conversation.replyEpoch + 1),
             )
         }
         NativeChatNotificationPublisher.cancelConversation(getApplication(), conversationId)
@@ -1306,9 +1318,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         studioPersistenceOwnerId?.let { ownerId ->
             studioStateWriter?.enqueue(latestSnapshot, ownerId)
         }
-        if (latestState.isNativeConversationStoreReady) {
-            nativeChatWriter.enqueue(latestState.nativeChat)
-        }
+        persistNativeChat()
         super.onCleared()
     }
 

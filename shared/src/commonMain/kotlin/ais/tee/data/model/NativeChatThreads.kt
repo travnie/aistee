@@ -18,7 +18,8 @@ data class NativeChatConversation(
     val draft: String = "",
     val selectedProvider: AiProvider = AiProvider.ALL,
     val selectedModel: String = "all",
-    val includeSystemProfile: Boolean = true
+    val includeSystemProfile: Boolean = true,
+    val replyEpoch: Long = 0L,
 ) {
     override fun toString(): String =
         "NativeChatConversation(id=<redacted>, title=<redacted>, messages=${messages.size}, " +

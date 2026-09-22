@@ -7,6 +7,7 @@ import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatArchive
 import ais.tee.data.model.NativeChatConversation
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -32,6 +33,24 @@ class NativeChatDirectReplyTest {
         messages = messages,
         draft = "keep my draft",
     )
+
+    @Test
+    fun retryCannotRecreateReplyAfterHistoryWasCleared() {
+        val chat = conversation()
+        val archive = NativeChatArchive(activeConversationId = chat.id, conversations = listOf(chat))
+        val prepared = requireNotNull(prepareNativeChatDirectReply(archive, chat.id, "retry", "hello", 10L))
+        val generated = ModelChatMessage(id = "direct_reply_retry_chatgpt", sender = CHAT_ROLE_ASSISTANT, text = "answer")
+        val completed = requireNotNull(mergeNativeChatDirectReplyResponses(prepared.archive, chat.id, prepared.userMessage.id, listOf(generated), 11L))
+        // Either initial or completion persistence can fail before a retry is scheduled.
+        for (pending in listOf(prepared.archive, completed)) {
+            val cleared = pending.copy(conversations = pending.conversations.map {
+                it.copy(messages = emptyList(), replyEpoch = 20L)
+            })
+            assertNull(prepareNativeChatDirectReply(cleared, chat.id, "retry", "hello", 30L, expectedReplyEpoch = 0L))
+            assertNull(mergeNativeChatDirectReplyResponses(cleared, chat.id, prepared.userMessage.id, listOf(generated), 30L))
+            assertTrue(prepareNativeChatDirectReply(cleared, chat.id, "fresh", "new", 30L, expectedReplyEpoch = 20L) != null)
+        }
+    }
 
     @Test
     fun directReplyRequiresConfiguredTransport() {
