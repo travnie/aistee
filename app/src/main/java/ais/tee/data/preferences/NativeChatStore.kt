@@ -107,6 +107,12 @@ internal class NativeChatWriter private constructor(
 
         fun currentArchive(): NativeChatArchive? = instance?.currentArchive()
 
+        fun acceptExternalArchive(archive: NativeChatArchive): Boolean {
+            val current = instance ?: return false
+            current.enqueue(archive)
+            return true
+        }
+
         internal fun createForTest(
             save: (NativeChatArchive) -> Boolean,
             scope: CoroutineScope,

@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import ais.tee.data.engine.AiChatService
 import ais.tee.data.engine.InstructionRenderer
+import ais.tee.data.engine.NativeChatSendRequest
+import ais.tee.data.engine.executeNativeChatSend
 import ais.tee.data.engine.ProfileMerger
 import ais.tee.data.engine.ValidationResult
 import ais.tee.data.engine.YamlParser
@@ -262,6 +264,22 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 it.copy(nativeChat = restored, isNativeConversationStoreReady = true)
             }
             nativeChatWriter.enqueue(restored)
+            applyPendingNativeConversationTarget()
+        }
+    }
+
+    fun refreshNativeChatFromPersistence() {
+        val current = _uiState.value
+        if (!current.isNativeConversationStoreReady || current.isChatGenerating) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val refreshed = (NativeChatWriter.currentArchive() ?: nativeChatStore.load())
+                ?.normalized()
+                ?.takeIf { it.conversations.isNotEmpty() }
+                ?: return@launch
+            _uiState.update { state ->
+                if (state.isChatGenerating || state.nativeChat == refreshed) state
+                else state.copy(nativeChat = refreshed, isNativeConversationStoreReady = true)
+            }
             applyPendingNativeConversationTarget()
         }
     }
@@ -925,37 +943,37 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 persistNativeChat()
                 val currentMessages = _uiState.value.chatMessages
 
-                suspend fun runProvider(provider: AiProvider, model: String, allowSimulationFallback: Boolean) {
-                    val streamMessageId = "stream_${userMessage.id}_${provider.id}"
-                    val response = aiChatService.generateResponse(
+                executeNativeChatSend(
+                    request = NativeChatSendRequest(
                         prompt = trimmed,
-                        provider = provider,
-                        modelName = model,
+                        targetProvider = targetProvider,
+                        providersToRun = providersToRun,
+                        selectedModel = _uiState.value.selectedChatModel,
                         apiKeys = apiKeys,
                         systemInstruction = promptContext.systemPrompt,
                         profile = promptContext.activeProfile,
                         conversationHistory = currentMessages,
-                        allowSimulationFallback = allowSimulationFallback,
-                        onTextDelta = { delta ->
-                            appendStreamingDelta(generationId, streamMessageId, provider, model, delta)
-                        }
-                    )
-                    finishStreamingMessage(generationId, streamMessageId, provider, response)
-                }
-
-                if (targetProvider == AiProvider.ALL) {
-                    providersToRun.map { provider ->
-                        async {
-                            runProvider(provider, provider.defaultModel, allowSimulationFallback = false)
-                        }
-                    }.awaitAll()
-                } else {
-                    runProvider(
-                        targetProvider,
-                        _uiState.value.selectedChatModel,
-                        allowSimulationFallback = true
-                    )
-                }
+                        allowSingleProviderSimulationFallback = targetProvider != AiProvider.ALL,
+                    ),
+                    aiChatService = aiChatService,
+                    onTextDelta = { provider, model, delta ->
+                        appendStreamingDelta(
+                            generationId,
+                            "stream_${userMessage.id}_${provider.id}",
+                            provider,
+                            model,
+                            delta,
+                        )
+                    },
+                    onResponse = { generated ->
+                        finishStreamingMessage(
+                            generationId,
+                            "stream_${userMessage.id}_${generated.provider.id}",
+                            generated.provider,
+                            generated.message,
+                        )
+                    },
+                )
                 _uiState.value.activeNativeConversation?.let { conversation ->
                     NativeChatNotificationPublisher.publishConversation(
                         getApplication(),
