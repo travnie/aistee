@@ -25,6 +25,8 @@ import ais.tee.data.engine.executeNativeChatSend
 import ais.tee.data.model.AiProvider
 import ais.tee.data.model.ApiKeyConfig
 import ais.tee.data.model.CHAT_ROLE_USER
+import ais.tee.data.model.ConversationSurfaceCapability
+import ais.tee.data.model.conversationSurfaceCapabilities
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatArchive
 import ais.tee.data.model.NativeChatConversation
@@ -74,9 +76,17 @@ internal fun buildNativeChatReplyInput(
 internal fun canNativeChatDirectReply(
     conversation: NativeChatConversation,
     apiKeys: ApiKeyConfig,
-): Boolean = when (conversation.selectedProvider) {
-    AiProvider.ALL -> apiKeys.configuredDirectProviders().isNotEmpty()
-    else -> apiKeys.hasKeyFor(conversation.selectedProvider)
+): Boolean {
+    if (
+        !conversation.selectedProvider.conversationSurfaceCapabilities()
+            .supports(ConversationSurfaceCapability.DIRECT_REPLY)
+    ) {
+        return false
+    }
+    return when (conversation.selectedProvider) {
+        AiProvider.ALL -> apiKeys.configuredDirectProviders().isNotEmpty()
+        else -> apiKeys.hasKeyFor(conversation.selectedProvider)
+    }
 }
 
 internal data class PreparedNativeChatDirectReply(

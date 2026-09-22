@@ -141,7 +141,7 @@ Treat Token Arena as the overlap between Bench tooling and a small experimental 
 - For locally owned native/API chats, publish proper conversation notifications with `MessagingStyle`, `Person` metadata and long-lived conversation shortcuts so Android can surface them consistently in conversation UI and system widgets.
 - **Shipped:** `RemoteInput` Direct Reply for locally owned native/API conversations, using an explicit mutable reply `PendingIntent`, WorkManager-backed network execution, the shared native send runtime, and same-notification sending/failure/completion updates.
 - For account-backed WebView providers, do not pretend background Direct Reply is reliable. Until a provider has a safe supported transport, capture the reply as a staged draft and deep-link into that exact provider/chat for explicit send rather than automating a hidden WebView.
-- Keep a provider capability matrix for notifications/widgets (`messageHistory`, `completionNotification`, `directReply`, `draftReply`, `deepLink`) so UI only promises actions that actually work.
+- **Shipped foundation:** keep the shared provider capability matrix for notifications/widgets (`messageHistory`, `completionNotification`, `directReply`, `draftReply`, `deepLink`) as the source of truth so UI only promises actions that actually work.
 - Free-form typing does not belong inside a Glance/RemoteViews widget. A pinned-chat widget should open the composer; true inline text entry belongs to notification Direct Reply where Android provides `RemoteInput`.
 - Re-check current Glance, conversation-notification and Direct Reply guidance at implementation time; these platform surfaces evolve independently from ordinary Compose UI.
 
