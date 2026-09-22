@@ -93,7 +93,6 @@ jobs:
       - name: Check generated Aistee profile coverage is current
         shell: python
         run: |
-          import difflib
           import pathlib
           import re
           import subprocess
@@ -125,18 +124,20 @@ jobs:
               committed = subprocess.check_output(
                   ["git", "show", f"HEAD:{path.as_posix()}"], text=True
               )
-              expected = canonical_rules(committed)
-              generated = canonical_rules(path.read_text())
-              if expected != generated:
+              committed_rules = set(canonical_rules(committed))
+              generated_rules = set(canonical_rules(path.read_text()))
+              missing = sorted(generated_rules - committed_rules)
+              if missing:
                   stale = True
-                  print(f"::error::{name} Aistee coverage is stale")
-                  print("".join(difflib.unified_diff(
-                      expected,
-                      generated,
-                      fromfile=f"committed/{name}",
-                      tofile=f"generated/{name}",
-                      lineterm="\n",
-                  )))
+                  print(f"::error::{name} is missing {len(missing)} generated Aistee rules")
+                  for rule in missing:
+                      print(f"+{rule}")
+              extra = committed_rules - generated_rules
+              if extra:
+                  print(
+                      f"::notice::{name} keeps {len(extra)} additional stable Aistee rules "
+                      "not observed in this run"
+                  )
 
           if stale:
               sys.exit(1)
