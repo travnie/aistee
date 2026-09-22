@@ -34,6 +34,7 @@ private fun structuredTextFormatFromDisplayName(displayName: String?): Structure
     val extension = normalized.substringAfterLast('.', missingDelimiterValue = "")
     return when (extension) {
         "json" -> StructuredTextFormat.JSON
+        "json5" -> StructuredTextFormat.JSON5
         "yaml", "yml" -> StructuredTextFormat.YAML
         "xml" -> StructuredTextFormat.XML
         else -> null
@@ -47,6 +48,9 @@ private fun structuredTextFormatFromMimeType(mimeType: String?): StructuredTextF
         normalized == "application/json" ||
             normalized == "text/json" ||
             mime.subtype.hasStructuredSuffix("json") -> StructuredTextFormat.JSON
+        normalized == "application/json5" ||
+            normalized == "text/json5" ||
+            mime.subtype.hasStructuredSuffix("json5") -> StructuredTextFormat.JSON5
         normalized in YAML_MIME_TYPES -> StructuredTextFormat.YAML
         normalized == "application/xml" ||
             normalized == "text/xml" ||

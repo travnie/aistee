@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.RemoteInput
 import androidx.work.Constraints
@@ -208,7 +209,13 @@ internal object NativeChatDirectReply {
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build()
             )
-            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .apply {
+                // Before Android 12 expedited work requires a foreground-service
+                // notification. Use ordinary constrained work on those devices.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                }
+            }
             .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
             "native-chat-direct-reply:$conversationId",

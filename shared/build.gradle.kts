@@ -20,13 +20,13 @@ kotlin {
         compilerOptions.jvmTarget.set(JvmTarget.JVM_21)
     }
 
-    iosX64()
     iosArm64()
     iosSimulatorArm64()
 
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.json5)
             implementation(libs.kotaml)
             implementation(libs.snakeyaml.engine.kmp)
             implementation(libs.normalize)
