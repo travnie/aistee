@@ -77,6 +77,12 @@ object DocxWordprocessingMl {
                     }
                     EventType.TEXT,
                     EventType.CDSECT -> if (insideText) paragraph?.text?.append(reader.text)
+                    EventType.ENTITY_REF -> if (insideText) {
+                        if (!reader.isKnownEntity) {
+                            throw IllegalArgumentException("DOCX contains an undeclared XML entity.")
+                        }
+                        paragraph?.text?.append(reader.text)
+                    }
                     EventType.DOCDECL -> throw IllegalArgumentException(
                         "DOCX WordprocessingML must not contain a DTD."
                     )
