@@ -102,11 +102,8 @@ data class BuiltInBenchToolCapabilities(
             }
         }
         if (BenchToolSurface.ACCOUNT_WEB_CHAT in surfaces) {
-            require(
-                BenchToolInvocationMode.EXPLICIT_USER_ACTION in invocationModes &&
-                    BenchToolInvocationMode.MODEL_TOOL_CALL !in invocationModes
-            ) {
-                "Account Web chat Bench bridges must remain explicit user actions only"
+            require(BenchToolInvocationMode.EXPLICIT_USER_ACTION in invocationModes) {
+                "Account Web chat Bench bridges must keep an explicit user-action route"
             }
         }
     }
@@ -138,7 +135,10 @@ fun BuiltInBenchTool.capabilities(): BuiltInBenchToolCapabilities = when (this) 
             BenchToolSurface.ACCOUNT_WEB_CHAT,
             BenchToolSurface.COMPANION_UI
         ),
-        invocationModes = setOf(BenchToolInvocationMode.EXPLICIT_USER_ACTION)
+        invocationModes = setOf(
+            BenchToolInvocationMode.EXPLICIT_USER_ACTION,
+            BenchToolInvocationMode.MODEL_TOOL_CALL
+        )
     )
 
     BuiltInBenchTool.DOCBENCH_TEXT_INSPECTOR -> BuiltInBenchToolCapabilities(
@@ -152,7 +152,10 @@ fun BuiltInBenchTool.capabilities(): BuiltInBenchToolCapabilities = when (this) 
             BenchToolSurface.ACCOUNT_WEB_CHAT,
             BenchToolSurface.COMPANION_UI
         ),
-        invocationModes = setOf(BenchToolInvocationMode.EXPLICIT_USER_ACTION)
+        invocationModes = setOf(
+            BenchToolInvocationMode.EXPLICIT_USER_ACTION,
+            BenchToolInvocationMode.MODEL_TOOL_CALL
+        )
     )
 
     BuiltInBenchTool.CODEBENCH_QR_BARCODE -> BuiltInBenchToolCapabilities(
