@@ -114,7 +114,11 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
     fun loadTextAsset(assetId: String, now: Long = System.currentTimeMillis()): LoadedProjectLibraryAsset? {
         val metadata = load(now).assets.firstOrNull { it.id == assetId } ?: return null
         val file = File(assetsDirectory, metadata.fileName)
-        if (!file.isFile || file.length() > MAX_ASSET_BYTES) return null
+        if (
+            !file.isFile ||
+            file.length() > MAX_ASSET_BYTES ||
+            file.length() != metadata.sizeBytes.toLong()
+        ) return null
         val text = runCatching {
             file.readBytes().decodeToString(throwOnInvalidSequence = true)
         }.getOrNull() ?: return null
