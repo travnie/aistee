@@ -302,6 +302,42 @@ class BuiltInBenchAvailabilityTest {
     }
 
     @Test
+    fun qrModelActionRequiresScopedProjectLibraryWrite() {
+        val blocked = BuiltInBenchTool.CODEBENCH_QR_BARCODE.availability(
+            surface = BenchToolSurface.NATIVE_CHAT,
+            invocationMode = BenchToolInvocationMode.MODEL_TOOL_CALL,
+            inputKind = BenchToolDataKind.TEXT,
+            isEnabled = true,
+            grantedPermissions = setOf(BenchToolPermission.READ_USER_SELECTED_CONTENT),
+            networkAvailable = false,
+            actionRequiredPermissions = setOf(BenchToolPermission.WRITE_PROJECT_LIBRARY)
+        )
+
+        assertFalse(blocked.canOffer)
+        assertEquals(CapabilityDecision.ASK, blocked.decision)
+        assertEquals(
+            setOf(BenchToolPermission.WRITE_PROJECT_LIBRARY),
+            blocked.missingRequiredPermissions
+        )
+
+        val available = BuiltInBenchTool.CODEBENCH_QR_BARCODE.availability(
+            surface = BenchToolSurface.NATIVE_CHAT,
+            invocationMode = BenchToolInvocationMode.MODEL_TOOL_CALL,
+            inputKind = BenchToolDataKind.TEXT,
+            isEnabled = true,
+            grantedPermissions = setOf(
+                BenchToolPermission.READ_USER_SELECTED_CONTENT,
+                BenchToolPermission.WRITE_PROJECT_LIBRARY,
+            ),
+            networkAvailable = false,
+            actionRequiredPermissions = setOf(BenchToolPermission.WRITE_PROJECT_LIBRARY)
+        )
+
+        assertTrue(available.canOffer)
+        assertEquals(CapabilityDecision.ALLOW, available.decision)
+    }
+
+    @Test
     fun concreteActionCannotRequireAnUndeclaredPermission() {
         assertFailsWith<IllegalArgumentException> {
             BuiltInBenchTool.DOCBENCH_TEXT_INSPECTOR.availability(
