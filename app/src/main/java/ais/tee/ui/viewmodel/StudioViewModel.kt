@@ -395,15 +395,21 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun completePendingWebDraft(service: WebAiService, draftId: String): Boolean {
-        if (!webChatDraftStore.consume(service, draftId)) return false
+        val consumed = webChatDraftStore.consume(service, draftId)
+        val latest = if (consumed) null else webChatDraftStore.peek(service)
+        val staleWasReplaced = latest?.id != draftId
         _uiState.update { state ->
             if (state.pendingWebDraft?.let { it.service == service && it.id == draftId } == true) {
-                state.copy(pendingWebDraft = null)
+                state.copy(
+                    pendingWebDraft = latest?.let { draft ->
+                        PendingWebDraft(draft.id, draft.service, draft.text)
+                    }
+                )
             } else {
                 state
             }
         }
-        return true
+        return consumed || staleWasReplaced
     }
 
     fun releasePendingWebDraftClaim(service: WebAiService, draftId: String): Boolean {
@@ -419,11 +425,21 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun dismissPendingWebDraft(service: WebAiService, draftId: String): Boolean {
-        val cleared = webChatDraftStore.consume(service, draftId)
+        val current = webChatDraftStore.peek(service)
+        val cleared = when {
+            current == null -> true
+            current.id == draftId -> webChatDraftStore.clear(service)
+            else -> true
+        }
         if (!cleared) return false
+        val latest = webChatDraftStore.peek(service)
         _uiState.update { state ->
             if (state.pendingWebDraft?.let { it.service == service && it.id == draftId } == true) {
-                state.copy(pendingWebDraft = null)
+                state.copy(
+                    pendingWebDraft = latest?.let { draft ->
+                        PendingWebDraft(draft.id, draft.service, draft.text)
+                    }
+                )
             } else {
                 state
             }
