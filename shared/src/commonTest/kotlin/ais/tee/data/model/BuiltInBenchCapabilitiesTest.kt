@@ -10,32 +10,32 @@ import kotlin.test.assertTrue
 
 class BuiltInBenchCapabilitiesTest {
     @Test
-    fun accountWebChatToolsRemainExplicitUserBridges() {
+    fun accountWebChatToolsKeepExplicitUserActionRoute() {
         builtInBenchToolsForSurface(BenchToolSurface.ACCOUNT_WEB_CHAT).forEach { tool ->
-            val capabilities = tool.capabilities()
-            assertTrue(BenchToolInvocationMode.EXPLICIT_USER_ACTION in capabilities.invocationModes)
-            assertFalse(BenchToolInvocationMode.MODEL_TOOL_CALL in capabilities.invocationModes)
-        }
-    }
-
-    @Test
-    fun accountWebChatCapabilityRejectsMixedModelInvocation() {
-        assertFailsWith<IllegalArgumentException> {
-            capability(
-                surfaces = setOf(BenchToolSurface.ACCOUNT_WEB_CHAT),
-                invocationModes = setOf(
-                    BenchToolInvocationMode.EXPLICIT_USER_ACTION,
-                    BenchToolInvocationMode.MODEL_TOOL_CALL
-                )
+            assertTrue(
+                BenchToolInvocationMode.EXPLICIT_USER_ACTION in tool.capabilities().invocationModes
             )
         }
     }
 
     @Test
-    fun noBuiltInBenchClaimsModelToolCallingBeforeTransportSupportExists() {
-        BuiltInBenchTool.entries.forEach { tool ->
-            assertFalse(BenchToolInvocationMode.MODEL_TOOL_CALL in tool.capabilities().invocationModes)
-        }
+    fun onlyLocalTextBenchToolsClaimNativeModelInvocation() {
+        val modelCallable = BuiltInBenchTool.entries.filter { tool ->
+            BenchToolInvocationMode.MODEL_TOOL_CALL in tool.capabilities().invocationModes
+        }.toSet()
+
+        assertEquals(
+            setOf(
+                BuiltInBenchTool.DOCBENCH_DOCUMENT,
+                BuiltInBenchTool.DOCBENCH_TEXT_INSPECTOR,
+                BuiltInBenchTool.CODEBENCH_QR_BARCODE,
+            ),
+            modelCallable,
+        )
+        assertFalse(
+            BenchToolInvocationMode.MODEL_TOOL_CALL in
+                BuiltInBenchTool.STREAMBENCH_PLAYER.capabilities().invocationModes
+        )
     }
 
     @Test
