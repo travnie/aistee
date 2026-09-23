@@ -1,6 +1,5 @@
 package ais.tee.data.document
 
-import org.intellij.markdown.CancellationToken
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownParsingException
 import org.intellij.markdown.MarkdownTokenTypes
@@ -57,8 +56,7 @@ object MarkdownStructureDiagnostics {
         val tree = try {
             MarkdownParser(
                 flavour = GFMFlavourDescriptor(),
-                assertionsEnabled = true,
-                cancellationToken = CancellationToken.NonCancellable
+                assertionsEnabled = true
             ).buildMarkdownTreeFromString(text as CharSequence)
         } catch (error: MarkdownParsingException) {
             return MarkdownStructureValidationResult(
@@ -67,7 +65,7 @@ object MarkdownStructureDiagnostics {
         }
 
         val issues = mutableListOf<MarkdownStructureIssue>()
-        collectIssues(tree, text, issues)
+        collectIssues(tree, text, issues, insideContainer = false)
         return MarkdownStructureValidationResult(issues = issues)
     }
 
@@ -128,13 +126,14 @@ object MarkdownStructureDiagnostics {
     private fun collectIssues(
         node: ASTNode,
         text: String,
-        output: MutableList<MarkdownStructureIssue>
+        output: MutableList<MarkdownStructureIssue>,
+        insideContainer: Boolean
     ) {
         if (
             node.type == MarkdownElementTypes.CODE_FENCE &&
             node.children.none { it.type == MarkdownTokenTypes.CODE_FENCE_END }
         ) {
-            openingFence(text, node)?.let { opening ->
+            openingFence(text, node, insideContainer)?.let { opening ->
                 val location = lineAndColumn(text, opening.offset)
                 output += MarkdownStructureIssue(
                     kind = MarkdownStructureIssueKind.UNCLOSED_CODE_FENCE,
@@ -151,10 +150,17 @@ object MarkdownStructureDiagnostics {
                 )
             }
         }
-        node.children.forEach { child -> collectIssues(child, text, output) }
+        val childInsideContainer = insideContainer || node.type in nestedContainerTypes
+        node.children.forEach { child ->
+            collectIssues(child, text, output, insideContainer = childInsideContainer)
+        }
     }
 
-    private fun openingFence(text: String, node: ASTNode): FenceOpening? {
+    private fun openingFence(
+        text: String,
+        node: ASTNode,
+        insideContainer: Boolean
+    ): FenceOpening? {
         val startNode = node.children.firstOrNull { it.type == MarkdownTokenTypes.CODE_FENCE_START }
             ?: return null
         val start = startNode.startOffset.coerceIn(0, text.length)
@@ -164,7 +170,8 @@ object MarkdownStructureDiagnostics {
         val delimiterOffset = start + match.first
         val lineStart = previousLineStart(text, delimiterOffset)
         val prefix = text.substring(lineStart, delimiterOffset)
-        val repairable = prefix.length <= 3 && prefix.all { it == ' ' }
+        val repairable =
+            !insideContainer && prefix.length <= 3 && prefix.all { it == ' ' }
         return FenceOpening(
             offset = delimiterOffset,
             delimiter = raw.substring(match.first, match.last + 1),
@@ -241,6 +248,13 @@ object MarkdownStructureDiagnostics {
         }
         return "\n"
     }
+
+    private val nestedContainerTypes = setOf(
+        MarkdownElementTypes.BLOCK_QUOTE,
+        MarkdownElementTypes.LIST_ITEM,
+        MarkdownElementTypes.ORDERED_LIST,
+        MarkdownElementTypes.UNORDERED_LIST
+    )
 
     private data class FenceOpening(
         val offset: Int,
