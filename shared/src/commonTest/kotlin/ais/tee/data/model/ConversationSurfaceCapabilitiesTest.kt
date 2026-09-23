@@ -15,7 +15,7 @@ class ConversationSurfaceCapabilitiesTest {
             assertTrue(capabilities.supports(ConversationSurfaceCapability.COMPLETION_NOTIFICATION))
             assertTrue(capabilities.supports(ConversationSurfaceCapability.DIRECT_REPLY))
             assertTrue(capabilities.supports(ConversationSurfaceCapability.DEEP_LINK))
-            assertFalse(capabilities.supports(ConversationSurfaceCapability.DRAFT_REPLY))
+            assertTrue(capabilities.supports(ConversationSurfaceCapability.DRAFT_REPLY))
             assertEquals(
                 CapabilityDecision.ALLOW,
                 capabilities.decision(ConversationSurfaceCapability.DIRECT_REPLY)
@@ -44,6 +44,10 @@ class ConversationSurfaceCapabilitiesTest {
             assertEquals(
                 CapabilityDecision.DENY,
                 capabilities.decision(ConversationSurfaceCapability.DIRECT_REPLY)
+            )
+            assertEquals(
+                CapabilityDecision.ALLOW,
+                capabilities.decision(ConversationSurfaceCapability.DRAFT_REPLY)
             )
         }
     }
