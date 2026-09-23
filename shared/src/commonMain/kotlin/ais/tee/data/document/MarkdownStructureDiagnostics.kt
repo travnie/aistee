@@ -54,10 +54,8 @@ object MarkdownStructureDiagnostics {
         inputError(text)?.let { return MarkdownStructureValidationResult(errorMessage = it) }
 
         val tree = try {
-            MarkdownParser(
-                flavour = GFMFlavourDescriptor(),
-                assertionsEnabled = true
-            ).buildMarkdownTreeFromString(text as CharSequence)
+            MarkdownParser(GFMFlavourDescriptor())
+                .buildMarkdownTreeFromString(text as CharSequence)
         } catch (error: MarkdownParsingException) {
             return MarkdownStructureValidationResult(
                 errorMessage = error.message ?: "Could not parse Markdown structure."
