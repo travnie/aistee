@@ -1,6 +1,7 @@
 package ais.tee
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -14,6 +15,7 @@ import ais.tee.data.preferences.WebChatPreferencesStore
 import ais.tee.ui.viewmodel.StudioViewModel
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -57,6 +59,14 @@ class WebProviderSignInTest {
         select(WebAiService.ZAI)
         openHelp()
         composeRule.onNodeWithTag("web_sign_in_method_GITHUB").assertIsSelected()
+    }
+
+    @Test
+    fun unverifiedProviderKeepsEmbeddedSignInDisabled() {
+        select(WebAiService.GROK)
+        openHelp()
+        composeRule.onNodeWithTag("web_sign_in_app").assertIsNotEnabled()
+        assertTrue(composeRule.onAllNodesWithTag("web_sign_in_browser").fetchSemanticsNodes().isNotEmpty())
     }
 
     @Test

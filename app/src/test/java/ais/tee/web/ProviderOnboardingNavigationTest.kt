@@ -64,6 +64,20 @@ class ProviderOnboardingNavigationTest {
     }
 
     @Test
+    fun newlyDescribedProvidersStayOutsideEmbeddedNavigationUntilVerified() {
+        listOf(
+            WebAiService.GROK,
+            WebAiService.CHARACTER_AI,
+            WebAiService.VENICE,
+            WebAiService.META_AI
+        ).forEach { service ->
+            assertTrue(service.onboardingCapabilities().hasIdentityAssistedPath)
+            assertFalse(ProviderWebRegistry.hasVerifiedTopLevelNavigationPolicy(service))
+            assertTrue(ProviderWebRegistry.topLevelNavigationAuthHosts(service).isEmpty())
+        }
+    }
+
+    @Test
     fun verifiedIdentityMethodsResolveToExpectedAndroidAuthHosts() {
         assertEquals(
             setOf("accounts.google.com", "github.com"),

@@ -69,6 +69,7 @@ import ais.tee.ui.theme.*
 import ais.tee.ui.viewmodel.StudioUiState
 import ais.tee.ui.viewmodel.StudioViewModel
 import ais.tee.web.ProviderDiagnosticsProbeResult
+import ais.tee.web.ProviderWebRegistry
 import ais.tee.web.StudioPromptApplyResult
 import ais.tee.web.probeProviderDiagnostics
 import ais.tee.web.providerDiagnosticsHost
@@ -1303,14 +1304,17 @@ fun WebChatScreen(
         WebProviderSignInDialog(
             service = selectedService,
             preferredMethod = preferredIdentityMethod,
-            canOpenInApp = activeWebView != null,
+            canOpenInApp = activeWebView != null &&
+                ProviderWebRegistry.hasVerifiedTopLevelNavigationPolicy(selectedService),
             onChooseMethod = { method ->
                 webPreferences.savePreferredIdentityMethod(method)
                 preferredIdentityMethod = method
             },
             onOpenInApp = {
-                activeWebView?.loadUrl(signInUrl)
-                showSignInHelp = false
+                if (ProviderWebRegistry.hasVerifiedTopLevelNavigationPolicy(selectedService)) {
+                    activeWebView?.loadUrl(signInUrl)
+                    showSignInHelp = false
+                }
             },
             onOpenInBrowser = {
                 if (openExternalUri(context, Uri.parse(signInUrl))) {

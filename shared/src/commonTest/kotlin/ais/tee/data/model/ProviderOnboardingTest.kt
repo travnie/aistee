@@ -7,30 +7,71 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ProviderOnboardingTest {
+    private val onboardingV2Providers = setOf(
+        WebAiService.QWEN,
+        WebAiService.COPILOT,
+        WebAiService.ZAI,
+        WebAiService.GROK,
+        WebAiService.CHARACTER_AI,
+        WebAiService.VENICE,
+        WebAiService.META_AI
+    )
+
     @Test
     fun signInEntriesStayOnProviderOwnedPages() {
         assertEquals("https://chat.qwen.ai/auth?action=signin", WebAiService.QWEN.onboardingCapabilities().signInUrl)
         assertEquals("https://chat.z.ai/auth", WebAiService.ZAI.onboardingCapabilities().signInUrl)
-        assertEquals(WebAiService.COPILOT.url, WebAiService.COPILOT.onboardingCapabilities().signInUrl)
-        WebAiService.entries.filterNot { it.onboardingCapabilities().hasIdentityAssistedPath }.forEach {
+
+        onboardingV2Providers
+            .filterNot { it == WebAiService.QWEN || it == WebAiService.ZAI }
+            .forEach { service ->
+                assertEquals(service.url, service.onboardingCapabilities().signInUrl, service.name)
+            }
+
+        WebAiService.entries.filterNot { it in onboardingV2Providers }.forEach {
             assertNull(it.onboardingCapabilities().signInUrl)
         }
     }
 
     @Test
-    fun exposesOnlyVerifiedPreferredIdentityMethods() {
-        assertEquals(
-            listOf(ProviderIdentityMethod.GOOGLE, ProviderIdentityMethod.GITHUB),
-            WebAiService.QWEN.onboardingCapabilities().preferredIdentityMethods
+    fun exposesCurrentProviderSignInMethods() {
+        val expected = mapOf(
+            WebAiService.QWEN to listOf(
+                ProviderIdentityMethod.GOOGLE,
+                ProviderIdentityMethod.GITHUB,
+                ProviderIdentityMethod.EMAIL
+            ),
+            WebAiService.COPILOT to listOf(
+                ProviderIdentityMethod.MICROSOFT,
+                ProviderIdentityMethod.GOOGLE,
+                ProviderIdentityMethod.APPLE
+            ),
+            WebAiService.ZAI to listOf(
+                ProviderIdentityMethod.GOOGLE,
+                ProviderIdentityMethod.GITHUB,
+                ProviderIdentityMethod.EMAIL
+            ),
+            WebAiService.GROK to listOf(
+                ProviderIdentityMethod.X,
+                ProviderIdentityMethod.GOOGLE,
+                ProviderIdentityMethod.APPLE,
+                ProviderIdentityMethod.EMAIL
+            ),
+            WebAiService.CHARACTER_AI to listOf(
+                ProviderIdentityMethod.GOOGLE,
+                ProviderIdentityMethod.APPLE,
+                ProviderIdentityMethod.EMAIL
+            ),
+            WebAiService.VENICE to listOf(
+                ProviderIdentityMethod.EMAIL,
+                ProviderIdentityMethod.WALLET_CONNECT
+            ),
+            WebAiService.META_AI to listOf(ProviderIdentityMethod.META_ACCOUNT)
         )
-        assertEquals(
-            listOf(ProviderIdentityMethod.MICROSOFT),
-            WebAiService.COPILOT.onboardingCapabilities().preferredIdentityMethods
-        )
-        assertEquals(
-            listOf(ProviderIdentityMethod.GOOGLE, ProviderIdentityMethod.GITHUB),
-            WebAiService.ZAI.onboardingCapabilities().preferredIdentityMethods
-        )
+
+        expected.forEach { (service, methods) ->
+            assertEquals(methods, service.onboardingCapabilities().preferredIdentityMethods, service.name)
+        }
     }
 
     @Test
@@ -43,21 +84,29 @@ class ProviderOnboardingTest {
             ProviderIdentityMethod.GOOGLE,
             WebAiService.ZAI.resolveOnboardingIdentityMethod(ProviderIdentityMethod.GOOGLE)
         )
+        assertEquals(
+            ProviderIdentityMethod.APPLE,
+            WebAiService.CHARACTER_AI.resolveOnboardingIdentityMethod(ProviderIdentityMethod.APPLE)
+        )
     }
 
     @Test
-    fun fallsBackToFirstVerifiedProviderMethodWhenPreferenceIsUnavailable() {
+    fun fallsBackToFirstProviderMethodWhenPreferenceIsUnavailable() {
         assertEquals(
             ProviderIdentityMethod.GOOGLE,
             WebAiService.QWEN.resolveOnboardingIdentityMethod(ProviderIdentityMethod.MICROSOFT)
         )
         assertEquals(
             ProviderIdentityMethod.MICROSOFT,
-            WebAiService.COPILOT.resolveOnboardingIdentityMethod(ProviderIdentityMethod.GOOGLE)
+            WebAiService.COPILOT.resolveOnboardingIdentityMethod(ProviderIdentityMethod.GITHUB)
         )
         assertEquals(
-            ProviderIdentityMethod.GOOGLE,
-            WebAiService.QWEN.resolveOnboardingIdentityMethod(null)
+            ProviderIdentityMethod.X,
+            WebAiService.GROK.resolveOnboardingIdentityMethod(null)
+        )
+        assertEquals(
+            ProviderIdentityMethod.META_ACCOUNT,
+            WebAiService.META_AI.resolveOnboardingIdentityMethod(ProviderIdentityMethod.GOOGLE)
         )
     }
 
@@ -70,9 +119,7 @@ class ProviderOnboardingTest {
 
     @Test
     fun doesNotInventIdentityPathsForUnsupportedProviders() {
-        val verified = setOf(WebAiService.QWEN, WebAiService.COPILOT, WebAiService.ZAI)
-
-        WebAiService.entries.filterNot { it in verified }.forEach { service ->
+        WebAiService.entries.filterNot { it in onboardingV2Providers }.forEach { service ->
             val capabilities = service.onboardingCapabilities()
             assertFalse(capabilities.hasIdentityAssistedPath, service.name)
             assertEquals(
@@ -84,8 +131,8 @@ class ProviderOnboardingTest {
     }
 
     @Test
-    fun identityMethodsDoNotClaimEmbeddedSessionHandoff() {
-        listOf(WebAiService.QWEN, WebAiService.COPILOT, WebAiService.ZAI).forEach { service ->
+    fun providerMethodsDoNotClaimEmbeddedSessionHandoff() {
+        onboardingV2Providers.forEach { service ->
             val capabilities = service.onboardingCapabilities()
             assertTrue(capabilities.hasIdentityAssistedPath, service.name)
             assertEquals(
