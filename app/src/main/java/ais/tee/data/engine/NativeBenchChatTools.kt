@@ -1,6 +1,9 @@
 package ais.tee.data.engine
 
 import android.content.Context
+import ais.tee.data.codebench.CodebenchBarcodeCodec
+import ais.tee.data.codebench.CodebenchBarcodeFormat
+import ais.tee.data.codebench.CodebenchBarcodeMatrix
 import ais.tee.data.document.LineEnding
 import ais.tee.data.document.MarkdownStructureDiagnostics
 import ais.tee.data.document.StructuredTextDiagnostics
@@ -12,11 +15,13 @@ import ais.tee.data.model.BenchToolPermission
 import ais.tee.data.model.BenchToolSurface
 import ais.tee.data.model.BuiltInBenchTool
 import ais.tee.data.model.CapabilityDecision
+import ais.tee.data.model.DEFAULT_PROJECT_ID
 import ais.tee.data.model.NativeToolCall
 import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
 import ais.tee.data.model.availability
 import ais.tee.data.preferences.BuiltInBenchPreferencesStore
+import ais.tee.data.preferences.ProjectLibraryStore
 import ais.tee.data.security.TextInspector
 import ais.tee.data.tokenizer.LocalTokenCounter
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +42,7 @@ private const val REPAIR_MARKDOWN = "docbench_repair_markdown"
 private const val NORMALIZE_EOL = "docbench_normalize_eol"
 private const val INSPECT_TEXT = "docbench_inspect_text"
 private const val COUNT_TOKENS = "docbench_count_tokens"
+private const val GENERATE_QR = "codebench_generate_qr"
 private const val MAX_INLINE_TOOL_TEXT_CHARS = 20_000
 private const val MAX_INSPECTOR_FINDINGS_FOR_MODEL = 64
 
@@ -46,8 +52,12 @@ private const val MAX_INSPECTOR_FINDINGS_FOR_MODEL = 64
  * The executor receives only inline text already present in the model turn. It never opens files,
  * reads arbitrary app storage, uses the camera, writes exports or performs network access.
  */
-internal class NativeBenchChatTools(context: Context) {
+internal class NativeBenchChatTools(
+    context: Context,
+    private val projectId: String = DEFAULT_PROJECT_ID,
+) {
     private val preferences = BuiltInBenchPreferencesStore(context.applicationContext)
+    private val projectLibraryStore = ProjectLibraryStore(context.applicationContext.noBackupFilesDir)
 
     fun definitions(): List<NativeToolDefinition> {
         val enabled = preferences.loadEnabledTools()
@@ -60,6 +70,9 @@ internal class NativeBenchChatTools(context: Context) {
             }
             if (modelRouteAllowed(BuiltInBenchTool.DOCBENCH_TEXT_INSPECTOR, enabled)) {
                 add(textInspectorDefinition)
+            }
+            if (modelRouteAllowed(BuiltInBenchTool.CODEBENCH_QR_BARCODE, enabled)) {
+                add(qrDefinition)
             }
         }
     }
@@ -77,6 +90,7 @@ internal class NativeBenchChatTools(context: Context) {
             NORMALIZE_EOL -> normalizeEol(call)
             INSPECT_TEXT -> inspectText(call)
             COUNT_TOKENS -> countTokens(call)
+            GENERATE_QR -> generateQr(call)
             else -> errorResult(call, "Unknown first-party tool.")
         }
     }
@@ -195,6 +209,70 @@ internal class NativeBenchChatTools(context: Context) {
         )
     }
 
+    private fun generateQr(call: NativeToolCall): NativeToolResult {
+        val text = call.stringArgument("text")
+            ?.takeIf { it.isNotEmpty() && it.length <= CodebenchBarcodeCodec.MAX_CONTENT_UTF16_UNITS }
+            ?: return errorResult(call, "Missing or oversized QR text.")
+        val title = call.stringArgument("title")?.trim()?.takeIf(String::isNotEmpty) ?: "QR code"
+        val matrix = runCatching {
+            CodebenchBarcodeCodec.encode(
+                text = text,
+                format = CodebenchBarcodeFormat.QR_CODE,
+                width = 1,
+                height = 1,
+            )
+        }.getOrElse {
+            return errorResult(call, "QR payload could not be encoded.")
+        }
+        val asset = projectLibraryStore.saveTextAsset(
+            projectId = projectId,
+            title = title,
+            mediaType = "image/svg+xml",
+            extension = "svg",
+            text = matrix.toSvg(),
+        ) ?: return errorResult(call, "Could not save generated QR to Project Library.")
+        return successResult(
+            call,
+            buildJsonObject {
+                put("assetId", asset.id)
+                put("projectId", asset.projectId)
+                put("title", asset.title)
+                put("mediaType", asset.mediaType)
+                put("width", matrix.width)
+                put("height", matrix.height)
+            }
+        )
+    }
+
+    private fun CodebenchBarcodeMatrix.toSvg(): String = buildString {
+        append("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 """)
+        append(width)
+        append(' ')
+        append(height)
+        append(""""><rect width="100%" height="100%" fill="white"/><path fill="black" d="""")
+        for (y in 0 until height) {
+            var x = 0
+            while (x < width) {
+                if (!this@toSvg[x, y]) {
+                    x++
+                    continue
+                }
+                val start = x
+                while (x < width && this@toSvg[x, y]) x++
+                append("M")
+                append(start)
+                append(' ')
+                append(y)
+                append("h")
+                append(x - start)
+                append("v1H")
+                append(start)
+                append("z")
+            }
+        }
+        append(""""/></svg>""")
+    }
+
     private fun NativeToolCall.inlineText(): String? =
         stringArgument("text")
             ?.takeIf { it.isNotBlank() && it.length <= MAX_INLINE_TOOL_TEXT_CHARS }
@@ -216,6 +294,7 @@ internal class NativeBenchChatTools(context: Context) {
         NORMALIZE_EOL,
         COUNT_TOKENS -> BuiltInBenchTool.DOCBENCH_DOCUMENT
         INSPECT_TEXT -> BuiltInBenchTool.DOCBENCH_TEXT_INSPECTOR
+        GENERATE_QR -> BuiltInBenchTool.CODEBENCH_QR_BARCODE
         else -> null
     }
 
@@ -280,6 +359,25 @@ internal class NativeBenchChatTools(context: Context) {
             description = "Count inline text locally with Aistee's bundled o200k tokenizer.",
             inputSchema = objectSchema(
                 properties = buildJsonObject { put("text", textProperty) },
+                required = listOf("text"),
+            ),
+        )
+
+
+        val qrDefinition = NativeToolDefinition(
+            name = GENERATE_QR,
+            description = "Generate a QR code locally from inline text and save it as an SVG asset in Aistee Project Library. Returns metadata only, not image bytes.",
+            inputSchema = objectSchema(
+                properties = buildJsonObject {
+                    put("text", buildJsonObject {
+                        put("type", "string")
+                        put("description", "QR payload, up to 4096 UTF-16 code units.")
+                    })
+                    put("title", buildJsonObject {
+                        put("type", "string")
+                        put("description", "Optional short title for the saved Library asset.")
+                    })
+                },
                 required = listOf("text"),
             ),
         )
