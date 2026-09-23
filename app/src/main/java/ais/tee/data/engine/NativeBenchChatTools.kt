@@ -16,6 +16,7 @@ import ais.tee.data.model.BenchToolSurface
 import ais.tee.data.model.BuiltInBenchTool
 import ais.tee.data.model.CapabilityDecision
 import ais.tee.data.model.DEFAULT_PROJECT_ID
+import ais.tee.data.model.MAX_NATIVE_TOOL_RESULT_CHARS
 import ais.tee.data.model.NativeToolCall
 import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
@@ -282,8 +283,14 @@ internal class NativeBenchChatTools(
             ?.takeIf { it.isString }
             ?.contentOrNull
 
-    private fun successResult(call: NativeToolCall, payload: JsonObject): NativeToolResult =
-        NativeToolResult(call.callId, call.name, payload.toString())
+    private fun successResult(call: NativeToolCall, payload: JsonObject): NativeToolResult {
+        val encoded = payload.toString()
+        return if (encoded.length <= MAX_NATIVE_TOOL_RESULT_CHARS) {
+            NativeToolResult(call.callId, call.name, encoded)
+        } else {
+            errorResult(call, "Tool output exceeds the native chat result limit.")
+        }
+    }
 
     private fun errorResult(call: NativeToolCall, message: String): NativeToolResult =
         NativeToolResult(call.callId, call.name, message.take(1_000), isError = true)
