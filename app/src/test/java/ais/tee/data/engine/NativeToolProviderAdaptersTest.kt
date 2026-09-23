@@ -25,7 +25,7 @@ class NativeToolProviderAdaptersTest {
             put("properties", buildJsonObject {
                 put("text", buildJsonObject { put("type", "string") })
             })
-            put("required", kotlinx.serialization.json.buildJsonArray { add("text") })
+            put("required", kotlinx.serialization.json.buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive("text")) })
             put("additionalProperties", false)
         },
     )
