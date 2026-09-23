@@ -245,12 +245,21 @@ internal fun docbenchPrintPageStartLines(
 private fun requestedPageIndexes(
     pageCount: Int,
     ranges: Array<out PageRange>
+): IntArray = docbenchRequestedPageIndexes(
+    pageCount = pageCount,
+    ranges = ranges.map { range -> range.start..range.end }
+)
+
+internal fun docbenchRequestedPageIndexes(
+    pageCount: Int,
+    ranges: List<IntRange>
 ): IntArray {
     if (pageCount <= 0) return IntArray(0)
     val requested = BooleanArray(pageCount)
     ranges.forEach { range ->
-        val start = range.start.coerceIn(0, pageCount - 1)
-        val end = range.end.coerceAtMost(pageCount - 1)
+        if (range.first >= pageCount || range.last < 0) return@forEach
+        val start = range.first.coerceAtLeast(0)
+        val end = range.last.coerceAtMost(pageCount - 1)
         if (start <= end) {
             for (page in start..end) requested[page] = true
         }

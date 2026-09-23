@@ -39,6 +39,24 @@ class DocbenchTextPrintPaginationTest {
     }
 
     @Test
+    fun requestedPagesIgnoreRangesOutsideTheDocument() {
+        assertArrayEquals(
+            intArrayOf(0, 1, 3, 4),
+            docbenchRequestedPageIndexes(
+                pageCount = 5,
+                ranges = listOf(0..1, 3..10)
+            )
+        )
+        assertArrayEquals(
+            intArrayOf(),
+            docbenchRequestedPageIndexes(
+                pageCount = 3,
+                ranges = listOf(5..8)
+            )
+        )
+    }
+
+    @Test
     fun invalidPageGeometryIsRejected() {
         assertThrows(IllegalArgumentException::class.java) {
             docbenchPrintPageStartLines(intArrayOf(0, 10), 0)
