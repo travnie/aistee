@@ -91,7 +91,7 @@ internal fun DocbenchTextTransformPanel(
         modifier = modifier.padding(16.dp)
     ) {
         Text(
-            "Merge local Markdown/text files into this editor, format JSON or JSON5, normalize line endings, then export locally.",
+            "Merge local Markdown/text files into this editor, format JSON, JSON5 or YAML, normalize line endings, then export locally.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -117,7 +117,11 @@ internal fun DocbenchTextTransformPanel(
             Text(if (state.merging) "Merging…" else "Merge text files")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(StructuredTextFormat.JSON, StructuredTextFormat.JSON5).forEach { format ->
+            listOf(
+                StructuredTextFormat.JSON,
+                StructuredTextFormat.JSON5,
+                StructuredTextFormat.YAML
+            ).forEach { format ->
                 FilterChip(
                     selected = state.structuredFormat == format,
                     onClick = { state.structuredFormat = format },
@@ -130,7 +134,7 @@ internal fun DocbenchTextTransformPanel(
             }
         }
         Button(
-            onClick = { launchJsonFormat(scope, state, isEnabled) },
+            onClick = { launchStructuredFormat(scope, state, isEnabled) },
             enabled = state.canTransform,
             modifier = Modifier.testTag("docbench_json_formatter_run")
         ) {
@@ -175,7 +179,7 @@ internal fun DocbenchTextTransformPanel(
     }
 }
 
-private fun launchJsonFormat(
+private fun launchStructuredFormat(
     scope: CoroutineScope,
     state: DocbenchTextTransformUiState,
     isEnabled: () -> Boolean
@@ -196,14 +200,14 @@ private fun launchJsonFormat(
                 )
             }
             if (!isEnabled() || generation != state.sourceGeneration) return@launch
-            applyJsonFormatResult(state, formatToUse, action)
+            applyStructuredFormatResult(state, formatToUse, action)
         } finally {
             state.working = false
         }
     }
 }
 
-private fun applyJsonFormatResult(
+private fun applyStructuredFormatResult(
     state: DocbenchTextTransformUiState,
     format: StructuredTextFormat,
     action: DocbenchJsonFormatActionResult

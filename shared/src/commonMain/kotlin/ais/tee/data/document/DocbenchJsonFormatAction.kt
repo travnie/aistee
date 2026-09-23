@@ -8,7 +8,7 @@ import ais.tee.data.model.BuiltInBenchTool
 import ais.tee.data.model.BuiltInBenchToolAvailability
 import ais.tee.data.model.availability
 
-/** Result of one explicit, policy-gated Docbench JSON or JSON5 formatting action. */
+/** Result of one explicit, policy-gated Docbench structured-text formatting action. */
 sealed interface DocbenchJsonFormatActionResult {
     data class Completed(
         val text: String,
@@ -25,7 +25,7 @@ sealed interface DocbenchJsonFormatActionResult {
     ) : DocbenchJsonFormatActionResult
 }
 
-/** Explicit local JSON/JSON5 formatter backed by the fidelity-preserving Docbench core. */
+/** Explicit local structured-text formatter backed by the fidelity-preserving Docbench core. */
 object DocbenchJsonFormatAction {
     fun availability(
         surface: BenchToolSurface,
@@ -59,7 +59,7 @@ object DocbenchJsonFormatAction {
         val formatted = when (format) {
             StructuredTextFormat.JSON -> StructuredTextDiagnostics.formatJson(text)
             StructuredTextFormat.JSON5 -> StructuredTextDiagnostics.formatJson5(text)
-            StructuredTextFormat.YAML,
+            StructuredTextFormat.YAML -> StructuredTextDiagnostics.formatYaml(text)
             StructuredTextFormat.XML -> StructuredTextFormatResult(
                 text = text,
                 changed = false,
