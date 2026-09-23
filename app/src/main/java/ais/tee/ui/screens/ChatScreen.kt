@@ -288,7 +288,7 @@ private fun NativeChatDetailPane(
                 when {
                     imported == null -> viewModel.showSnackbar("Could not read the selected Markdown file.")
                     viewModel.importNativeChatMarkdown(imported.document.text) -> {
-                        viewModel.showSnackbar("Imported Aistee chat Markdown into a new conversation and Library asset.")
+                        viewModel.showSnackbar("Imported Aistee chat Markdown into a new conversation.")
                     }
                     else -> viewModel.showSnackbar("This file is not a canonical Aistee chat Markdown export.")
                 }
