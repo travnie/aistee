@@ -212,6 +212,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(projectLibrary = archive, isProjectLibraryReady = true) }
     }
 
+    private suspend fun reloadProjectLibraryFromDisk() {
+        val archive = withContext(Dispatchers.IO) { projectLibraryStore.load() }
+        _uiState.update { it.copy(projectLibrary = archive, isProjectLibraryReady = true) }
+    }
+
     private fun initPlaygroundWelcome() {
         val state = _uiState.value
         val activeProfile = state.mergedProfile
@@ -1106,6 +1111,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         )
                     },
                 )
+                reloadProjectLibraryFromDisk()
                 _uiState.value.activeNativeConversation?.let { conversation ->
                     NativeChatNotificationPublisher.publishConversation(
                         getApplication(),
