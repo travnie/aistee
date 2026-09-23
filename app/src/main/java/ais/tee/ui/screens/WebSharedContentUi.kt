@@ -88,6 +88,68 @@ internal fun SharedContentBanner(
 }
 
 @Composable
+internal fun DraftReplyBanner(
+    service: WebAiService,
+    text: String,
+    isClaimed: Boolean,
+    onInsertText: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    ElevatedCard(
+        modifier = modifier
+            .padding(12.dp)
+            .widthIn(max = 440.dp)
+            .fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Default.ContentPaste, contentDescription = null, tint = AccentCyan)
+                Text(
+                    "Draft reply → ${service.shortName}",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.weight(1f))
+                IconButton(
+                    onClick = onDismiss,
+                    enabled = !isClaimed,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Dismiss draft reply")
+                }
+            }
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                if (isClaimed) {
+                    "Draft insertion is in progress."
+                } else {
+                    "Tap the provider composer, then insert. Aistee will not send it for you."
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            TextButton(onClick = onInsertText, enabled = !isClaimed) {
+                Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(if (isClaimed) "Inserting…" else "Insert draft")
+            }
+        }
+    }
+}
+
+@Composable
 internal fun SharedUploadConfirmationDialog(
     service: WebAiService,
     attachmentCount: Int,
