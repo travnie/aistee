@@ -76,7 +76,7 @@ Models API aliases are resolved to the returned concrete `id`. Successful alias 
 
 When thinking is active, buffered responses retain the complete ordered assistant `content` array as ephemeral provider replay state. Streaming responses reconstruct the provider blocks from `content_block_start` plus `thinking_delta`, `signature_delta`, and `text_delta` events, delaying strict thinking-block validation until the signature delta has arrived. `thinking`, `signature`, and `redacted_thinking` data are never rendered, exported, logged, or rewritten; they are replayed only for the exact model that produced them. Responses stopped by `max_tokens` are marked partial and excluded from later history entirely. A model switch or malformed state falls back to visible assistant text.
 
-The current native path does not expose client tools, so streaming replay only mutates the block fields used by text/thinking/signature deltas. Provider-returned block starts, including opaque redacted-thinking blocks, remain otherwise untouched.
+The native path now has a typed client-tool boundary for verified direct providers. Tool-enabled turns use a bounded buffered loop so provider tool-call blocks and results can be replayed exactly within the current turn; ordinary tool-free Claude chat keeps the existing streaming path. Provider-returned thinking/redacted-thinking blocks remain opaque and are never exposed as tool input or UI text.
 
 ### Gateways
 
@@ -109,6 +109,7 @@ Costs are recorded only when the response reports them. Aistee does not estimate
 
 - [x] Make gateway model-catalog refresh cancellable through the same OkHttp coroutine bridge used by generation.
 - [x] Add a provider capability model for transport, instruction placement, response metadata and state strategy; extend it as reasoning controls land.
+- [x] Add a provider-neutral client-tool contract with bounded execution loops for Gemini GenerateContent, OpenAI Responses and Anthropic Messages; keep OpenAI-compatible gateways disabled until their routed-model tool guarantees are explicit.
 - [x] Preserve Gemini thought signatures in stateless `generateContent` by replaying full model `Content` chunks unchanged.
 - [x] Preserve OpenAI stateless reasoning items with `reasoning.encrypted_content` while keeping `store=false`.
 - [x] Add Claude thinking/effort only through model-aware capabilities; preserve opaque thinking blocks when enabled.
