@@ -45,7 +45,8 @@ fun WebAiService.onboardingCapabilities(): ProviderOnboardingCapabilities = when
     WebAiService.QWEN -> ProviderOnboardingCapabilities(
         preferredIdentityMethods = listOf(
             ProviderIdentityMethod.GOOGLE,
-            ProviderIdentityMethod.GITHUB
+            ProviderIdentityMethod.GITHUB,
+            ProviderIdentityMethod.EMAIL
         ),
         signInUrl = "https://chat.qwen.ai/auth?action=signin"
     )
@@ -60,7 +61,8 @@ fun WebAiService.onboardingCapabilities(): ProviderOnboardingCapabilities = when
     WebAiService.ZAI -> ProviderOnboardingCapabilities(
         preferredIdentityMethods = listOf(
             ProviderIdentityMethod.GOOGLE,
-            ProviderIdentityMethod.GITHUB
+            ProviderIdentityMethod.GITHUB,
+            ProviderIdentityMethod.EMAIL
         ),
         signInUrl = "https://chat.z.ai/auth"
     )
