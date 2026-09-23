@@ -39,7 +39,7 @@ class NativeToolProviderAdaptersTest {
         assertFalse(tool["strict"]?.jsonPrimitive?.content?.toBooleanStrict() ?: true)
 
         val response = json.parseToJsonElement(
-            """{"output":[{"type":"function_call","call_id":"call_1","name":"inspect_text","arguments":"{\\"text\\":\\"hello\\"}"}]}"""
+            """{"output":[{"type":"function_call","call_id":"call_1","name":"inspect_text","arguments":"{\"text\":\"hello\"}"}]}"""
         ).jsonObject
         val calls = parseOpenAiToolCalls(response, json)
         assertEquals("call_1", calls.single().call.callId)
