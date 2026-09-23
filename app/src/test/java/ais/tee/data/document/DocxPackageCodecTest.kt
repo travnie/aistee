@@ -69,7 +69,7 @@ class DocxPackageCodecTest {
     fun duplicatePackageEntriesAreRejected() {
         val bytes = zipOf(
             "word/document.xml" to "<x/>",
-            "word/document.xml" to "<x/>"
+            "/word/document.xml" to "<x/>"
         )
 
         assertThrows(IllegalArgumentException::class.java) {
