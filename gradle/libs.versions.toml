@@ -12,6 +12,7 @@ json5 = "0.8.0"
 kotaml = "0.111.0"
 snakeyamlEngineKmp = "4.0.1"
 normalize = "1.3.3"
+markdown = "0.7.14"
 xmlutil = "1.0.2.1"
 material3 = "1.4.0"
 material3Adaptive = "1.3.0"
@@ -60,6 +61,7 @@ json5 = { group = "li.songe", name = "json5", version.ref = "json5" }
 kotaml = { group = "io.heapy.kotaml", name = "kotaml", version.ref = "kotaml" }
 snakeyaml-engine-kmp = { group = "it.krzeminski", name = "snakeyaml-engine-kmp", version.ref = "snakeyamlEngineKmp" }
 normalize = { group = "com.doist.x", name = "normalize", version.ref = "normalize" }
+jetbrains-markdown = { group = "org.jetbrains", name = "markdown", version.ref = "markdown" }
 xmlutil-core = { group = "io.github.pdvrieze.xmlutil", name = "core", version.ref = "xmlutil" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
