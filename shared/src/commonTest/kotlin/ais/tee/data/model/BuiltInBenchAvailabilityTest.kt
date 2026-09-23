@@ -89,23 +89,47 @@ class BuiltInBenchAvailabilityTest {
     }
 
     @Test
-    fun currentRegistryNeverOffersModelToolCalling() {
-        BuiltInBenchTool.entries.forEach { tool ->
-            val capabilities = tool.capabilities()
-            val availability = tool.availability(
-                surface = capabilities.surfaces.first(),
+    fun nativeLocalToolsCanBeModelCalledButAccountWebStillRequiresInteraction() {
+        listOf(
+            BuiltInBenchTool.DOCBENCH_DOCUMENT,
+            BuiltInBenchTool.DOCBENCH_TEXT_INSPECTOR,
+            BuiltInBenchTool.CODEBENCH_QR_BARCODE,
+        ).forEach { tool ->
+            val input = BenchToolDataKind.TEXT
+            val native = tool.availability(
+                surface = BenchToolSurface.NATIVE_CHAT,
                 invocationMode = BenchToolInvocationMode.MODEL_TOOL_CALL,
-                inputKind = capabilities.inputs.first(),
+                inputKind = input,
                 isEnabled = true,
                 grantedPermissions = BenchToolPermission.entries.toSet(),
-                networkAvailable = true
+                networkAvailable = false,
             )
+            assertTrue(native.canOffer)
 
-            assertFalse(availability.canOffer)
-            assertTrue(
-                BenchToolAvailabilityBlocker.UNSUPPORTED_INVOCATION_MODE in availability.blockers
+            val web = tool.availability(
+                surface = BenchToolSurface.ACCOUNT_WEB_CHAT,
+                invocationMode = BenchToolInvocationMode.MODEL_TOOL_CALL,
+                inputKind = input,
+                isEnabled = true,
+                grantedPermissions = BenchToolPermission.entries.toSet(),
+                networkAvailable = false,
             )
+            assertFalse(web.canOffer)
+            assertEquals(CapabilityDecision.REQUIRES_USER_INTERACTION, web.decision)
         }
+
+        val streambench = BuiltInBenchTool.STREAMBENCH_PLAYER.availability(
+            surface = BenchToolSurface.COMPANION_UI,
+            invocationMode = BenchToolInvocationMode.MODEL_TOOL_CALL,
+            inputKind = BenchToolDataKind.MEDIA_STREAM,
+            isEnabled = true,
+            grantedPermissions = BenchToolPermission.entries.toSet(),
+            networkAvailable = true,
+        )
+        assertFalse(streambench.canOffer)
+        assertTrue(
+            BenchToolAvailabilityBlocker.UNSUPPORTED_INVOCATION_MODE in streambench.blockers
+        )
     }
 
     @Test
@@ -275,6 +299,42 @@ class BuiltInBenchAvailabilityTest {
         )
 
         assertTrue(available.canOffer)
+    }
+
+    @Test
+    fun qrModelActionRequiresScopedProjectLibraryWrite() {
+        val blocked = BuiltInBenchTool.CODEBENCH_QR_BARCODE.availability(
+            surface = BenchToolSurface.NATIVE_CHAT,
+            invocationMode = BenchToolInvocationMode.MODEL_TOOL_CALL,
+            inputKind = BenchToolDataKind.TEXT,
+            isEnabled = true,
+            grantedPermissions = setOf(BenchToolPermission.READ_USER_SELECTED_CONTENT),
+            networkAvailable = false,
+            actionRequiredPermissions = setOf(BenchToolPermission.WRITE_PROJECT_LIBRARY)
+        )
+
+        assertFalse(blocked.canOffer)
+        assertEquals(CapabilityDecision.ASK, blocked.decision)
+        assertEquals(
+            setOf(BenchToolPermission.WRITE_PROJECT_LIBRARY),
+            blocked.missingRequiredPermissions
+        )
+
+        val available = BuiltInBenchTool.CODEBENCH_QR_BARCODE.availability(
+            surface = BenchToolSurface.NATIVE_CHAT,
+            invocationMode = BenchToolInvocationMode.MODEL_TOOL_CALL,
+            inputKind = BenchToolDataKind.TEXT,
+            isEnabled = true,
+            grantedPermissions = setOf(
+                BenchToolPermission.READ_USER_SELECTED_CONTENT,
+                BenchToolPermission.WRITE_PROJECT_LIBRARY,
+            ),
+            networkAvailable = false,
+            actionRequiredPermissions = setOf(BenchToolPermission.WRITE_PROJECT_LIBRARY)
+        )
+
+        assertTrue(available.canOffer)
+        assertEquals(CapabilityDecision.ALLOW, available.decision)
     }
 
     @Test

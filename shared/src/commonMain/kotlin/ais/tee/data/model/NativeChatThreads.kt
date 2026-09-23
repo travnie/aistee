@@ -19,11 +19,12 @@ data class NativeChatConversation(
     val selectedProvider: AiProvider = AiProvider.ALL,
     val selectedModel: String = "all",
     val includeSystemProfile: Boolean = true,
+    val projectId: String = DEFAULT_PROJECT_ID,
     val replyEpoch: Long = 0L,
 ) {
     override fun toString(): String =
         "NativeChatConversation(id=<redacted>, title=<redacted>, messages=${messages.size}, " +
-            "selectedProvider=${selectedProvider.id}, selectedModel=<redacted>)"
+            "selectedProvider=${selectedProvider.id}, selectedModel=<redacted>, projectId=<redacted>)"
 }
 
 @Serializable
@@ -65,7 +66,8 @@ fun NativeChatArchive.normalized(): NativeChatArchive? {
                 provider == AiProvider.ALL -> "all"
                 conversation.selectedModel.isNotBlank() -> conversation.selectedModel
                 else -> provider.defaultModel
-            }
+            },
+            projectId = conversation.projectId.trim().ifEmpty { DEFAULT_PROJECT_ID }
         )
     }
     if (retained.isEmpty()) return copy(activeConversationId = "", conversations = emptyList())

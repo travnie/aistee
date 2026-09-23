@@ -62,7 +62,11 @@ fun BuiltInBenchTool.availability(
         if (surface !in capabilities.surfaces) {
             add(BenchToolAvailabilityBlocker.UNSUPPORTED_SURFACE)
         }
-        if (invocationMode !in capabilities.invocationModes) {
+        if (
+            invocationMode !in capabilities.invocationModes ||
+            (surface == BenchToolSurface.ACCOUNT_WEB_CHAT &&
+                invocationMode == BenchToolInvocationMode.MODEL_TOOL_CALL)
+        ) {
             add(BenchToolAvailabilityBlocker.UNSUPPORTED_INVOCATION_MODE)
         }
         if (inputKind !in capabilities.inputs) {

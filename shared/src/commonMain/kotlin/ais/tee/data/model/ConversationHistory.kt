@@ -35,7 +35,7 @@ fun ModelChatMessage.isCompletedAssistantResponse(): Boolean =
 
 private fun ModelChatMessage.isReplayableAssistantFor(provider: AiProvider): Boolean =
     sender == CHAT_ROLE_ASSISTANT &&
-        this.provider == provider &&
+        (this.provider == provider || (isImported && this.provider == null)) &&
         !isError &&
         !isSimulated &&
         !isPartial
@@ -43,9 +43,10 @@ private fun ModelChatMessage.isReplayableAssistantFor(provider: AiProvider): Boo
 /**
  * Builds a provider-scoped conversation suffix for stateless chat APIs.
  *
- * Only real assistant responses from the selected provider are replayed. User prompts are replayed
- * only when that provider produced a real response to the same turn, so switching providers does
- * not disclose earlier single-provider prompts. The newest complete user/assistant turns are
+ * Real assistant responses from the selected provider are replayed. Explicitly imported assistant
+ * turns with no provider identity are portable text context and may replay to the provider the user
+ * chooses next. Ordinary provider-scoped user prompts still replay only when that provider produced
+ * a real response to the same turn, so switching providers does not disclose unrelated prior prompts. The newest complete user/assistant turns are
  * retained within conservative transport limits so a long chat does not
  * grow without bound and eventually make every subsequent request fail. The current prompt is
  * always appended and is never duplicated when the caller already inserted it into history.

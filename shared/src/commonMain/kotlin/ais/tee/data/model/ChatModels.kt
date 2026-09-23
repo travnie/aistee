@@ -351,6 +351,7 @@ data class ModelChatMessage(
     val isError: Boolean = false,
     val isSimulated: Boolean = false,
     val isPartial: Boolean = false,
+    val isImported: Boolean = false,
     val latencyMs: Long? = null,
     val usage: ProviderUsage? = null,
     val activeProfileNotes: List<String> = emptyList(),
@@ -360,5 +361,5 @@ data class ModelChatMessage(
     override fun toString(): String =
         "ModelChatMessage(id=<redacted>, sender=$sender, provider=${provider?.id ?: "none"}, " +
             "text=<redacted>, activeProfileNotes=<redacted>, providerReplayState=<redacted>, " +
-            "isError=$isError, isSimulated=$isSimulated, isPartial=$isPartial)"
+            "isError=$isError, isSimulated=$isSimulated, isPartial=$isPartial, isImported=$isImported)"
 }

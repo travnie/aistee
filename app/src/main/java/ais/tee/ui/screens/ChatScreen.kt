@@ -64,6 +64,8 @@ import ais.tee.data.model.AiProvider
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatConversation
+import ais.tee.data.model.ProjectLibraryArchive
+import ais.tee.data.model.ProjectLibraryAsset
 import ais.tee.data.model.renderChatMarkdown
 import ais.tee.data.model.isCompletedAssistantResponse
 import ais.tee.notifications.NativeChatNotificationPreferences
@@ -271,6 +273,28 @@ private fun NativeChatDetailPane(
     var pendingMarkdownAsset by remember { mutableStateOf<PendingMarkdownAsset?>(null) }
     var pendingMarkdownPromptReplacement by remember { mutableStateOf<String?>(null) }
     var isPreparingChatMarkdown by remember { mutableStateOf(false) }
+    var showProjectLibrary by remember { mutableStateOf(false) }
+
+    val chatMarkdownImportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val imported = runCatching {
+                    withContext(Dispatchers.IO) {
+                        MarkdownDocumentFileAccess.import(context, uri)
+                    }
+                }.getOrNull()
+                when {
+                    imported == null -> viewModel.showSnackbar("Could not read the selected Markdown file.")
+                    viewModel.importNativeChatMarkdown(imported.document.text) -> {
+                        viewModel.showSnackbar("Imported Aistee chat Markdown into a new conversation.")
+                    }
+                    else -> viewModel.showSnackbar("This file is not a canonical Aistee chat Markdown export.")
+                }
+            }
+        }
+    }
 
     SideEffect {
         markdownWorkspaceViewModel.attachRecoveryStore(recoveryStore)
@@ -385,6 +409,51 @@ private fun NativeChatDetailPane(
         if (shouldFollow && currentMessageCount > 0) {
             listState.animateScrollToItem(currentMessageCount - 1)
         }
+    }
+
+    if (showProjectLibrary) {
+        ProjectLibraryDialog(
+            archive = uiState.projectLibrary,
+            activeProjectId = uiState.activeNativeConversation?.projectId,
+            onSelectProject = { projectId ->
+                if (!viewModel.moveActiveConversationToProject(projectId)) {
+                    viewModel.showSnackbar("Could not move this conversation to that project.")
+                }
+            },
+            onCreateProject = { name ->
+                scope.launch {
+                    if (!viewModel.createProject(name)) {
+                        viewModel.showSnackbar("Could not create project.")
+                    }
+                }
+            },
+            onOpenAsset = { asset ->
+                scope.launch {
+                    val text = viewModel.loadProjectLibraryAsset(asset.id)
+                    if (text == null) {
+                        viewModel.showSnackbar("Could not open Library asset.")
+                    } else {
+                        openMarkdownAsset(
+                            PendingMarkdownAsset(
+                                text = text,
+                                displayName = asset.title,
+                                sourceDescription = "Project Library",
+                            ),
+                            allowDiscardDirty = false,
+                        )
+                        showProjectLibrary = false
+                    }
+                }
+            },
+            onDeleteAsset = { asset ->
+                scope.launch {
+                    if (!viewModel.deleteProjectLibraryAsset(asset.id)) {
+                        viewModel.showSnackbar("Could not delete Library asset.")
+                    }
+                }
+            },
+            onDismiss = { showProjectLibrary = false },
+        )
     }
 
     if (showNotificationSettings) {
@@ -586,6 +655,53 @@ private fun NativeChatDetailPane(
                                             }
                                         },
                                         modifier = Modifier.testTag("btn_open_chat_markdown")
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Import Aistee chat Markdown") },
+                                        leadingIcon = {
+                                            Icon(Icons.Outlined.FileOpen, contentDescription = null)
+                                        },
+                                        enabled = !uiState.isChatGenerating,
+                                        onClick = {
+                                            showChatActionsMenu = false
+                                            chatMarkdownImportLauncher.launch(
+                                                arrayOf("text/markdown", "text/plain", "application/octet-stream")
+                                            )
+                                        },
+                                        modifier = Modifier.testTag("btn_import_chat_markdown")
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Save chat to Library") },
+                                        leadingIcon = {
+                                            Icon(Icons.Outlined.BookmarkAdd, contentDescription = null)
+                                        },
+                                        enabled = canOpenChatAsMarkdown && uiState.isProjectLibraryReady,
+                                        onClick = {
+                                            showChatActionsMenu = false
+                                            scope.launch {
+                                                val asset = viewModel.saveActiveChatToProjectLibrary()
+                                                viewModel.showSnackbar(
+                                                    if (asset != null) {
+                                                        "Saved chat Markdown to Project Library."
+                                                    } else {
+                                                        "Could not save chat to Project Library."
+                                                    }
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier.testTag("btn_save_chat_library")
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Project Library") },
+                                        leadingIcon = {
+                                            Icon(Icons.Outlined.FolderOpen, contentDescription = null)
+                                        },
+                                        enabled = uiState.isProjectLibraryReady,
+                                        onClick = {
+                                            showChatActionsMenu = false
+                                            showProjectLibrary = true
+                                        },
+                                        modifier = Modifier.testTag("btn_project_library")
                                     )
                                     DropdownMenuItem(
                                         text = { Text(stringResource(R.string.notification_settings_menu)) },
@@ -1570,4 +1686,110 @@ fun getProviderIcon(provider: AiProvider): ImageVector {
         AiProvider.VERCEL -> Icons.Default.Cloud
         AiProvider.ALL -> Icons.Default.Hub
     }
+}
+
+
+@Composable
+private fun ProjectLibraryDialog(
+    archive: ProjectLibraryArchive,
+    activeProjectId: String?,
+    onSelectProject: (String) -> Unit,
+    onCreateProject: (String) -> Unit,
+    onOpenAsset: (ProjectLibraryAsset) -> Unit,
+    onDeleteAsset: (ProjectLibraryAsset) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var newProjectName by remember { mutableStateOf("") }
+    val selectedProjectId = activeProjectId
+        ?.takeIf { id -> archive.projects.any { it.id == id } }
+        ?: archive.projects.firstOrNull()?.id
+    val assets = archive.assets
+        .filter { it.projectId == selectedProjectId }
+        .sortedByDescending { it.createdAtEpochMs }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Project Library") },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    "Conversation project",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                archive.projects.forEach { project ->
+                    FilterChip(
+                        selected = project.id == selectedProjectId,
+                        onClick = { onSelectProject(project.id) },
+                        label = { Text(project.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = newProjectName,
+                        onValueChange = { newProjectName = it.take(80) },
+                        label = { Text("New project") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    FilledTonalButton(
+                        onClick = {
+                            val name = newProjectName.trim()
+                            if (name.isNotEmpty()) {
+                                onCreateProject(name)
+                                newProjectName = ""
+                            }
+                        },
+                        enabled = newProjectName.isNotBlank(),
+                    ) {
+                        Text("Add")
+                    }
+                }
+                HorizontalDivider()
+                Text(
+                    "Assets",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                if (assets.isEmpty()) {
+                    Text(
+                        "No assets in this project yet.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    assets.forEach { asset ->
+                        ListItem(
+                            headlineContent = {
+                                Text(asset.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            },
+                            supportingContent = {
+                                Text("${asset.mediaType} · ${asset.sizeBytes} B")
+                            },
+                            trailingContent = {
+                                Row {
+                                    IconButton(onClick = { onOpenAsset(asset) }) {
+                                        Icon(Icons.Outlined.OpenInNew, contentDescription = "Open asset")
+                                    }
+                                    IconButton(onClick = { onDeleteAsset(asset) }) {
+                                        Icon(Icons.Outlined.Delete, contentDescription = "Delete asset")
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        },
+    )
 }

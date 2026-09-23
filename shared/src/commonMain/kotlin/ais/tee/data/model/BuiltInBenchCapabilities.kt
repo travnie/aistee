@@ -30,6 +30,7 @@ enum class BenchToolDataKind {
 /** Sensitive capabilities a first-party tool may need before an invocation can be offered. */
 enum class BenchToolPermission {
     READ_USER_SELECTED_CONTENT,
+    WRITE_PROJECT_LIBRARY,
     WRITE_USER_EXPORT,
     CAMERA,
     NETWORK
@@ -51,9 +52,9 @@ enum class BenchToolSurface {
 /**
  * Invocation policy is intentionally separate from surface support.
  *
- * No Bench is currently marked as model-callable here. Native/API model tool calling can be added
- * only after the corresponding transport implements a real typed tool boundary. Account WebViews
- * remain explicit user bridges rather than hidden page automation.
+ * Local Docbench text tools and Codebench QR generation may be model-callable on native/API chat
+ * because the typed transport boundary is implemented. Account WebViews remain explicit user
+ * bridges rather than hidden page automation.
  */
 enum class BenchToolInvocationMode {
     EXPLICIT_USER_ACTION,
@@ -102,11 +103,8 @@ data class BuiltInBenchToolCapabilities(
             }
         }
         if (BenchToolSurface.ACCOUNT_WEB_CHAT in surfaces) {
-            require(
-                BenchToolInvocationMode.EXPLICIT_USER_ACTION in invocationModes &&
-                    BenchToolInvocationMode.MODEL_TOOL_CALL !in invocationModes
-            ) {
-                "Account Web chat Bench bridges must remain explicit user actions only"
+            require(BenchToolInvocationMode.EXPLICIT_USER_ACTION in invocationModes) {
+                "Account Web chat Bench bridges must keep an explicit user-action route"
             }
         }
     }
@@ -138,7 +136,10 @@ fun BuiltInBenchTool.capabilities(): BuiltInBenchToolCapabilities = when (this) 
             BenchToolSurface.ACCOUNT_WEB_CHAT,
             BenchToolSurface.COMPANION_UI
         ),
-        invocationModes = setOf(BenchToolInvocationMode.EXPLICIT_USER_ACTION)
+        invocationModes = setOf(
+            BenchToolInvocationMode.EXPLICIT_USER_ACTION,
+            BenchToolInvocationMode.MODEL_TOOL_CALL
+        )
     )
 
     BuiltInBenchTool.DOCBENCH_TEXT_INSPECTOR -> BuiltInBenchToolCapabilities(
@@ -152,7 +153,10 @@ fun BuiltInBenchTool.capabilities(): BuiltInBenchToolCapabilities = when (this) 
             BenchToolSurface.ACCOUNT_WEB_CHAT,
             BenchToolSurface.COMPANION_UI
         ),
-        invocationModes = setOf(BenchToolInvocationMode.EXPLICIT_USER_ACTION)
+        invocationModes = setOf(
+            BenchToolInvocationMode.EXPLICIT_USER_ACTION,
+            BenchToolInvocationMode.MODEL_TOOL_CALL
+        )
     )
 
     BuiltInBenchTool.CODEBENCH_QR_BARCODE -> BuiltInBenchToolCapabilities(
@@ -162,6 +166,7 @@ fun BuiltInBenchTool.capabilities(): BuiltInBenchToolCapabilities = when (this) 
         requiredPermissions = emptySet(),
         optionalPermissions = setOf(
             BenchToolPermission.READ_USER_SELECTED_CONTENT,
+            BenchToolPermission.WRITE_PROJECT_LIBRARY,
             BenchToolPermission.WRITE_USER_EXPORT,
             BenchToolPermission.CAMERA
         ),
@@ -171,7 +176,10 @@ fun BuiltInBenchTool.capabilities(): BuiltInBenchToolCapabilities = when (this) 
             BenchToolSurface.ACCOUNT_WEB_CHAT,
             BenchToolSurface.COMPANION_UI
         ),
-        invocationModes = setOf(BenchToolInvocationMode.EXPLICIT_USER_ACTION)
+        invocationModes = setOf(
+            BenchToolInvocationMode.EXPLICIT_USER_ACTION,
+            BenchToolInvocationMode.MODEL_TOOL_CALL
+        )
     )
 
     BuiltInBenchTool.STREAMBENCH_PLAYER -> BuiltInBenchToolCapabilities(

@@ -55,8 +55,8 @@ The ideas are inspired by observed workflows in other AI/document apps and by to
 
 ## Projects and libraries
 
-- Group related chats, files and instructions into projects.
-- Give projects a small local library rather than forcing every file through the current chat composer.
+- **Shipped foundation:** group native chats and reusable local assets into projects; chats default to Inbox and can move between projects.
+- **Shipped foundation:** Project Library stores bounded local Markdown/text/SVG assets separately from provider sessions; chat exports and generated QR SVGs can be reused.
 - Allow adding either a local file or pasted text as reusable project context.
 - Make generated/imported artifacts easy to pin, reopen, edit, export or move into a project.
 - Keep the simple chat flow intact; projects/library features should be additive rather than mandatory ceremony.
@@ -79,7 +79,7 @@ These are Docbench-style capabilities to bring into Aistee, not changes to Docbe
 - Keep one source of truth for Bench logic. Prefer extracting/reusing portable cores or a narrow typed bridge over copying implementations into Aistee and letting them diverge.
 - **Docbench tool:** document/Markdown/JSON/YAML/XML validation, repair and formatting; EOL/BOM handling; the real local tokenizer; safe previews; and selected PDF operations where they fit a chat workflow.
 - **Docbench Text Inspector:** reuse the existing inspector as the pre-flight view for imported/selected text before it is trusted by a model or tool. Surface exact line/column, severity and safely escaped/decoded payloads for zero-width and bidi controls, Unicode tags, variation-selector carriers, mixed-script confusables, prompt-injection-like instructions, Base64-encoded instructions and oversized encoded carriers. Detection warns and reveals; it does not silently execute, rewrite or discard the source.
-- **Codebench tool:** local QR/barcode generation and scanning/decoding, including making a code from selected/chat text and returning decoded content to the composer when useful.
+- **Partly shipped:** Codebench native chat tool can generate QR from inline chat text and save SVG to Project Library. Camera/import decode stays explicit-user only for now.
 - **Streambench companion:** a persistent compact radio/media player that can keep playing while chatting, with station search/favorites/recents and now-playing metadata. Treat playback primarily as app UI, not as a fake model tool; optional chat actions can be layered on later.
 - Let users enable/disable built-in tools globally and, where useful, per chat/provider, with clear capability/permission indicators.
 
