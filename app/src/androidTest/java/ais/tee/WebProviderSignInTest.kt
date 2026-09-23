@@ -1,6 +1,7 @@
 package ais.tee
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -57,6 +58,14 @@ class WebProviderSignInTest {
         select(WebAiService.ZAI)
         openHelp()
         composeRule.onNodeWithTag("web_sign_in_method_GITHUB").assertIsSelected()
+    }
+
+    @Test
+    fun unverifiedProviderKeepsEmbeddedSignInDisabled() {
+        select(WebAiService.GROK)
+        openHelp()
+        composeRule.onNodeWithTag("web_sign_in_app").assertIsNotEnabled()
+        composeRule.onNodeWithTag("web_sign_in_browser").assertIsDisplayed()
     }
 
     @Test
