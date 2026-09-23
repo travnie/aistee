@@ -8,7 +8,13 @@ import ais.tee.data.model.ClaudeReasoningCapabilities
 import ais.tee.data.model.parseClaudeReasoningCapabilities
 import ais.tee.data.model.resolveClaudeThinkingBudget
 import ais.tee.data.model.GatewayModelCatalogEntry
+import ais.tee.data.model.ClientToolCallingStrategy
+import ais.tee.data.model.MAX_NATIVE_TOOL_ROUNDS
 import ais.tee.data.model.ModelChatMessage
+import ais.tee.data.model.NativeToolCall
+import ais.tee.data.model.NativeToolDefinition
+import ais.tee.data.model.NativeToolResult
+import ais.tee.data.model.runtimeCapabilities
 import ais.tee.data.model.ProviderUsage
 import ais.tee.data.model.buildBoundedProviderTextTurns
 import ais.tee.data.model.gatewayModelOptions
@@ -361,8 +367,18 @@ class AiChatService {
         profile: Profile?,
         conversationHistory: List<ModelChatMessage> = emptyList(),
         allowSimulationFallback: Boolean = true,
-        onTextDelta: ((String) -> Unit)? = null
+        onTextDelta: ((String) -> Unit)? = null,
+        tools: List<NativeToolDefinition> = emptyList(),
+        executeTool: (suspend (NativeToolCall) -> NativeToolResult)? = null,
     ): ModelChatMessage = withContext(Dispatchers.IO) {
+        require(tools.isEmpty() || executeTool != null) {
+            "A tool executor is required when client tools are offered"
+        }
+        if (tools.isNotEmpty()) {
+            require(provider.runtimeCapabilities().clientToolCallingStrategy != ClientToolCallingStrategy.NONE) {
+                "${provider.displayName} does not expose verified client tool calling"
+            }
+        }
         val startTime = System.currentTimeMillis()
         val effectiveModel = if (modelName == "all" || modelName.isBlank()) provider.defaultModel else modelName
         var resolvedModel = effectiveModel
@@ -387,36 +403,66 @@ class AiChatService {
             try {
                 val realResult = when (provider) {
                     AiProvider.GEMINI -> {
-                        val result = if (onTextDelta != null) {
-                            callGeminiStreamApi(
+                        val result = when {
+                            tools.isNotEmpty() -> callGeminiToolApi(
+                                prompt = prompt,
+                                model = effectiveModel,
+                                apiKey = key,
+                                systemInstruction = systemInstruction,
+                                conversationHistory = conversationHistory,
+                                tools = tools,
+                                executeTool = checkNotNull(executeTool),
+                            )
+                            onTextDelta != null -> callGeminiStreamApi(
                                 prompt, effectiveModel, key, systemInstruction, conversationHistory, onTextDelta
                             )
-                        } else {
-                            callGeminiApi(prompt, effectiveModel, key, systemInstruction, conversationHistory)
+                            else -> callGeminiApi(
+                                prompt, effectiveModel, key, systemInstruction, conversationHistory
+                            )
                         }
                         providerReplayState = result.replayState
                         providerUsage = result.usage
                         result.text
                     }
                     AiProvider.CHATGPT -> {
-                        val result = if (onTextDelta != null) {
-                            callOpenAiStreamApi(
+                        val result = when {
+                            tools.isNotEmpty() -> callOpenAiToolApi(
+                                prompt = prompt,
+                                model = effectiveModel,
+                                apiKey = key,
+                                systemInstruction = systemInstruction,
+                                conversationHistory = conversationHistory,
+                                tools = tools,
+                                executeTool = checkNotNull(executeTool),
+                            )
+                            onTextDelta != null -> callOpenAiStreamApi(
                                 prompt, effectiveModel, key, systemInstruction, conversationHistory, onTextDelta
                             )
-                        } else {
-                            callOpenAiApi(prompt, effectiveModel, key, systemInstruction, conversationHistory)
+                            else -> callOpenAiApi(
+                                prompt, effectiveModel, key, systemInstruction, conversationHistory
+                            )
                         }
                         providerReplayState = result.replayState
                         providerUsage = result.usage
                         result.text
                     }
                     AiProvider.CLAUDE -> {
-                        val result = if (onTextDelta != null) {
-                            callClaudeStreamApi(
+                        val result = when {
+                            tools.isNotEmpty() -> callClaudeToolApi(
+                                prompt = prompt,
+                                model = effectiveModel,
+                                apiKey = key,
+                                systemInstruction = systemInstruction,
+                                conversationHistory = conversationHistory,
+                                tools = tools,
+                                executeTool = checkNotNull(executeTool),
+                            )
+                            onTextDelta != null -> callClaudeStreamApi(
                                 prompt, effectiveModel, key, systemInstruction, conversationHistory, onTextDelta
                             )
-                        } else {
-                            callClaudeApi(prompt, effectiveModel, key, systemInstruction, conversationHistory)
+                            else -> callClaudeApi(
+                                prompt, effectiveModel, key, systemInstruction, conversationHistory
+                            )
                         }
                         providerReplayState = result.replayState
                         resolvedModel = result.resolvedModel
@@ -765,6 +811,66 @@ class AiChatService {
         )
     }
 
+    private suspend fun callGeminiToolApi(
+        prompt: String,
+        model: String,
+        apiKey: String,
+        systemInstruction: String?,
+        conversationHistory: List<ModelChatMessage>,
+        tools: List<NativeToolDefinition>,
+        executeTool: suspend (NativeToolCall) -> NativeToolResult,
+    ): GeminiGenerationResult {
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+        val contents = buildGeminiContents(
+            prompt = prompt,
+            conversationHistory = conversationHistory,
+            modelName = model,
+            systemInstruction = systemInstruction,
+        ).toMutableList()
+        val toolDefinitions = buildGeminiToolDefinitions(tools)
+        var usage: ProviderUsage? = null
+
+        repeat(MAX_NATIVE_TOOL_ROUNDS) { round ->
+            val requestPayload = buildJsonObject {
+                put("contents", JsonArray(contents))
+                put("tools", toolDefinitions)
+                if (!systemInstruction.isNullOrBlank()) {
+                    putJsonObject("systemInstruction") {
+                        putJsonArray(JSON_PARTS_KEY) {
+                            addJsonObject { put(JSON_TEXT_KEY, systemInstruction) }
+                        }
+                    }
+                }
+            }
+            val request = Request.Builder()
+                .url(url)
+                .post(requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
+                .build()
+            val responseBody = executeCancellableJson(request, "Empty response from Gemini server")
+            val parsed = json.parseToJsonElement(responseBody).jsonObject
+            usage = mergeProviderUsage(usage, extractGeminiUsage(parsed))
+            val modelContent = extractGeminiReplayContent(parsed)
+                ?: throw IOException("Gemini response is missing model content")
+            val calls = parseGeminiToolCalls(modelContent, round)
+            if (calls.isEmpty()) {
+                return GeminiGenerationResult(
+                    text = extractGeminiStreamText(parsed)
+                        ?: "Received empty content response from Gemini.",
+                    replayState = encodeGeminiReplayState(listOf(modelContent)),
+                    usage = usage,
+                )
+            }
+            if (round == MAX_NATIVE_TOOL_ROUNDS - 1) {
+                throw IOException("Gemini exceeded the local tool-call round limit")
+            }
+
+            contents += modelContent
+            val results = executeNativeToolBatch(calls, tools, executeTool)
+            contents += buildGeminiToolResultContent(calls, results, json)
+        }
+        throw IOException("Gemini tool-call loop ended unexpectedly")
+    }
+
     // --- OpenAI Responses API ---
     private suspend fun callOpenAiApi(
         prompt: String,
@@ -804,6 +910,73 @@ class AiChatService {
             replayState = extractOpenAiReplayState(parsed),
             usage = extractOpenAiUsage(parsed)
         )
+    }
+
+    private suspend fun callOpenAiToolApi(
+        prompt: String,
+        model: String,
+        apiKey: String,
+        systemInstruction: String?,
+        conversationHistory: List<ModelChatMessage>,
+        tools: List<NativeToolDefinition>,
+        executeTool: suspend (NativeToolCall) -> NativeToolResult,
+    ): OpenAiGenerationResult {
+        val url = "https://api.openai.com/v1/responses"
+        val input = buildOpenAiResponseInput(
+            prompt = prompt,
+            conversationHistory = conversationHistory,
+            systemInstruction = systemInstruction,
+            modelName = model,
+        ).toMutableList()
+        val replayItems = mutableListOf<JsonObject>()
+        val toolDefinitions = buildOpenAiToolDefinitions(tools)
+        var usage: ProviderUsage? = null
+
+        repeat(MAX_NATIVE_TOOL_ROUNDS) { round ->
+            val basePayload = buildOpenAiRequestPayload(
+                model = model,
+                stream = false,
+                systemInstruction = systemInstruction,
+                input = JsonArray(input),
+            )
+            val requestPayload = JsonObject(basePayload + ("tools" to toolDefinitions))
+            val request = Request.Builder()
+                .url(url)
+                .addHeader(HEADER_AUTHORIZATION, bearerToken(apiKey))
+                .addHeader(HEADER_CONTENT_TYPE, JSON_MEDIA_TYPE)
+                .post(requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
+                .build()
+
+            val responseBody = executeCancellableJson(request, "Empty response from OpenAI server")
+            val parsed = json.parseToJsonElement(responseBody).jsonObject
+            ensureOpenAiBufferedResponseCompleted(parsed)
+            usage = mergeProviderUsage(usage, extractOpenAiUsage(parsed))
+            val output = (parsed[JSON_OUTPUT_KEY] as? JsonArray)
+                ?.mapNotNull { it as? JsonObject }
+                ?: throw IOException("OpenAI response is missing output")
+            replayItems += output
+
+            val calls = parseOpenAiToolCalls(parsed, json)
+            if (calls.isEmpty()) {
+                return OpenAiGenerationResult(
+                    text = extractOpenAiResponseText(parsed)
+                        ?: "Received empty message content from OpenAI.",
+                    replayState = encodeOpenAiReplayState(replayItems),
+                    usage = usage,
+                )
+            }
+            if (round == MAX_NATIVE_TOOL_ROUNDS - 1) {
+                throw IOException("OpenAI exceeded the local tool-call round limit")
+            }
+
+            input += output
+            val results = executeNativeToolBatch(calls, tools, executeTool)
+            val resultItems = buildOpenAiToolResultItems(results)
+                .mapNotNull { it as? JsonObject }
+            input += resultItems
+            replayItems += resultItems
+        }
+        throw IOException("OpenAI tool-call loop ended unexpectedly")
     }
 
     internal fun parseClaudeModelMaxTokens(rawJson: String): Int? = runCatching {
@@ -997,6 +1170,91 @@ class AiChatService {
             isPartial = isPartial,
             usage = extractClaudeUsage(parsed)
         )
+    }
+
+    private suspend fun callClaudeToolApi(
+        prompt: String,
+        model: String,
+        apiKey: String,
+        systemInstruction: String?,
+        conversationHistory: List<ModelChatMessage>,
+        tools: List<NativeToolDefinition>,
+        executeTool: suspend (NativeToolCall) -> NativeToolResult,
+    ): ClaudeGenerationResult {
+        val metadata = resolveClaudeMetadata(model, apiKey)
+        val messages = buildClaudeMessages(
+            prompt,
+            conversationHistory,
+            systemInstruction,
+            metadata.resolvedModel,
+        ).toMutableList()
+        val toolDefinitions = buildClaudeToolDefinitions(tools)
+        var usage: ProviderUsage? = null
+        var resolvedModel = metadata.resolvedModel
+
+        repeat(MAX_NATIVE_TOOL_ROUNDS) { round ->
+            val basePayload = buildClaudeRequestPayload(
+                model = resolvedModel,
+                maxTokens = metadata.maxTokens,
+                stream = false,
+                systemInstruction = systemInstruction,
+                messages = JsonArray(messages),
+                reasoningCapabilities = metadata.reasoningCapabilities,
+            )
+            val requestPayload = JsonObject(basePayload + ("tools" to toolDefinitions))
+            val request = Request.Builder()
+                .url(CLAUDE_MESSAGES_API_URL)
+                .addHeader(HEADER_ANTHROPIC_API_KEY, apiKey)
+                .addHeader(HEADER_ANTHROPIC_VERSION, ANTHROPIC_API_VERSION)
+                .addHeader(HEADER_CONTENT_TYPE_LOWER, JSON_MEDIA_TYPE)
+                .post(requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
+                .build()
+
+            val responseBody = executeCancellableJson(request, "Empty response from Anthropic server")
+            val parsed = json.parseToJsonElement(responseBody).jsonObject
+            val responseModel = extractClaudeResponseModel(parsed) ?: resolvedModel
+            if (responseModel != resolvedModel) {
+                invalidateClaudeMetadata(apiKey, model, resolvedModel)
+                resolvedModel = responseModel
+            }
+            usage = mergeProviderUsage(usage, extractClaudeUsage(parsed))
+            val stopReason = extractClaudeStopReason(parsed)
+            val isPartial = isClaudePartialStopReason(stopReason)
+            val calls = parseClaudeToolCalls(parsed)
+
+            if (calls.isEmpty()) {
+                return ClaudeGenerationResult(
+                    text = extractClaudeResponseText(parsed)
+                        ?: "Received empty content block from Claude.",
+                    replayState = if (isPartial) null else extractClaudeReplayState(parsed),
+                    resolvedModel = resolvedModel,
+                    isPartial = isPartial,
+                    usage = usage,
+                )
+            }
+            if (isPartial) {
+                throw IOException("Claude stopped before completing requested tool calls")
+            }
+            if (stopReason != "tool_use") {
+                throw IOException("Claude returned tool_use blocks without tool_use stop reason")
+            }
+            if (round == MAX_NATIVE_TOOL_ROUNDS - 1) {
+                throw IOException("Claude exceeded the local tool-call round limit")
+            }
+
+            val assistantContent = parsed[JSON_CONTENT_KEY] as? JsonArray
+                ?: throw IOException("Claude tool response is missing content")
+            messages += buildJsonObject {
+                put(JSON_ROLE_KEY, CHAT_ROLE_ASSISTANT)
+                put(JSON_CONTENT_KEY, assistantContent)
+            }
+            val results = executeNativeToolBatch(calls, tools, executeTool)
+            messages += buildJsonObject {
+                put(JSON_ROLE_KEY, CHAT_ROLE_USER)
+                put(JSON_CONTENT_KEY, buildClaudeToolResultContent(results))
+            }
+        }
+        throw IOException("Claude tool-call loop ended unexpectedly")
     }
 
     private fun JsonObject.hasClaudeStringField(name: String): Boolean =
