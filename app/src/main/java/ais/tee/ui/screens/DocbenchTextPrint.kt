@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Rect
+import android.graphics.text.LineBreaker
 import android.graphics.Typeface
 import android.os.Bundle
 import android.os.CancellationSignal
@@ -230,7 +231,7 @@ internal class DocbenchTextPrintAdapter(
             .obtain(text, 0, text.length, paint, contentRect.width())
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
             .setIncludePad(false)
-            .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+            .setBreakStrategy(LineBreaker.BREAK_STRATEGY_SIMPLE)
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
             .build()
         val lineTops = IntArray(textLayout.lineCount + 1) { line ->
