@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import ais.tee.data.engine.AiChatService
 import ais.tee.data.engine.InstructionRenderer
+import ais.tee.data.engine.NativeBenchChatTools
 import ais.tee.data.engine.NativeChatSendRequest
 import ais.tee.data.engine.executeNativeChatSend
 import ais.tee.data.engine.ProfileMerger
@@ -13,6 +14,7 @@ import ais.tee.data.engine.YamlParser
 import ais.tee.data.model.*
 import ais.tee.data.preferences.NativeChatStore
 import ais.tee.data.preferences.NativeChatWriter
+import ais.tee.data.preferences.ProjectLibraryStore
 import ais.tee.data.preferences.StudioStateStore
 import ais.tee.data.preferences.StudioStateWriter
 import ais.tee.data.preferences.WebChatPreferencesStore
@@ -103,7 +105,9 @@ data class StudioUiState(
     val activeGeneratingProviders: Set<AiProvider> = emptySet(),
     val showApiKeyDialog: Boolean = false,
     val gatewayModelOptions: Map<AiProvider, List<String>> = emptyMap(),
-    val refreshingGatewayCatalogs: Set<AiProvider> = emptySet()
+    val refreshingGatewayCatalogs: Set<AiProvider> = emptySet(),
+    val projectLibrary: ProjectLibraryArchive = ProjectLibraryArchive(),
+    val isProjectLibraryReady: Boolean = false,
 ) {
     val activeNativeConversation: NativeChatConversation?
         get() = nativeChat.activeConversation
@@ -143,6 +147,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val nativePersistenceLock = Any()
     private var nativePersistenceBase: NativeChatArchive? = null
     private val nativeChatStore = NativeChatStore(application.noBackupFilesDir)
+    private val projectLibraryStore = ProjectLibraryStore(application.noBackupFilesDir)
     private val nativeChatWriter = NativeChatWriter.getInstance(nativeChatStore) { archive ->
         NativeChatWidgetUpdater.onArchiveSaved(application.applicationContext, archive)
     }
@@ -188,8 +193,23 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             else -> recompute()
         }
         initPlaygroundWelcome()
+        initProjectLibrary()
         initNativeChatPersistence()
         startStudioPersistence(useFallbackPersistence)
+    }
+
+    private fun initProjectLibrary() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val archive = projectLibraryStore.load()
+            _uiState.update {
+                it.copy(projectLibrary = archive, isProjectLibraryReady = true)
+            }
+        }
+    }
+
+    private fun refreshProjectLibrary() {
+        val archive = projectLibraryStore.load()
+        _uiState.update { it.copy(projectLibrary = archive, isProjectLibraryReady = true) }
     }
 
     private fun initPlaygroundWelcome() {
@@ -235,7 +255,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         messages = welcomeChatMessages(),
         selectedProvider = template?.selectedProvider ?: AiProvider.ALL,
         selectedModel = template?.selectedModel ?: "all",
-        includeSystemProfile = template?.includeSystemProfile ?: true
+        includeSystemProfile = template?.includeSystemProfile ?: true,
+        projectId = template?.projectId ?: DEFAULT_PROJECT_ID,
     )
 
     private fun initialNativeChatArchive(): NativeChatArchive {
@@ -532,6 +553,95 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (!state.isNativeConversationStoreReady || state.activeNativeConversation?.draft == draft) return
         updateActiveNativeConversation(persist = false) { it.copy(draft = draft) }
         scheduleNativeChatDraftPersistence()
+    }
+
+    fun createProject(name: String): Boolean {
+        val project = projectLibraryStore.createProject(name) ?: return false
+        refreshProjectLibrary()
+        moveActiveConversationToProject(project.id)
+        return true
+    }
+
+    fun moveActiveConversationToProject(projectId: String): Boolean {
+        val state = _uiState.value
+        if (!state.isNativeConversationStoreReady) return false
+        if (state.projectLibrary.projects.none { it.id == projectId }) return false
+        updateActiveNativeConversation { conversation ->
+            conversation.copy(projectId = projectId, updatedAtEpochMs = System.currentTimeMillis())
+        }
+        return true
+    }
+
+    fun saveActiveChatToProjectLibrary(): ProjectLibraryAsset? {
+        val conversation = _uiState.value.activeNativeConversation ?: return null
+        val markdown = renderChatMarkdown(
+            messages = conversation.messages,
+            maxUtf8Bytes = ProjectLibraryStore.MAX_ASSET_BYTES,
+        ) ?: return null
+        val asset = projectLibraryStore.saveTextAsset(
+            projectId = conversation.projectId,
+            title = conversation.title,
+            mediaType = "text/markdown",
+            extension = "md",
+            text = markdown,
+        ) ?: return null
+        refreshProjectLibrary()
+        return asset
+    }
+
+    fun loadProjectLibraryAsset(assetId: String): String? =
+        projectLibraryStore.loadTextAsset(assetId)?.text
+
+    fun deleteProjectLibraryAsset(assetId: String): Boolean {
+        val deleted = projectLibraryStore.deleteAsset(assetId)
+        if (deleted) refreshProjectLibrary()
+        return deleted
+    }
+
+    fun importNativeChatMarkdown(source: String): Boolean {
+        if (!_uiState.value.isNativeConversationStoreReady) return false
+        val imported = parseChatMarkdown(source).chat ?: return false
+        val now = System.currentTimeMillis()
+        val messages = imported.turns.mapIndexed { index, turn ->
+            ModelChatMessage(
+                id = "import_${now}_${index}",
+                sender = turn.role,
+                text = turn.text,
+                timestamp = now + index,
+            )
+        }
+        val firstUser = messages.firstOrNull { it.sender == CHAT_ROLE_USER } ?: return false
+        val template = _uiState.value.activeNativeConversation
+        val conversation = NativeChatConversation(
+            id = UUID.randomUUID().toString(),
+            title = nativeConversationTitle(firstUser.text),
+            createdAtEpochMs = now,
+            updatedAtEpochMs = now,
+            messages = messages,
+            selectedProvider = template?.selectedProvider ?: AiProvider.ALL,
+            selectedModel = template?.selectedModel ?: "all",
+            includeSystemProfile = template?.includeSystemProfile ?: true,
+            projectId = template?.projectId ?: DEFAULT_PROJECT_ID,
+        )
+        cancelChatGeneration()
+        _uiState.update { state ->
+            state.copy(
+                nativeChat = state.nativeChat.copy(
+                    activeConversationId = conversation.id,
+                    conversations = listOf(conversation) + state.nativeChat.conversations,
+                )
+            )
+        }
+        persistNativeChat()
+        projectLibraryStore.saveTextAsset(
+            projectId = conversation.projectId,
+            title = conversation.title,
+            mediaType = "text/markdown",
+            extension = "md",
+            text = source,
+        )
+        refreshProjectLibrary()
+        return true
     }
 
     fun newNativeConversation() {
@@ -954,6 +1064,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 persistNativeChat()
                 val currentMessages = _uiState.value.chatMessages
+                val activeProjectId = _uiState.value.activeNativeConversation?.projectId
+                    ?: DEFAULT_PROJECT_ID
+                val benchTools = NativeBenchChatTools(
+                    context = getApplication(),
+                    projectId = activeProjectId,
+                )
+                val toolDefinitions = benchTools.definitions()
 
                 executeNativeChatSend(
                     request = NativeChatSendRequest(
@@ -966,6 +1083,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         profile = promptContext.activeProfile,
                         conversationHistory = currentMessages,
                         allowSingleProviderSimulationFallback = targetProvider != AiProvider.ALL,
+                        tools = toolDefinitions,
+                        executeTool = benchTools::execute,
                     ),
                     aiChatService = aiChatService,
                     onTextDelta = { provider, model, delta ->
