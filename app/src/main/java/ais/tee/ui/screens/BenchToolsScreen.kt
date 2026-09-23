@@ -38,6 +38,8 @@ import ais.tee.data.document.DocbenchPendingExportStore
 import ais.tee.data.document.DocbenchTextMergeAction
 import ais.tee.data.document.DocbenchTextMergeActionResult
 import ais.tee.data.document.DocbenchTextMergePart
+import ais.tee.data.document.DocbenchTextPrintAction
+import ais.tee.data.document.DocbenchTextPrintActionResult
 import ais.tee.data.document.MAX_DOCBENCH_MERGED_TEXT_CHARS
 import ais.tee.data.document.MAX_DOCBENCH_TEXT_MERGE_PARTS
 import ais.tee.data.document.DocbenchTextExportAction
@@ -1147,6 +1149,35 @@ fun BenchToolsScreen(modifier: Modifier = Modifier) {
                                             withContext(Dispatchers.IO) {
                                                 docbenchPendingMergeStore.delete(pendingId)
                                             }
+                                        }
+                                    }
+                                },
+                                onPrint = {
+                                    val state = docbenchTextTransformState
+                                    when (
+                                        val action = DocbenchTextPrintAction.execute(
+                                            text = state.source,
+                                            surface = BenchToolSurface.COMPANION_UI,
+                                            isEnabled = BuiltInBenchTool.DOCBENCH_DOCUMENT in
+                                                store.loadEnabledTools(),
+                                            grantedPermissions = setOf(
+                                                BenchToolPermission.READ_USER_SELECTED_CONTENT,
+                                                BenchToolPermission.WRITE_USER_EXPORT
+                                            )
+                                        )
+                                    ) {
+                                        is DocbenchTextPrintActionResult.Completed -> {
+                                            state.message = launchDocbenchTextPrint(
+                                                context,
+                                                action.text
+                                            )
+                                        }
+                                        is DocbenchTextPrintActionResult.Rejected -> {
+                                            state.message = action.message
+                                        }
+                                        is DocbenchTextPrintActionResult.Blocked -> {
+                                            state.message =
+                                                "Printing is blocked by the current Bench policy."
                                         }
                                     }
                                 },

@@ -1,0 +1,278 @@
+package ais.tee.ui.screens
+
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.graphics.Rect
+import android.graphics.Typeface
+import android.os.Bundle
+import android.os.CancellationSignal
+import android.os.ParcelFileDescriptor
+import android.print.PageRange
+import android.print.PrintAttributes
+import android.print.PrintDocumentAdapter
+import android.print.PrintDocumentInfo
+import android.print.PrintManager
+import android.print.pdf.PrintedPdfDocument
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
+import java.io.FileOutputStream
+import java.io.IOException
+import kotlin.math.min
+
+private const val DOCBENCH_PRINT_JOB_NAME = "Aistee Docbench"
+private const val DOCBENCH_PRINT_DOCUMENT_NAME = "docbench.txt"
+private const val DOCBENCH_PRINT_TEXT_SIZE_PT = 10f
+
+internal fun launchDocbenchTextPrint(context: Context, text: String): String {
+    val activity = context.findActivity()
+        ?: return "Printing requires an active Aistee window."
+    val printManager = activity.getSystemService(Context.PRINT_SERVICE) as? PrintManager
+        ?: return "Android printing is not available on this device."
+
+    return try {
+        printManager.print(
+            DOCBENCH_PRINT_JOB_NAME,
+            DocbenchTextPrintAdapter(activity, text),
+            null
+        )
+        "Opened the Android print dialog."
+    } catch (_: IllegalStateException) {
+        "Could not open the Android print dialog."
+    } catch (_: SecurityException) {
+        "Android blocked access to the print service."
+    }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> if (baseContext === this) null else baseContext.findActivity()
+    else -> null
+}
+
+private data class DocbenchPrintLayout(
+    val attributes: PrintAttributes,
+    val contentRect: Rect,
+    val textLayout: StaticLayout,
+    val pageStartLines: IntArray
+) {
+    val pageCount: Int
+        get() = pageStartLines.size
+}
+
+internal class DocbenchTextPrintAdapter(
+    private val context: Context,
+    private val text: String
+) : PrintDocumentAdapter() {
+    private var layout: DocbenchPrintLayout? = null
+
+    override fun onLayout(
+        oldAttributes: PrintAttributes?,
+        newAttributes: PrintAttributes?,
+        cancellationSignal: CancellationSignal,
+        callback: LayoutResultCallback,
+        extras: Bundle?
+    ) {
+        if (cancellationSignal.isCanceled) {
+            callback.onLayoutCancelled()
+            return
+        }
+        val attributes = newAttributes
+        if (attributes == null) {
+            callback.onLayoutFailed("Print attributes are unavailable.")
+            return
+        }
+
+        val prepared = runCatching { prepareLayout(attributes) }.getOrElse { error ->
+            callback.onLayoutFailed(error.message ?: "Could not lay out the text for printing.")
+            return
+        }
+        if (cancellationSignal.isCanceled) {
+            callback.onLayoutCancelled()
+            return
+        }
+
+        layout = prepared
+        val info = PrintDocumentInfo.Builder(DOCBENCH_PRINT_DOCUMENT_NAME)
+            .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+            .setPageCount(prepared.pageCount)
+            .build()
+        callback.onLayoutFinished(info, oldAttributes != newAttributes)
+    }
+
+    override fun onWrite(
+        pages: Array<out PageRange>,
+        destination: ParcelFileDescriptor,
+        cancellationSignal: CancellationSignal,
+        callback: WriteResultCallback
+    ) {
+        val prepared = layout
+        if (prepared == null) {
+            callback.onWriteFailed("Print layout is unavailable.")
+            return
+        }
+        val requestedPages = requestedPageIndexes(prepared.pageCount, pages)
+        if (requestedPages.isEmpty()) {
+            callback.onWriteFinished(emptyArray())
+            return
+        }
+
+        val document = PrintedPdfDocument(context, prepared.attributes)
+        try {
+            for (pageIndex in requestedPages) {
+                if (cancellationSignal.isCanceled) {
+                    callback.onWriteCancelled()
+                    return
+                }
+                val page = document.startPage(pageIndex)
+                try {
+                    drawPage(page.canvas, prepared, pageIndex)
+                } finally {
+                    document.finishPage(page)
+                }
+            }
+            if (cancellationSignal.isCanceled) {
+                callback.onWriteCancelled()
+                return
+            }
+            FileOutputStream(destination.fileDescriptor).use(document::writeTo)
+            callback.onWriteFinished(pageIndexesToRanges(requestedPages))
+        } catch (error: IOException) {
+            callback.onWriteFailed(error.message ?: "Could not write the print document.")
+        } catch (error: RuntimeException) {
+            callback.onWriteFailed(error.message ?: "Could not render the print document.")
+        } finally {
+            document.close()
+        }
+    }
+
+    private fun prepareLayout(attributes: PrintAttributes): DocbenchPrintLayout {
+        val document = PrintedPdfDocument(context, attributes)
+        val contentRect = try {
+            Rect(document.pageContentRect)
+        } finally {
+            document.close()
+        }
+        require(contentRect.width() > 0 && contentRect.height() > 0) {
+            "The selected print layout has no printable area."
+        }
+
+        val paint = TextPaint(TextPaint.ANTI_ALIAS_FLAG).apply {
+            textSize = DOCBENCH_PRINT_TEXT_SIZE_PT
+            typeface = Typeface.MONOSPACE
+        }
+        val textLayout = StaticLayout.Builder
+            .obtain(text, 0, text.length, paint, contentRect.width())
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setIncludePad(false)
+            .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+            .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
+            .build()
+        val lineTops = IntArray(textLayout.lineCount + 1) { line ->
+            if (line == textLayout.lineCount) textLayout.height else textLayout.getLineTop(line)
+        }
+        return DocbenchPrintLayout(
+            attributes = attributes,
+            contentRect = contentRect,
+            textLayout = textLayout,
+            pageStartLines = docbenchPrintPageStartLines(lineTops, contentRect.height())
+        )
+    }
+
+    private fun drawPage(
+        canvas: android.graphics.Canvas,
+        prepared: DocbenchPrintLayout,
+        pageIndex: Int
+    ) {
+        val startLine = prepared.pageStartLines[pageIndex]
+        val nextStartLine = prepared.pageStartLines.getOrNull(pageIndex + 1)
+            ?: prepared.textLayout.lineCount
+        val startTop = prepared.textLayout.getLineTop(startLine)
+        val nextTop = if (nextStartLine == prepared.textLayout.lineCount) {
+            prepared.textLayout.height
+        } else {
+            prepared.textLayout.getLineTop(nextStartLine)
+        }
+        val drawHeight = min(prepared.contentRect.height(), nextTop - startTop)
+
+        canvas.save()
+        try {
+            canvas.clipRect(
+                prepared.contentRect.left,
+                prepared.contentRect.top,
+                prepared.contentRect.right,
+                prepared.contentRect.top + drawHeight
+            )
+            canvas.translate(
+                prepared.contentRect.left.toFloat(),
+                prepared.contentRect.top.toFloat() - startTop
+            )
+            prepared.textLayout.draw(canvas)
+        } finally {
+            canvas.restore()
+        }
+    }
+}
+
+internal fun docbenchPrintPageStartLines(
+    lineTops: IntArray,
+    pageHeight: Int
+): IntArray {
+    require(pageHeight > 0) { "Page height must be positive." }
+    require(lineTops.size >= 2) { "At least one text line is required." }
+    for (index in 1 until lineTops.size) {
+        require(lineTops[index] >= lineTops[index - 1]) {
+            "Line positions must be monotonic."
+        }
+    }
+
+    val lineCount = lineTops.size - 1
+    val starts = mutableListOf<Int>()
+    var startLine = 0
+    while (startLine < lineCount) {
+        starts += startLine
+        val pageBottom = lineTops[startLine] + pageHeight
+        var nextLine = startLine + 1
+        while (nextLine < lineCount && lineTops[nextLine + 1] <= pageBottom) {
+            nextLine++
+        }
+        startLine = nextLine
+    }
+    return starts.toIntArray()
+}
+
+private fun requestedPageIndexes(
+    pageCount: Int,
+    ranges: Array<out PageRange>
+): IntArray {
+    if (pageCount <= 0) return IntArray(0)
+    val requested = BooleanArray(pageCount)
+    ranges.forEach { range ->
+        val start = range.start.coerceIn(0, pageCount - 1)
+        val end = range.end.coerceAtMost(pageCount - 1)
+        if (start <= end) {
+            for (page in start..end) requested[page] = true
+        }
+    }
+    return requested.indices.filter(requested::get).toIntArray()
+}
+
+private fun pageIndexesToRanges(pageIndexes: IntArray): Array<PageRange> {
+    if (pageIndexes.isEmpty()) return emptyArray()
+    val ranges = mutableListOf<PageRange>()
+    var start = pageIndexes.first()
+    var end = start
+    for (index in 1 until pageIndexes.size) {
+        val page = pageIndexes[index]
+        if (page == end + 1) {
+            end = page
+        } else {
+            ranges += PageRange(start, end)
+            start = page
+            end = page
+        }
+    }
+    ranges += PageRange(start, end)
+    return ranges.toTypedArray()
+}

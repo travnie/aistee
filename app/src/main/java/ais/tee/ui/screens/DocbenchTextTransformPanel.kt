@@ -81,6 +81,7 @@ internal fun DocbenchTextTransformPanel(
     state: DocbenchTextTransformUiState,
     isEnabled: () -> Boolean,
     onMergeFiles: () -> Unit,
+    onPrint: () -> Unit,
     onExport: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -91,7 +92,7 @@ internal fun DocbenchTextTransformPanel(
         modifier = modifier.padding(16.dp)
     ) {
         Text(
-            "Merge local Markdown/text files into this editor, format JSON, JSON5 or YAML, normalize line endings, then export locally.",
+            "Merge local Markdown/text files into this editor, format JSON, JSON5 or YAML, normalize line endings, then print or export locally.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -165,6 +166,13 @@ internal fun DocbenchTextTransformPanel(
                 },
                 modifier = Modifier.testTag("docbench_export_bom")
             )
+            OutlinedButton(
+                onClick = onPrint,
+                enabled = state.canExport,
+                modifier = Modifier.testTag("docbench_print_text")
+            ) {
+                Text("Print")
+            }
             OutlinedButton(
                 onClick = onExport,
                 enabled = state.canExport,
