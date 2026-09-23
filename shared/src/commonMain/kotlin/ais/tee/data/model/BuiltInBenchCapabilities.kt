@@ -51,9 +51,9 @@ enum class BenchToolSurface {
 /**
  * Invocation policy is intentionally separate from surface support.
  *
- * No Bench is currently marked as model-callable here. Native/API model tool calling can be added
- * only after the corresponding transport implements a real typed tool boundary. Account WebViews
- * remain explicit user bridges rather than hidden page automation.
+ * Local Docbench text tools and Codebench QR generation may be model-callable on native/API chat
+ * because the typed transport boundary is implemented. Account WebViews remain explicit user
+ * bridges rather than hidden page automation.
  */
 enum class BenchToolInvocationMode {
     EXPLICIT_USER_ACTION,
