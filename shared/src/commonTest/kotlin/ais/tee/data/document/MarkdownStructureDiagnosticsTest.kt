@@ -71,6 +71,22 @@ class MarkdownStructureDiagnosticsTest {
     }
 
     @Test
+    fun listContainedFenceIsReportedAsNonRepairableFromAstContext() {
+        val fence = tick.repeat(3)
+        val source = "- item\n\n  " + fence + "kotlin\n  val answer = 42"
+        val validation = MarkdownStructureDiagnostics.validate(source)
+
+        assertFalse(validation.isValid)
+        assertEquals(1, validation.issues.size)
+        assertFalse(validation.issues.single().repairable)
+
+        val repaired = MarkdownStructureDiagnostics.repair(source)
+        assertFalse(repaired.isSuccess)
+        assertFalse(repaired.changed)
+        assertEquals(source, repaired.text)
+    }
+
+    @Test
     fun shorterFenceInsideCodeDoesNotCloseLongerOpeningFence() {
         val longFence = tick.repeat(4)
         val shortFence = tick.repeat(3)
