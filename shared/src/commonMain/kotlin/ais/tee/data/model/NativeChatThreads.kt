@@ -18,6 +18,7 @@ data class NativeChatConversation(
     val draft: String = "",
     val selectedProvider: AiProvider = AiProvider.ALL,
     val selectedModel: String = "all",
+    val apiProcessingMode: NativeApiProcessingMode = NativeApiProcessingMode.DEFAULT,
     val includeSystemProfile: Boolean = true,
     val projectId: String = DEFAULT_PROJECT_ID,
     val replyEpoch: Long = 0L,
@@ -67,6 +68,9 @@ fun NativeChatArchive.normalized(): NativeChatArchive? {
                 conversation.selectedModel.isNotBlank() -> conversation.selectedModel
                 else -> provider.defaultModel
             },
+            apiProcessingMode = conversation.apiProcessingMode.takeIf {
+                it in provider.nativeApiProcessingModes()
+            } ?: NativeApiProcessingMode.DEFAULT,
             projectId = conversation.projectId.trim().ifEmpty { DEFAULT_PROJECT_ID }
         )
     }

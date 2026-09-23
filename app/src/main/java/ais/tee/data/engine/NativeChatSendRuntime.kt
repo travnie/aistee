@@ -7,6 +7,8 @@ import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeToolCall
 import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
+import ais.tee.data.model.NativeApiProcessingMode
+import ais.tee.data.model.nativeApiProcessingModes
 import ais.tee.data.model.runtimeCapabilities
 import ais.tee.data.model.Profile
 import kotlinx.coroutines.async
@@ -23,6 +25,7 @@ internal data class NativeChatSendRequest(
     val profile: Profile?,
     val conversationHistory: List<ModelChatMessage>,
     val allowSingleProviderSimulationFallback: Boolean,
+    val apiProcessingMode: NativeApiProcessingMode = NativeApiProcessingMode.DEFAULT,
     val tools: List<NativeToolDefinition> = emptyList(),
     val executeTool: (suspend (NativeToolCall) -> NativeToolResult)? = null,
 ) {
@@ -61,6 +64,9 @@ internal suspend fun executeNativeChatSend(
             ClientToolCallingStrategy.NONE,
             ClientToolCallingStrategy.PER_PROVIDER -> emptyList()
         }
+        val processingMode = request.apiProcessingMode.takeIf {
+            it in provider.nativeApiProcessingModes()
+        } ?: NativeApiProcessingMode.DEFAULT
         val response = aiChatService.generateResponse(
             prompt = request.prompt,
             provider = provider,
@@ -71,6 +77,7 @@ internal suspend fun executeNativeChatSend(
             conversationHistory = request.conversationHistory,
             allowSimulationFallback =
                 request.allowSingleProviderSimulationFallback && request.targetProvider != AiProvider.ALL,
+            apiProcessingMode = processingMode,
             onTextDelta = { delta -> onTextDelta(provider, model, delta) },
             tools = providerTools,
             executeTool = request.executeTool,

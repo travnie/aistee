@@ -64,6 +64,7 @@ import ais.tee.data.model.AiProvider
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatConversation
+import ais.tee.data.model.nativeApiProcessingModes
 import ais.tee.data.model.ProjectLibraryArchive
 import ais.tee.data.model.ProjectLibraryAsset
 import ais.tee.data.model.renderChatMarkdown
@@ -240,6 +241,7 @@ private fun NativeChatDetailPane(
     }
     val promptInput = uiState.nativeChatDraft
     var showModelMenu by remember { mutableStateOf(false) }
+    var showApiModeMenu by remember { mutableStateOf(false) }
     var showChatActionsMenu by remember { mutableStateOf(false) }
     val notificationPreferencesStore = remember(context.applicationContext) {
         NativeChatNotificationPreferencesStore(context.applicationContext)
@@ -849,6 +851,76 @@ private fun NativeChatDetailPane(
                                             }
                                         }
                                     )
+                                }
+                            }
+                        }
+
+                        val apiModes = selectedProvider.nativeApiProcessingModes()
+                        if (apiModes.size > 1) {
+                            Spacer(Modifier.height(2.dp))
+                            Box {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier
+                                        .clip(MaterialTheme.shapes.small)
+                                        .clickable { showApiModeMenu = true }
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        .testTag("api_processing_mode_picker")
+                                ) {
+                                    Text(
+                                        text = "API mode: ${uiState.selectedApiProcessingMode.displayName}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 11.sp,
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = "Change API processing mode",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showApiModeMenu,
+                                    onDismissRequest = { showApiModeMenu = false }
+                                ) {
+                                    apiModes.forEach { mode ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(
+                                                        text = mode.displayName,
+                                                        fontWeight = if (uiState.selectedApiProcessingMode == mode) {
+                                                            FontWeight.Bold
+                                                        } else {
+                                                            FontWeight.Normal
+                                                        }
+                                                    )
+                                                    Text(
+                                                        text = mode.hint,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                viewModel.setApiProcessingMode(mode)
+                                                showApiModeMenu = false
+                                            },
+                                            leadingIcon = {
+                                                if (uiState.selectedApiProcessingMode == mode) {
+                                                    Icon(
+                                                        Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = getProviderColor(selectedProvider),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            },
+                                            modifier = Modifier.testTag("api_processing_mode_${mode.name.lowercase()}")
+                                        )
+                                    }
                                 }
                             }
                         }

@@ -64,6 +64,26 @@ class ProviderRuntimeCapabilitiesTest {
     }
 
     @Test
+    fun onlyOpenAiExposesFlexProcessingToday() {
+        assertEquals(
+            listOf(NativeApiProcessingMode.DEFAULT, NativeApiProcessingMode.FLEX),
+            AiProvider.CHATGPT.nativeApiProcessingModes()
+        )
+        listOf(
+            AiProvider.ALL,
+            AiProvider.GEMINI,
+            AiProvider.CLAUDE,
+            AiProvider.DEEPSEEK,
+            AiProvider.KIMI,
+            AiProvider.OPENROUTER,
+            AiProvider.AIHUBMIX,
+            AiProvider.VERCEL,
+        ).forEach { provider ->
+            assertEquals(listOf(NativeApiProcessingMode.DEFAULT), provider.nativeApiProcessingModes())
+        }
+    }
+
+    @Test
     fun geminiPreservesOpaqueProviderContentState() {
         assertEquals(
             ConversationStateStrategy.BOUNDED_PROVIDER_CONTENT_REPLAY,

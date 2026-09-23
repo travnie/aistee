@@ -78,6 +78,40 @@ class NativeChatThreadsTest {
     }
 
     @Test
+    fun codecPersistsApiProcessingModeAndNormalizationDropsUnsupportedMode() {
+        val openAiConversation = NativeChatConversation(
+            id = "openai",
+            createdAtEpochMs = 1,
+            selectedProvider = AiProvider.CHATGPT,
+            selectedModel = AiProvider.CHATGPT.defaultModel,
+            apiProcessingMode = NativeApiProcessingMode.FLEX,
+        )
+        val encoded = NativeChatArchiveCodec.encode(
+            NativeChatArchive(
+                activeConversationId = openAiConversation.id,
+                conversations = listOf(openAiConversation),
+            )
+        )
+        val decoded = assertNotNull(NativeChatArchiveCodec.decode(encoded))
+        assertEquals(NativeApiProcessingMode.FLEX, assertNotNull(decoded.activeConversation).apiProcessingMode)
+
+        val incompatible = NativeChatArchive(
+            activeConversationId = "gemini",
+            conversations = listOf(
+                openAiConversation.copy(
+                    id = "gemini",
+                    selectedProvider = AiProvider.GEMINI,
+                    selectedModel = AiProvider.GEMINI.defaultModel,
+                )
+            )
+        ).normalized()
+        assertEquals(
+            NativeApiProcessingMode.DEFAULT,
+            assertNotNull(assertNotNull(incompatible).activeConversation).apiProcessingMode,
+        )
+    }
+
+    @Test
     fun codecPersistsConversationDraft() {
         val conversation = NativeChatConversation(
             id = "c1",

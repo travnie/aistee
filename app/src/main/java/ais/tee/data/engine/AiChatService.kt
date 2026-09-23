@@ -14,6 +14,8 @@ import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeToolCall
 import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
+import ais.tee.data.model.NativeApiProcessingMode
+import ais.tee.data.model.nativeApiProcessingModes
 import ais.tee.data.model.runtimeCapabilities
 import ais.tee.data.model.ProviderUsage
 import ais.tee.data.model.buildBoundedProviderTextTurns
@@ -89,6 +91,8 @@ private const val JSON_MAX_TOKENS_KEY = "max_tokens"
 private const val JSON_STOP_REASON_KEY = "stop_reason"
 private const val JSON_STORE_KEY = "store"
 private const val JSON_STREAM_KEY = "stream"
+private const val JSON_SERVICE_TIER_KEY = "service_tier"
+private const val OPENAI_SERVICE_TIER_FLEX = "flex"
 private const val JSON_INSTRUCTIONS_KEY = "instructions"
 private const val JSON_THINKING_KEY = "thinking"
 private const val JSON_ADAPTIVE_KEY = "adaptive"
@@ -367,6 +371,7 @@ class AiChatService {
         profile: Profile?,
         conversationHistory: List<ModelChatMessage> = emptyList(),
         allowSimulationFallback: Boolean = true,
+        apiProcessingMode: NativeApiProcessingMode = NativeApiProcessingMode.DEFAULT,
         onTextDelta: ((String) -> Unit)? = null,
         tools: List<NativeToolDefinition> = emptyList(),
         executeTool: (suspend (NativeToolCall) -> NativeToolResult)? = null,
@@ -385,6 +390,9 @@ class AiChatService {
         var providerReplayState: String? = null
         var providerUsage: ProviderUsage? = null
         var isPartial = false
+        val effectiveApiProcessingMode = apiProcessingMode.takeIf {
+            it in provider.nativeApiProcessingModes()
+        } ?: NativeApiProcessingMode.DEFAULT
 
         val (key, isKeyProvided) = when (provider) {
             AiProvider.GEMINI -> Pair(apiKeys.geminiKey.trim(), apiKeys.geminiKey.isNotBlank())
@@ -432,14 +440,17 @@ class AiChatService {
                                 apiKey = key,
                                 systemInstruction = systemInstruction,
                                 conversationHistory = conversationHistory,
+                                apiProcessingMode = effectiveApiProcessingMode,
                                 tools = tools,
                                 executeTool = checkNotNull(executeTool),
                             )
                             onTextDelta != null -> callOpenAiStreamApi(
-                                prompt, effectiveModel, key, systemInstruction, conversationHistory, onTextDelta
+                                prompt, effectiveModel, key, systemInstruction, conversationHistory,
+                                effectiveApiProcessingMode, onTextDelta
                             )
                             else -> callOpenAiApi(
-                                prompt, effectiveModel, key, systemInstruction, conversationHistory
+                                prompt, effectiveModel, key, systemInstruction, conversationHistory,
+                                effectiveApiProcessingMode
                             )
                         }
                         providerReplayState = result.replayState
@@ -651,7 +662,8 @@ class AiChatService {
         model: String,
         stream: Boolean,
         systemInstruction: String?,
-        input: JsonArray
+        input: JsonArray,
+        apiProcessingMode: NativeApiProcessingMode = NativeApiProcessingMode.DEFAULT,
     ): JsonObject = buildJsonObject {
         put(JSON_MODEL_KEY, model)
         put(JSON_INPUT_KEY, input)
@@ -660,6 +672,9 @@ class AiChatService {
             add(OPENAI_REASONING_ENCRYPTED_CONTENT)
         }
         if (stream) put(JSON_STREAM_KEY, true)
+        if (apiProcessingMode == NativeApiProcessingMode.FLEX) {
+            put(JSON_SERVICE_TIER_KEY, OPENAI_SERVICE_TIER_FLEX)
+        }
         if (!systemInstruction.isNullOrBlank()) {
             put(JSON_INSTRUCTIONS_KEY, systemInstruction)
         }
@@ -877,7 +892,8 @@ class AiChatService {
         model: String,
         apiKey: String,
         systemInstruction: String?,
-        conversationHistory: List<ModelChatMessage>
+        conversationHistory: List<ModelChatMessage>,
+        apiProcessingMode: NativeApiProcessingMode,
     ): OpenAiGenerationResult {
         val url = "https://api.openai.com/v1/responses"
         val input = buildOpenAiResponseInput(
@@ -890,7 +906,8 @@ class AiChatService {
             model = model,
             stream = false,
             systemInstruction = systemInstruction,
-            input = input
+            input = input,
+            apiProcessingMode = apiProcessingMode,
         )
 
         val body = requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType())
@@ -918,6 +935,7 @@ class AiChatService {
         apiKey: String,
         systemInstruction: String?,
         conversationHistory: List<ModelChatMessage>,
+        apiProcessingMode: NativeApiProcessingMode,
         tools: List<NativeToolDefinition>,
         executeTool: suspend (NativeToolCall) -> NativeToolResult,
     ): OpenAiGenerationResult {
@@ -938,6 +956,7 @@ class AiChatService {
                 stream = false,
                 systemInstruction = systemInstruction,
                 input = JsonArray(input),
+                apiProcessingMode = apiProcessingMode,
             )
             val requestPayload = JsonObject(basePayload + ("tools" to toolDefinitions))
             val request = Request.Builder()
@@ -1561,6 +1580,7 @@ class AiChatService {
         apiKey: String,
         systemInstruction: String?,
         conversationHistory: List<ModelChatMessage>,
+        apiProcessingMode: NativeApiProcessingMode,
         onTextDelta: (String) -> Unit
     ): OpenAiGenerationResult {
         val input = buildOpenAiResponseInput(
@@ -1573,7 +1593,8 @@ class AiChatService {
             model = model,
             stream = true,
             systemInstruction = systemInstruction,
-            input = input
+            input = input,
+            apiProcessingMode = apiProcessingMode,
         )
         val request = Request.Builder()
             .url("https://api.openai.com/v1/responses")

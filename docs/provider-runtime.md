@@ -82,6 +82,12 @@ The native path now has a typed client-tool boundary for verified direct provide
 
 OpenRouter and other OpenAI-compatible gateways may return the model actually used. Aistee captures that response metadata when present and falls back to the requested model/route otherwise, so aliases such as `openrouter/free` can show the actual responder. Vercel AI Gateway uses the same transport path and refreshes its `/v1/models` catalog, retaining text-capable language models ordered by listed input/output token price; Vercel account and API-key budgets remain the authoritative spend controls.
 
+## Lightweight API modes
+
+Native/API controls stay capability-driven rather than exposing a generic parameter cockpit. OpenAI native chats can choose **Default** or **Flex** per conversation; Flex is sent as `service_tier: "flex"` on every Responses request in that conversation, including typed-tool rounds and notification Direct Reply. Other providers currently stay on their normal request defaults.
+
+The provider remains authoritative: Flex can be unavailable for a model/project and that API error should be shown rather than silently retrying at a more expensive tier. Batch and background work belong in a later Jobs surface because they have different create/status/cancel/result lifecycles than a normal streaming chat turn.
+
 ## Usage and comparison metadata
 
 Native/API responses retain provider-reported usage next to the existing local wall-clock latency. The portable message metadata normalizes input, output and total tokens while preserving optional cached-input and reasoning-token counts. Claude input includes direct, cache-creation and cache-read tokens so its normalized input matches Anthropic's billing/accounting semantics; Gemini keeps `thoughtsTokenCount` separate while preserving the provider's `totalTokenCount`.

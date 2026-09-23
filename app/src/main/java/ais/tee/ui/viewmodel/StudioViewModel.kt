@@ -132,6 +132,8 @@ data class StudioUiState(
         get() = activeNativeConversation?.selectedProvider ?: AiProvider.ALL
     val selectedChatModel: String
         get() = activeNativeConversation?.selectedModel ?: "all"
+    val selectedApiProcessingMode: NativeApiProcessingMode
+        get() = activeNativeConversation?.apiProcessingMode ?: NativeApiProcessingMode.DEFAULT
     val includeSystemProfileInChat: Boolean
         get() = activeNativeConversation?.includeSystemProfile ?: true
 }
@@ -269,6 +271,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         messages = welcomeChatMessages(),
         selectedProvider = template?.selectedProvider ?: AiProvider.ALL,
         selectedModel = template?.selectedModel ?: "all",
+        apiProcessingMode = template?.apiProcessingMode ?: NativeApiProcessingMode.DEFAULT,
         includeSystemProfile = template?.includeSystemProfile ?: true,
         projectId = template?.projectId ?: DEFAULT_PROJECT_ID,
     )
@@ -827,8 +830,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             knownModels.isNotEmpty() -> knownModels.first()
             else -> ""
         }
+        val processingMode = state.selectedApiProcessingMode.takeIf {
+            it in provider.nativeApiProcessingModes()
+        } ?: NativeApiProcessingMode.DEFAULT
         updateActiveNativeConversation { conversation ->
-            conversation.copy(selectedProvider = provider, selectedModel = newModel)
+            conversation.copy(
+                selectedProvider = provider,
+                selectedModel = newModel,
+                apiProcessingMode = processingMode,
+            )
         }
         if (provider.usesLiveGatewayModelCatalog()) refreshGatewayModelCatalog(provider)
     }
@@ -836,6 +846,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun setChatModel(modelName: String) {
         if (!_uiState.value.isNativeConversationStoreReady) return
         updateActiveNativeConversation { it.copy(selectedModel = modelName) }
+    }
+
+    fun setApiProcessingMode(mode: NativeApiProcessingMode) {
+        val state = _uiState.value
+        if (!state.isNativeConversationStoreReady) return
+        val provider = state.selectedChatProvider
+        val selected = mode.takeIf { it in provider.nativeApiProcessingModes() }
+            ?: NativeApiProcessingMode.DEFAULT
+        updateActiveNativeConversation { it.copy(apiProcessingMode = selected) }
     }
 
     fun refreshGatewayModelCatalog(provider: AiProvider) {
@@ -1208,6 +1227,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         profile = promptContext.activeProfile,
                         conversationHistory = currentMessages,
                         allowSingleProviderSimulationFallback = targetProvider != AiProvider.ALL,
+                        apiProcessingMode = _uiState.value.selectedApiProcessingMode,
                         tools = toolDefinitions,
                         executeTool = benchTools::execute,
                     ),

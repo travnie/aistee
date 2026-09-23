@@ -5,6 +5,7 @@ import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ClaudeReasoningCapabilities
 import ais.tee.data.model.ModelChatMessage
+import ais.tee.data.model.NativeApiProcessingMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -758,6 +759,28 @@ class AiChatServiceTest {
         assertFalse("stream" in buffered)
         assertEquals("false", streaming.getValue("store").jsonPrimitive.content)
         assertEquals("true", streaming.getValue("stream").jsonPrimitive.content)
+        assertFalse("service_tier" in buffered)
+    }
+
+    @Test
+    fun openAiFlexModeAddsServiceTierWithoutChangingPrivacyDefaults() {
+        val service = AiChatService()
+        val input = service.buildOpenAiResponseInput(
+            prompt = FOLLOW_UP,
+            conversationHistory = emptyList(),
+            modelName = TEST_OPENAI_MODEL
+        )
+        val payload = service.buildOpenAiRequestPayload(
+            model = TEST_OPENAI_MODEL,
+            stream = true,
+            systemInstruction = SYSTEM_PROMPT,
+            input = input,
+            apiProcessingMode = NativeApiProcessingMode.FLEX,
+        )
+
+        assertEquals("flex", payload.getValue("service_tier").jsonPrimitive.content)
+        assertEquals("false", payload.getValue("store").jsonPrimitive.content)
+        assertEquals("true", payload.getValue("stream").jsonPrimitive.content)
     }
 
     @Test

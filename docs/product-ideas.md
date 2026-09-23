@@ -3,6 +3,19 @@
 This is a durable backlog of product directions worth exploring in Aistee.
 The ideas are inspired by observed workflows in other AI/document apps and by tools already maintained in `travnie/twojstar`; they are not implementation copies.
 
+## Current implementation queue
+
+1. **Newer account Web providers:** verify embedded sign-in, upload flows and stable provider-specific generation/unread probes for Qwen, Copilot, Z.ai, Grok, Character.AI, Venice and Meta AI. Do not pretend DOM hints are end-to-end verification.
+2. **Shipped:** staged Web Draft Reply.
+3. **Shipped:** provider-neutral typed native tool/function calling.
+4. **Shipped:** first-party Docbench/Codebench model tools.
+5. **Shipped foundation:** native chats, Projects/Library and canonical Markdown import/export.
+6. **Widgets/notifications v2:** richer recent/pinned chat surfaces, Android conversation metadata and privacy/redaction polish.
+7. **UX/security polish:** finish adaptive chat/navigation details, IME/back behavior, safe export/backup regression coverage and measured performance cleanup.
+8. **Native/API convenience modes and jobs:** keep the GUI intentionally lightweight and provider-aware. Offer a few useful choices such as cheaper processing where supported, then add a small Batch/Jobs surface for truly asynchronous provider APIs instead of exposing a wall of raw sampling knobs. OpenAI Flex is the first per-chat mode; future Batch/background support must use provider-native job semantics and surface status/cancel/result handling.
+
+The remaining active items are **1, 6, 7 and 8**. Work on automatable pieces can continue while item 1 is waiting on manual account/device verification.
+
 ## Markdown workspace / prompt vault
 
 - Treat local `.md` files as editable source-of-truth assets, not one-shot attachments.

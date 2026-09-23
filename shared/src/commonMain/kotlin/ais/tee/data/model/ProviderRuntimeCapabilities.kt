@@ -41,6 +41,19 @@ enum class ClientToolCallingStrategy {
     ANTHROPIC_CLIENT_TOOLS,
 }
 
+enum class NativeApiProcessingMode(
+    val displayName: String,
+    val hint: String,
+) {
+    DEFAULT("Default", "Normal provider processing"),
+    FLEX("Flex", "Cheaper, slower processing"),
+}
+
+fun AiProvider.nativeApiProcessingModes(): List<NativeApiProcessingMode> = when (this) {
+    AiProvider.CHATGPT -> listOf(NativeApiProcessingMode.DEFAULT, NativeApiProcessingMode.FLEX)
+    else -> listOf(NativeApiProcessingMode.DEFAULT)
+}
+
 fun AiProvider.reasoningControlStrategy(): ReasoningControlStrategy = when (this) {
     AiProvider.ALL -> ReasoningControlStrategy.PER_PROVIDER
     AiProvider.CLAUDE -> ReasoningControlStrategy.MODEL_CAPABILITY_METADATA
