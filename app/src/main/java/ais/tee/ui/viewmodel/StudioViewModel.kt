@@ -15,6 +15,7 @@ import ais.tee.data.preferences.NativeChatStore
 import ais.tee.data.preferences.NativeChatWriter
 import ais.tee.data.preferences.StudioStateStore
 import ais.tee.data.preferences.StudioStateWriter
+import ais.tee.data.preferences.WebChatDraftStore
 import ais.tee.data.preferences.WebChatPreferencesStore
 import ais.tee.data.security.ApiKeyStore
 import ais.tee.data.skills.LocalSkillLibraryStore
@@ -45,6 +46,16 @@ data class NativeChatNavigationRequest(
     val id: Long,
     val conversationId: String
 )
+
+data class PendingWebDraft(
+    val id: String,
+    val service: WebAiService,
+    val text: String,
+    val isClaimed: Boolean = false,
+) {
+    override fun toString(): String =
+        "PendingWebDraft(id=$id, service=${service.id}, text=<redacted>, isClaimed=$isClaimed)"
+}
 
 internal fun resolveNativeConversationTarget(
     archive: NativeChatArchive,
@@ -93,6 +104,7 @@ data class StudioUiState(
     val incomingShare: IncomingSharePayload? = null,
     val incomingShareId: Long = 0L,
     val pendingWebShare: PendingWebShare? = null,
+    val pendingWebDraft: PendingWebDraft? = null,
 
     // Integrated Multi-Provider AI Chat
     val nativeChat: NativeChatArchive = NativeChatArchive(),
@@ -140,6 +152,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val apiKeyStore = ApiKeyStore(application.applicationContext)
     private val studioStateStore = StudioStateStore(application.applicationContext)
     private val webChatPreferencesStore = WebChatPreferencesStore(application.applicationContext)
+    private val webChatDraftStore = WebChatDraftStore(application.noBackupFilesDir)
     private val nativePersistenceLock = Any()
     private var nativePersistenceBase: NativeChatArchive? = null
     private val nativeChatStore = NativeChatStore(application.noBackupFilesDir)
@@ -334,6 +347,88 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun selectWebService(service: WebAiService) {
         _uiState.update { it.copy(selectedWebService = service) }
         webChatPreferencesStore.saveSelectedService(service)
+    }
+
+    fun stageWebDraftReply(service: WebAiService, text: String): Boolean {
+        val staged = webChatDraftStore.stage(service, text) ?: return false
+        _uiState.update { state ->
+            state.copy(
+                currentTab = NavigationTab.WEB_CHATS,
+                selectedWebService = service,
+                pendingWebDraft = PendingWebDraft(
+                    id = staged.id,
+                    service = service,
+                    text = staged.text,
+                ),
+            )
+        }
+        webChatPreferencesStore.saveSelectedService(service)
+        return true
+    }
+
+    fun openStagedWebDraft(service: WebAiService): Boolean {
+        val staged = webChatDraftStore.peek(service) ?: return false
+        _uiState.update { state ->
+            state.copy(
+                currentTab = NavigationTab.WEB_CHATS,
+                selectedWebService = service,
+                pendingWebDraft = PendingWebDraft(
+                    id = staged.id,
+                    service = service,
+                    text = staged.text,
+                ),
+            )
+        }
+        webChatPreferencesStore.saveSelectedService(service)
+        return true
+    }
+
+    fun claimPendingWebDraft(service: WebAiService, draftId: String): String? {
+        while (true) {
+            val state = _uiState.value
+            val pending = state.pendingWebDraft
+                ?.takeIf { it.service == service && it.id == draftId && !it.isClaimed }
+                ?: return null
+            val next = state.copy(pendingWebDraft = pending.copy(isClaimed = true))
+            if (_uiState.compareAndSet(state, next)) return pending.text
+        }
+    }
+
+    fun completePendingWebDraft(service: WebAiService, draftId: String): Boolean {
+        if (!webChatDraftStore.consume(service, draftId)) return false
+        _uiState.update { state ->
+            if (state.pendingWebDraft?.let { it.service == service && it.id == draftId } == true) {
+                state.copy(pendingWebDraft = null)
+            } else {
+                state
+            }
+        }
+        return true
+    }
+
+    fun releasePendingWebDraftClaim(service: WebAiService, draftId: String): Boolean {
+        while (true) {
+            val state = _uiState.value
+            val pending = state.pendingWebDraft
+                ?.takeIf { it.service == service && it.id == draftId && it.isClaimed }
+                ?: return false
+            if (_uiState.compareAndSet(state, state.copy(pendingWebDraft = pending.copy(isClaimed = false)))) {
+                return true
+            }
+        }
+    }
+
+    fun dismissPendingWebDraft(service: WebAiService, draftId: String): Boolean {
+        val cleared = webChatDraftStore.consume(service, draftId)
+        if (!cleared) return false
+        _uiState.update { state ->
+            if (state.pendingWebDraft?.let { it.service == service && it.id == draftId } == true) {
+                state.copy(pendingWebDraft = null)
+            } else {
+                state
+            }
+        }
+        return true
     }
 
     fun toggleFavoriteWebService(service: WebAiService) {
