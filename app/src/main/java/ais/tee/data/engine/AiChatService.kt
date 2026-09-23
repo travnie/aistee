@@ -148,6 +148,7 @@ private const val HEADER_ANTHROPIC_API_KEY = "x-api-key"
 private const val HEADER_ANTHROPIC_VERSION = "anthropic-version"
 private const val ANTHROPIC_API_VERSION = "2023-06-01"
 private const val CLAUDE_METADATA_TIMEOUT_SECONDS = 2L
+private const val OPENAI_FLEX_TIMEOUT_MINUTES = 15L
 private const val CLAUDE_ALIAS_CACHE_TTL_MILLIS = 5 * 60 * 1000L
 private const val CLAUDE_METADATA_FAILURE_TTL_MILLIS = 30 * 1000L
 
@@ -207,6 +208,10 @@ class AiChatService {
 
     private val streamingHttpClient: OkHttpClient = httpClient.newBuilder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
+        .build()
+    private val openAiFlexHttpClient: OkHttpClient = httpClient.newBuilder()
+        .callTimeout(OPENAI_FLEX_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+        .readTimeout(OPENAI_FLEX_TIMEOUT_MINUTES, TimeUnit.MINUTES)
         .build()
     private val claudeMetadataHttpClient: OkHttpClient = buildClaudeMetadataHttpClient(httpClient)
 
@@ -918,7 +923,11 @@ class AiChatService {
             .post(body)
             .build()
 
-        val responseBody = executeCancellableJson(request, "Empty response from OpenAI server")
+        val responseBody = executeCancellableJson(
+            request,
+            "Empty response from OpenAI server",
+            client = if (apiProcessingMode == NativeApiProcessingMode.FLEX) openAiFlexHttpClient else httpClient,
+        )
         val parsed = json.parseToJsonElement(responseBody).jsonObject
         ensureOpenAiBufferedResponseCompleted(parsed)
         return OpenAiGenerationResult(
@@ -966,7 +975,11 @@ class AiChatService {
                 .post(requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
                 .build()
 
-            val responseBody = executeCancellableJson(request, "Empty response from OpenAI server")
+            val responseBody = executeCancellableJson(
+                request,
+                "Empty response from OpenAI server",
+                client = if (apiProcessingMode == NativeApiProcessingMode.FLEX) openAiFlexHttpClient else httpClient,
+            )
             val parsed = json.parseToJsonElement(responseBody).jsonObject
             ensureOpenAiBufferedResponseCompleted(parsed)
             usage = mergeProviderUsage(usage, extractOpenAiUsage(parsed))

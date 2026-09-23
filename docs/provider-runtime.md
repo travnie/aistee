@@ -86,7 +86,7 @@ OpenRouter and other OpenAI-compatible gateways may return the model actually us
 
 Native/API controls stay capability-driven rather than exposing a generic parameter cockpit. OpenAI native chats can choose **Default** or **Flex** per conversation; Flex is sent as `service_tier: "flex"` on every Responses request in that conversation, including typed-tool rounds and notification Direct Reply. Other providers currently stay on their normal request defaults.
 
-The provider remains authoritative: Flex can be unavailable for a model/project and that API error should be shown rather than silently retrying at a more expensive tier. Batch and background work belong in a later Jobs surface because they have different create/status/cancel/result lifecycles than a normal streaming chat turn.
+The provider remains authoritative: Flex can be unavailable for a model/project and that API error should be shown rather than silently retrying at a more expensive tier. Buffered Flex requests and tool rounds use a cancellable 15-minute client timeout, while the streaming path keeps its existing unbounded read timeout. Batch and background work belong in a later Jobs surface because they have different create/status/cancel/result lifecycles than a normal streaming chat turn.
 
 ## Usage and comparison metadata
 
