@@ -43,6 +43,8 @@ import ais.tee.data.document.MAX_DOCBENCH_TEXT_MERGE_PARTS
 import ais.tee.data.document.DocbenchTextExportAction
 import ais.tee.data.document.DocbenchTextExportActionResult
 import ais.tee.data.document.DocumentPreflightReport
+import ais.tee.data.document.TextDocument
+import ais.tee.data.document.TextDocumentCodec
 import ais.tee.data.document.TextDocumentFileAccess
 import ais.tee.data.document.executeDocbenchPreflightAction
 import ais.tee.data.model.BenchToolNetworkBehavior
@@ -63,6 +65,7 @@ import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -145,11 +148,13 @@ private data class DocbenchMergeUiResult(
 
 internal fun isDocbenchTextMergeCandidate(
     displayName: String,
-    mimeType: String?
+    mimeType: String?,
+    hasProviderDisplayName: Boolean = true
 ): Boolean {
     val normalizedMime = mimeType?.substringBefore(';')?.trim()?.lowercase()
     if (normalizedMime == "text/markdown" || normalizedMime == "text/plain") return true
     if (normalizedMime != null && normalizedMime != "application/octet-stream") return false
+    if (!hasProviderDisplayName) return false
     val extension = displayName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
     return extension in setOf("md", "markdown", "txt")
 }
@@ -183,7 +188,7 @@ private suspend fun mergeDocbenchTextDocuments(
             uri = uri,
             fallbackName = "document.txt"
         )
-        if (!isDocbenchTextMergeCandidate(opened.displayName, opened.mimeType)) {
+        if (!isDocbenchTextMergeCandidate(opened.displayName, opened.mimeType, opened.hasProviderDisplayName)) {
             return@runCatching DocbenchMergeUiResult(
                 message = "Merge accepts Markdown and plain-text documents only."
             )
@@ -213,7 +218,7 @@ private suspend fun mergeDocbenchTextDocuments(
             mergedText = action.text,
             mergedCount = action.appendedParts,
             message = if (action.changed) {
-                "Merged undefined text file(s) into the editor."
+                "Merged ${action.appendedParts} text file(s) into the editor."
             } else {
                 "Selected files did not change the editor."
             }
@@ -457,7 +462,15 @@ fun BenchToolsScreen(modifier: Modifier = Modifier) {
     var docbenchImportResult by remember { mutableStateOf<DocbenchImportUiResult?>(null) }
     var docbenchImporting by remember { mutableStateOf(false) }
     var docbenchImportGeneration by remember { mutableIntStateOf(0) }
-    var docbenchMergeGeneration by remember { mutableIntStateOf(0) }
+    var docbenchMergeGeneration by rememberSaveable { mutableIntStateOf(0) }
+    var pendingDocbenchMergeId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Null means the picker is open; an empty list means the user cancelled.
+    var pendingDocbenchMergeUris by rememberSaveable { mutableStateOf<ArrayList<String>?>(null) }
+    val docbenchPendingMergeStore = remember(context.applicationContext) {
+        DocbenchPendingExportStore(
+            File(context.applicationContext.cacheDir, "docbench-pending-merges")
+        )
+    }
     var docbenchExportGeneration by rememberSaveable { mutableIntStateOf(0) }
     var pendingDocbenchExportId by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingDocbenchExportGeneration by rememberSaveable { mutableIntStateOf(-1) }
@@ -471,6 +484,7 @@ fun BenchToolsScreen(modifier: Modifier = Modifier) {
         BuiltInBenchTool.DOCBENCH_DOCUMENT in enabledTools
     ) {
         DocbenchTextTransformUiState().apply {
+            merging = pendingDocbenchMergeId != null
             exporting = activeDocbenchExportLaunchGeneration >= 0
         }
     }
@@ -563,35 +577,66 @@ fun BenchToolsScreen(modifier: Modifier = Modifier) {
         }
     }
 
+    LaunchedEffect(docbenchPendingMergeStore) {
+        val pendingId = pendingDocbenchMergeId
+        withContext(Dispatchers.IO) {
+            docbenchPendingMergeStore.pruneOrphans(pendingId)
+        }
+    }
+
     val docbenchMergeLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
-        if (uris.isEmpty()) return@rememberLauncherForActivityResult
-        val mergeGeneration = docbenchMergeGeneration + 1
-        docbenchMergeGeneration = mergeGeneration
-        val state = docbenchTextTransformState
-        val existingText = state.source
-        state.merging = true
-        state.message = null
-        scope.launch {
-            val merged = mergeDocbenchTextDocuments(
-                context = context,
-                uris = uris,
-                existingText = existingText,
-                isEnabled = {
-                    BuiltInBenchTool.DOCBENCH_DOCUMENT in store.loadEnabledTools()
-                }
+        if (pendingDocbenchMergeId != null) {
+            // Retain a bounded result across recreation while the merge runs.
+            pendingDocbenchMergeUris = ArrayList(
+                uris.take(MAX_DOCBENCH_TEXT_MERGE_PARTS + 1).map(Uri::toString)
             )
-            if (
-                mergeGeneration == docbenchMergeGeneration &&
-                BuiltInBenchTool.DOCBENCH_DOCUMENT in store.loadEnabledTools()
-            ) {
-                merged.mergedText?.let(state::updateSource)
-                state.message = merged.message
+        }
+    }
+
+    LaunchedEffect(pendingDocbenchMergeId, pendingDocbenchMergeUris) {
+        val pendingId = pendingDocbenchMergeId ?: return@LaunchedEffect
+        val selectedUris = pendingDocbenchMergeUris ?: return@LaunchedEffect
+        val generation = docbenchMergeGeneration
+        val state = docbenchTextTransformState
+        fun isCurrent(): Boolean = generation == docbenchMergeGeneration &&
+            pendingDocbenchMergeId == pendingId &&
+            BuiltInBenchTool.DOCBENCH_DOCUMENT in store.loadEnabledTools()
+
+        val snapshot = try {
+            withContext(Dispatchers.IO) { docbenchPendingMergeStore.load(pendingId) }
+        } catch (_: IOException) {
+            null
+        }
+        if (isCurrent()) {
+            if (snapshot == null) {
+                state.message = "Could not restore the editor. Selected files were not merged."
+            } else {
+                state.restoreExportDocument(snapshot)
+                val merged = if (selectedUris.isEmpty()) {
+                    DocbenchMergeUiResult(message = "Merge cancelled.")
+                } else {
+                    mergeDocbenchTextDocuments(
+                        context = context,
+                        uris = selectedUris.map(Uri::parse),
+                        existingText = snapshot.text,
+                        isEnabled = ::isCurrent
+                    )
+                }
+                if (isCurrent()) {
+                    merged.mergedText?.let(state::updateSource)
+                    state.message = merged.message
+                }
             }
-            if (mergeGeneration == docbenchMergeGeneration) {
-                state.merging = false
-            }
+        }
+        if (pendingDocbenchMergeId == pendingId) {
+            pendingDocbenchMergeId = null
+            pendingDocbenchMergeUris = null
+            state.merging = false
+        }
+        withContext(NonCancellable + Dispatchers.IO) {
+            docbenchPendingMergeStore.delete(pendingId)
         }
     }
 
@@ -808,6 +853,14 @@ fun BenchToolsScreen(modifier: Modifier = Modifier) {
                                     }
                                     if (tool == BuiltInBenchTool.DOCBENCH_DOCUMENT && !shouldEnable) {
                                         val pendingExportId = pendingDocbenchExportId
+                                        val pendingMergeId = pendingDocbenchMergeId
+                                        pendingDocbenchMergeId = null
+                                        pendingDocbenchMergeUris = null
+                                        if (pendingMergeId != null) {
+                                            scope.launch(Dispatchers.IO) {
+                                                docbenchPendingMergeStore.delete(pendingMergeId)
+                                            }
+                                        }
                                         docbenchImportGeneration += 1
                                         docbenchMergeGeneration += 1
                                         docbenchExportGeneration += 1
@@ -1046,11 +1099,55 @@ fun BenchToolsScreen(modifier: Modifier = Modifier) {
                                     BuiltInBenchTool.DOCBENCH_DOCUMENT in store.loadEnabledTools()
                                 },
                                 onMergeFiles = {
-                                    try {
-                                        docbenchMergeLauncher.launch(DOCBENCH_TEXT_MERGE_MIME_TYPES)
-                                    } catch (_: ActivityNotFoundException) {
-                                        docbenchTextTransformState.message =
-                                            "No document picker is available."
+                                    val state = docbenchTextTransformState
+                                    val generation = docbenchMergeGeneration + 1
+                                    docbenchMergeGeneration = generation
+                                    val source = state.source
+                                    val includeUtf8Bom = state.includeUtf8Bom
+                                    state.merging = true
+                                    state.message = null
+                                    scope.launch {
+                                        val pendingId = try {
+                                            withContext(Dispatchers.IO) {
+                                                docbenchPendingMergeStore.save(
+                                                    TextDocument(
+                                                        text = source,
+                                                        hadUtf8Bom = includeUtf8Bom,
+                                                        lineEndings = TextDocumentCodec.detectLineEndings(source)
+                                                    )
+                                                )
+                                            }
+                                        } catch (_: IOException) {
+                                            state.merging = false
+                                            state.message = "Could not preserve the editor before merging."
+                                            return@launch
+                                        } catch (_: IllegalArgumentException) {
+                                            state.merging = false
+                                            state.message = "The editor contains text that cannot be saved as UTF-8."
+                                            return@launch
+                                        }
+                                        if (
+                                            generation != docbenchMergeGeneration ||
+                                            BuiltInBenchTool.DOCBENCH_DOCUMENT !in store.loadEnabledTools()
+                                        ) {
+                                            withContext(Dispatchers.IO) {
+                                                docbenchPendingMergeStore.delete(pendingId)
+                                            }
+                                            state.merging = false
+                                            return@launch
+                                        }
+                                        pendingDocbenchMergeId = pendingId
+                                        pendingDocbenchMergeUris = null
+                                        try {
+                                            docbenchMergeLauncher.launch(DOCBENCH_TEXT_MERGE_MIME_TYPES)
+                                        } catch (_: ActivityNotFoundException) {
+                                            pendingDocbenchMergeId = null
+                                            state.merging = false
+                                            state.message = "No document picker is available."
+                                            withContext(Dispatchers.IO) {
+                                                docbenchPendingMergeStore.delete(pendingId)
+                                            }
+                                        }
                                     }
                                 },
                                 onExport = {

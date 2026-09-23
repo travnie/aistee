@@ -24,4 +24,13 @@ class DocbenchTextMergeImportTest {
         assertFalse(isDocbenchTextMergeCandidate("data.json", "application/json"))
         assertFalse(isDocbenchTextMergeCandidate("page.xml", "application/xml"))
     }
+
+    @Test
+    fun syntheticNamesCannotAuthorizeAnUnknownDocumentType() {
+        assertFalse(isDocbenchTextMergeCandidate("document.txt", null, hasProviderDisplayName = false))
+        assertFalse(isDocbenchTextMergeCandidate("document.txt", "application/octet-stream", hasProviderDisplayName = false))
+        assertTrue(isDocbenchTextMergeCandidate("document.txt", "text/plain", hasProviderDisplayName = false))
+        assertTrue(isDocbenchTextMergeCandidate("document.txt", "text/markdown", hasProviderDisplayName = false))
+        assertTrue(isDocbenchTextMergeCandidate("README.md", null, hasProviderDisplayName = true))
+    }
 }
