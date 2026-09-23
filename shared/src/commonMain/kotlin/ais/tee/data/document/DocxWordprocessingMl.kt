@@ -17,6 +17,7 @@ object DocxWordprocessingMl {
         headingStyleLevels: Map<String, Int> = emptyMap()
     ): DocbenchStructuredDocument {
         require(xml.length <= MAX_DOCX_XML_CHARS) { "DOCX document XML exceeds the 8 MiB limit." }
+        rejectDtd(xml)
         val reader = xmlStreaming.newReader(xml, expandEntities = false)
         val blocks = mutableListOf<DocbenchStructuredBlock>()
         var paragraph: ParagraphBuilder? = null
@@ -51,6 +52,9 @@ object DocxWordprocessingMl {
                                     name != "_GoBack" &&
                                     current.bookmarks.size < MAX_DOCBENCH_BOOKMARKS_PER_BLOCK
                                 ) {
+                                    require(name.length <= MAX_DOCBENCH_BOOKMARK_NAME_CHARS) {
+                                        "DOCX bookmark name exceeds the supported limit."
+                                    }
                                     current.bookmarks += name
                                 }
                             }
@@ -90,6 +94,7 @@ object DocxWordprocessingMl {
 
     fun decodeHeadingStyles(xml: String): Map<String, Int> {
         require(xml.length <= MAX_DOCX_XML_CHARS) { "DOCX styles XML exceeds the 8 MiB limit." }
+        rejectDtd(xml)
         val reader = xmlStreaming.newReader(xml, expandEntities = false)
         val result = linkedMapOf<String, Int>()
         var style: StyleBuilder? = null
@@ -278,6 +283,12 @@ object DocxWordprocessingMl {
                 '\'' -> append("&apos;")
                 else -> append(char)
             }
+        }
+    }
+
+    private fun rejectDtd(xml: String) {
+        require(!xml.contains("<!DOCTYPE", ignoreCase = true)) {
+            "DOCX WordprocessingML DTD/DOCTYPE declarations are not supported."
         }
     }
 
