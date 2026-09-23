@@ -174,7 +174,10 @@ fun BuiltInBenchTool.capabilities(): BuiltInBenchToolCapabilities = when (this) 
             BenchToolSurface.ACCOUNT_WEB_CHAT,
             BenchToolSurface.COMPANION_UI
         ),
-        invocationModes = setOf(BenchToolInvocationMode.EXPLICIT_USER_ACTION)
+        invocationModes = setOf(
+            BenchToolInvocationMode.EXPLICIT_USER_ACTION,
+            BenchToolInvocationMode.MODEL_TOOL_CALL
+        )
     )
 
     BuiltInBenchTool.STREAMBENCH_PLAYER -> BuiltInBenchToolCapabilities(
