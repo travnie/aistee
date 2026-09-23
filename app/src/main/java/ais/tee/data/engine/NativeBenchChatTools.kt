@@ -51,7 +51,8 @@ private const val MAX_INSPECTOR_FINDINGS_FOR_MODEL = 64
  * First-party native-chat tools backed by the same Docbench cores used by the companion UI.
  *
  * The executor receives only inline text already present in the model turn. It never opens files,
- * reads arbitrary app storage, uses the camera, writes exports or performs network access.
+ * reads arbitrary app storage, uses the camera, writes user exports or performs network access.
+ * QR generation may persist only generated SVG into Aistee's scoped no-backup Project Library.
  */
 internal class NativeBenchChatTools(
     context: Context,
@@ -59,6 +60,7 @@ internal class NativeBenchChatTools(
 ) {
     private val preferences = BuiltInBenchPreferencesStore(context.applicationContext)
     private val projectLibraryStore = ProjectLibraryStore(context.applicationContext.noBackupFilesDir)
+    private var generatedQrAssets = 0
 
     fun definitions(): List<NativeToolDefinition> {
         val enabled = preferences.loadEnabledTools()
@@ -72,7 +74,13 @@ internal class NativeBenchChatTools(
             if (modelRouteAllowed(BuiltInBenchTool.DOCBENCH_TEXT_INSPECTOR, enabled)) {
                 add(textInspectorDefinition)
             }
-            if (modelRouteAllowed(BuiltInBenchTool.CODEBENCH_QR_BARCODE, enabled)) {
+            if (
+                modelRouteAllowed(
+                    BuiltInBenchTool.CODEBENCH_QR_BARCODE,
+                    enabled,
+                    actionRequiredPermissions = PROJECT_LIBRARY_WRITE_SCOPE,
+                )
+            ) {
                 add(qrDefinition)
             }
         }
@@ -82,7 +90,9 @@ internal class NativeBenchChatTools(
         val enabled = preferences.loadEnabledTools()
         val owner = toolOwner(call.name)
             ?: return@withContext errorResult(call, "Unknown first-party tool.")
-        if (!modelRouteAllowed(owner, enabled)) {
+        val actionRequiredPermissions =
+            if (call.name == GENERATE_QR) PROJECT_LIBRARY_WRITE_SCOPE else emptySet()
+        if (!modelRouteAllowed(owner, enabled, actionRequiredPermissions)) {
             return@withContext errorResult(call, "Tool is disabled or blocked by the current Bench policy.")
         }
         when (call.name) {
@@ -99,14 +109,16 @@ internal class NativeBenchChatTools(
     private fun modelRouteAllowed(
         tool: BuiltInBenchTool,
         enabled: Set<BuiltInBenchTool>,
+        actionRequiredPermissions: Set<BenchToolPermission> = emptySet(),
     ): Boolean =
         tool.availability(
             surface = BenchToolSurface.NATIVE_CHAT,
             invocationMode = BenchToolInvocationMode.MODEL_TOOL_CALL,
             inputKind = BenchToolDataKind.TEXT,
             isEnabled = tool in enabled,
-            grantedPermissions = INLINE_TEXT_GRANT,
+            grantedPermissions = MODEL_SCOPED_GRANTS,
             networkAvailable = false,
+            actionRequiredPermissions = actionRequiredPermissions,
         ).decision == CapabilityDecision.ALLOW
 
     private fun formatStructured(call: NativeToolCall): NativeToolResult {
@@ -211,6 +223,9 @@ internal class NativeBenchChatTools(
     }
 
     private fun generateQr(call: NativeToolCall): NativeToolResult {
+        if (generatedQrAssets >= MAX_MODEL_QR_ASSETS_PER_SEND) {
+            return errorResult(call, "QR asset limit reached for this chat send.")
+        }
         val text = call.stringArgument("text")
             ?.takeIf { it.isNotEmpty() && it.length <= CodebenchBarcodeCodec.MAX_CONTENT_UTF16_UNITS }
             ?: return errorResult(call, "Missing or oversized QR text.")
@@ -232,6 +247,7 @@ internal class NativeBenchChatTools(
             extension = "svg",
             text = matrix.toSvg(),
         ) ?: return errorResult(call, "Could not save generated QR to Project Library.")
+        generatedQrAssets++
         return successResult(
             call,
             buildJsonObject {
@@ -306,7 +322,12 @@ internal class NativeBenchChatTools(
     }
 
     private companion object {
-        val INLINE_TEXT_GRANT = setOf(BenchToolPermission.READ_USER_SELECTED_CONTENT)
+        const val MAX_MODEL_QR_ASSETS_PER_SEND = 4
+        val PROJECT_LIBRARY_WRITE_SCOPE = setOf(BenchToolPermission.WRITE_PROJECT_LIBRARY)
+        val MODEL_SCOPED_GRANTS = setOf(
+            BenchToolPermission.READ_USER_SELECTED_CONTENT,
+            BenchToolPermission.WRITE_PROJECT_LIBRARY,
+        )
 
         val textProperty = buildJsonObject {
             put("type", "string")
