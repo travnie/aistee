@@ -23,6 +23,26 @@ class ProviderRuntimeCapabilitiesTest {
     }
 
     @Test
+    fun directProvidersExposeVerifiedClientToolStrategies() {
+        assertEquals(
+            ClientToolCallingStrategy.GEMINI_FUNCTIONS,
+            AiProvider.GEMINI.runtimeCapabilities().clientToolCallingStrategy
+        )
+        assertEquals(
+            ClientToolCallingStrategy.OPENAI_RESPONSES_FUNCTIONS,
+            AiProvider.CHATGPT.runtimeCapabilities().clientToolCallingStrategy
+        )
+        assertEquals(
+            ClientToolCallingStrategy.ANTHROPIC_CLIENT_TOOLS,
+            AiProvider.CLAUDE.runtimeCapabilities().clientToolCallingStrategy
+        )
+        assertEquals(
+            ClientToolCallingStrategy.PER_PROVIDER,
+            AiProvider.ALL.runtimeCapabilities().clientToolCallingStrategy
+        )
+    }
+
+    @Test
     fun compatibleGatewaysUseSystemMessagesAndExposeResolvedModels() {
         listOf(
             AiProvider.DEEPSEEK,
@@ -39,6 +59,7 @@ class ProviderRuntimeCapabilitiesTest {
             assertEquals(SystemInstructionPlacement.SYSTEM_MESSAGE, capabilities.systemInstructionPlacement)
             assertTrue(capabilities.streamsText)
             assertTrue(capabilities.reportsResolvedModel)
+            assertEquals(ClientToolCallingStrategy.NONE, capabilities.clientToolCallingStrategy)
         }
     }
 
