@@ -33,6 +33,14 @@ enum class ReasoningControlStrategy {
     MODEL_CAPABILITY_METADATA
 }
 
+enum class ClientToolCallingStrategy {
+    PER_PROVIDER,
+    NONE,
+    GEMINI_FUNCTIONS,
+    OPENAI_RESPONSES_FUNCTIONS,
+    ANTHROPIC_CLIENT_TOOLS,
+}
+
 fun AiProvider.reasoningControlStrategy(): ReasoningControlStrategy = when (this) {
     AiProvider.ALL -> ReasoningControlStrategy.PER_PROVIDER
     AiProvider.CLAUDE -> ReasoningControlStrategy.MODEL_CAPABILITY_METADATA
@@ -85,6 +93,7 @@ data class ProviderRuntimeCapabilities(
     val transport: NativeChatTransport,
     val systemInstructionPlacement: SystemInstructionPlacement,
     val conversationStateStrategy: ConversationStateStrategy,
+    val clientToolCallingStrategy: ClientToolCallingStrategy,
     val streamsText: Boolean,
     val reportsResolvedModel: Boolean
 )
@@ -94,6 +103,7 @@ fun AiProvider.runtimeCapabilities(): ProviderRuntimeCapabilities = when (this) 
         transport = NativeChatTransport.COMPARE_FAN_OUT,
         systemInstructionPlacement = SystemInstructionPlacement.PER_PROVIDER,
         conversationStateStrategy = ConversationStateStrategy.PROVIDER_FAN_OUT,
+        clientToolCallingStrategy = ClientToolCallingStrategy.PER_PROVIDER,
         streamsText = true,
         reportsResolvedModel = false
     )
@@ -101,6 +111,7 @@ fun AiProvider.runtimeCapabilities(): ProviderRuntimeCapabilities = when (this) 
         transport = NativeChatTransport.GEMINI_GENERATE_CONTENT,
         systemInstructionPlacement = SystemInstructionPlacement.NATIVE_FIELD,
         conversationStateStrategy = ConversationStateStrategy.BOUNDED_PROVIDER_CONTENT_REPLAY,
+        clientToolCallingStrategy = ClientToolCallingStrategy.GEMINI_FUNCTIONS,
         streamsText = true,
         reportsResolvedModel = false
     )
@@ -108,6 +119,7 @@ fun AiProvider.runtimeCapabilities(): ProviderRuntimeCapabilities = when (this) 
         transport = NativeChatTransport.OPENAI_RESPONSES,
         systemInstructionPlacement = SystemInstructionPlacement.NATIVE_FIELD,
         conversationStateStrategy = ConversationStateStrategy.BOUNDED_PROVIDER_CONTENT_REPLAY,
+        clientToolCallingStrategy = ClientToolCallingStrategy.OPENAI_RESPONSES_FUNCTIONS,
         streamsText = true,
         reportsResolvedModel = false
     )
@@ -115,6 +127,7 @@ fun AiProvider.runtimeCapabilities(): ProviderRuntimeCapabilities = when (this) 
         transport = NativeChatTransport.ANTHROPIC_MESSAGES,
         systemInstructionPlacement = SystemInstructionPlacement.NATIVE_FIELD,
         conversationStateStrategy = ConversationStateStrategy.BOUNDED_PROVIDER_CONTENT_REPLAY,
+        clientToolCallingStrategy = ClientToolCallingStrategy.ANTHROPIC_CLIENT_TOOLS,
         streamsText = true,
         reportsResolvedModel = false
     )
@@ -126,6 +139,7 @@ fun AiProvider.runtimeCapabilities(): ProviderRuntimeCapabilities = when (this) 
         transport = NativeChatTransport.OPENAI_COMPATIBLE_CHAT_COMPLETIONS,
         systemInstructionPlacement = SystemInstructionPlacement.SYSTEM_MESSAGE,
         conversationStateStrategy = ConversationStateStrategy.BOUNDED_PROVIDER_TEXT_REPLAY,
+        clientToolCallingStrategy = ClientToolCallingStrategy.NONE,
         streamsText = true,
         reportsResolvedModel = true
     )
