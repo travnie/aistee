@@ -32,7 +32,10 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
         ignoreUnknownKeys = true
     }
 
-    fun load(now: Long = System.currentTimeMillis()): ProjectLibraryArchive {
+    fun load(now: Long = System.currentTimeMillis()): ProjectLibraryArchive =
+        synchronized(FILE_LOCK) { loadUnlocked(now) }
+
+    private fun loadUnlocked(now: Long): ProjectLibraryArchive {
         val decoded = if (indexFile.baseFile.isFile) {
             runCatching {
                 json.decodeFromString<ProjectLibraryArchive>(
@@ -45,9 +48,12 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
             ?: ProjectLibraryArchive().normalizedProjectLibrary(now)!!
     }
 
-    fun createProject(name: String, now: Long = System.currentTimeMillis()): LocalProject? {
+    fun createProject(name: String, now: Long = System.currentTimeMillis()): LocalProject? =
+        synchronized(FILE_LOCK) { createProjectUnlocked(name, now) }
+
+    private fun createProjectUnlocked(name: String, now: Long): LocalProject? {
         val normalizedName = name.trim().takeIf { it.isNotEmpty() }?.take(MAX_PROJECT_NAME_CHARS) ?: return null
-        val archive = load(now)
+        val archive = loadUnlocked(now)
         val project = LocalProject(
             id = UUID.randomUUID().toString(),
             name = normalizedName,
@@ -63,10 +69,21 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
         extension: String,
         text: String,
         now: Long = System.currentTimeMillis(),
+    ): ProjectLibraryAsset? = synchronized(FILE_LOCK) {
+        saveTextAssetUnlocked(projectId, title, mediaType, extension, text, now)
+    }
+
+    private fun saveTextAssetUnlocked(
+        projectId: String,
+        title: String,
+        mediaType: String,
+        extension: String,
+        text: String,
+        now: Long,
     ): ProjectLibraryAsset? {
         val bytes = text.encodeToByteArray(throwOnInvalidSequence = true)
         if (bytes.size > MAX_ASSET_BYTES) return null
-        val archive = load(now)
+        val archive = loadUnlocked(now)
         if (archive.projects.none { it.id == projectId }) return null
         val normalizedTitle = title.trim().takeIf { it.isNotEmpty() }?.take(MAX_ASSET_TITLE_CHARS) ?: return null
         val normalizedType = mediaType.trim().lowercase().takeIf { it.isNotEmpty() } ?: return null
@@ -111,8 +128,11 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
         }
     }
 
-    fun loadTextAsset(assetId: String, now: Long = System.currentTimeMillis()): LoadedProjectLibraryAsset? {
-        val metadata = load(now).assets.firstOrNull { it.id == assetId } ?: return null
+    fun loadTextAsset(assetId: String, now: Long = System.currentTimeMillis()): LoadedProjectLibraryAsset? =
+        synchronized(FILE_LOCK) { loadTextAssetUnlocked(assetId, now) }
+
+    private fun loadTextAssetUnlocked(assetId: String, now: Long): LoadedProjectLibraryAsset? {
+        val metadata = loadUnlocked(now).assets.firstOrNull { it.id == assetId } ?: return null
         val file = File(assetsDirectory, metadata.fileName)
         if (
             !file.isFile ||
@@ -125,8 +145,11 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
         return LoadedProjectLibraryAsset(metadata, text)
     }
 
-    fun deleteAsset(assetId: String, now: Long = System.currentTimeMillis()): Boolean {
-        val archive = load(now)
+    fun deleteAsset(assetId: String, now: Long = System.currentTimeMillis()): Boolean =
+        synchronized(FILE_LOCK) { deleteAssetUnlocked(assetId, now) }
+
+    private fun deleteAssetUnlocked(assetId: String, now: Long): Boolean {
+        val archive = loadUnlocked(now)
         val asset = archive.assets.firstOrNull { it.id == assetId } ?: return false
         val remaining = archive.assets.filterNot { it.id == assetId }
         if (!saveArchive(archive.copy(assets = remaining))) return false
@@ -152,6 +175,8 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
     }.getOrDefault(false)
 
     companion object {
+        private val FILE_LOCK = Any()
+
         const val DIRECTORY_NAME = "project-library-v1"
         const val MAX_ASSET_BYTES = 8 * 1024 * 1024
         private const val ASSETS_DIRECTORY_NAME = "assets"
