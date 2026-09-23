@@ -8,7 +8,13 @@ import ais.tee.data.model.ClaudeReasoningCapabilities
 import ais.tee.data.model.parseClaudeReasoningCapabilities
 import ais.tee.data.model.resolveClaudeThinkingBudget
 import ais.tee.data.model.GatewayModelCatalogEntry
+import ais.tee.data.model.ClientToolCallingStrategy
+import ais.tee.data.model.MAX_NATIVE_TOOL_ROUNDS
 import ais.tee.data.model.ModelChatMessage
+import ais.tee.data.model.NativeToolCall
+import ais.tee.data.model.NativeToolDefinition
+import ais.tee.data.model.NativeToolResult
+import ais.tee.data.model.runtimeCapabilities
 import ais.tee.data.model.ProviderUsage
 import ais.tee.data.model.buildBoundedProviderTextTurns
 import ais.tee.data.model.gatewayModelOptions
@@ -361,8 +367,18 @@ class AiChatService {
         profile: Profile?,
         conversationHistory: List<ModelChatMessage> = emptyList(),
         allowSimulationFallback: Boolean = true,
-        onTextDelta: ((String) -> Unit)? = null
+        onTextDelta: ((String) -> Unit)? = null,
+        tools: List<NativeToolDefinition> = emptyList(),
+        executeTool: (suspend (NativeToolCall) -> NativeToolResult)? = null,
     ): ModelChatMessage = withContext(Dispatchers.IO) {
+        require(tools.isEmpty() || executeTool != null) {
+            "A tool executor is required when client tools are offered"
+        }
+        if (tools.isNotEmpty()) {
+            require(provider.runtimeCapabilities().clientToolCallingStrategy != ClientToolCallingStrategy.NONE) {
+                "${provider.displayName} does not expose verified client tool calling"
+            }
+        }
         val startTime = System.currentTimeMillis()
         val effectiveModel = if (modelName == "all" || modelName.isBlank()) provider.defaultModel else modelName
         var resolvedModel = effectiveModel
@@ -387,36 +403,66 @@ class AiChatService {
             try {
                 val realResult = when (provider) {
                     AiProvider.GEMINI -> {
-                        val result = if (onTextDelta != null) {
-                            callGeminiStreamApi(
+                        val result = when {
+                            tools.isNotEmpty() -> callGeminiToolApi(
+                                prompt = prompt,
+                                model = effectiveModel,
+                                apiKey = key,
+                                systemInstruction = systemInstruction,
+                                conversationHistory = conversationHistory,
+                                tools = tools,
+                                executeTool = checkNotNull(executeTool),
+                            )
+                            onTextDelta != null -> callGeminiStreamApi(
                                 prompt, effectiveModel, key, systemInstruction, conversationHistory, onTextDelta
                             )
-                        } else {
-                            callGeminiApi(prompt, effectiveModel, key, systemInstruction, conversationHistory)
+                            else -> callGeminiApi(
+                                prompt, effectiveModel, key, systemInstruction, conversationHistory
+                            )
                         }
                         providerReplayState = result.replayState
                         providerUsage = result.usage
                         result.text
                     }
                     AiProvider.CHATGPT -> {
-                        val result = if (onTextDelta != null) {
-                            callOpenAiStreamApi(
+                        val result = when {
+                            tools.isNotEmpty() -> callOpenAiToolApi(
+                                prompt = prompt,
+                                model = effectiveModel,
+                                apiKey = key,
+                                systemInstruction = systemInstruction,
+                                conversationHistory = conversationHistory,
+                                tools = tools,
+                                executeTool = checkNotNull(executeTool),
+                            )
+                            onTextDelta != null -> callOpenAiStreamApi(
                                 prompt, effectiveModel, key, systemInstruction, conversationHistory, onTextDelta
                             )
-                        } else {
-                            callOpenAiApi(prompt, effectiveModel, key, systemInstruction, conversationHistory)
+                            else -> callOpenAiApi(
+                                prompt, effectiveModel, key, systemInstruction, conversationHistory
+                            )
                         }
                         providerReplayState = result.replayState
                         providerUsage = result.usage
                         result.text
                     }
                     AiProvider.CLAUDE -> {
-                        val result = if (onTextDelta != null) {
-                            callClaudeStreamApi(
+                        val result = when {
+                            tools.isNotEmpty() -> callClaudeToolApi(
+                                prompt = prompt,
+                                model = effectiveModel,
+                                apiKey = key,
+                                systemInstruction = systemInstruction,
+                                conversationHistory = conversationHistory,
+                                tools = tools,
+                                executeTool = checkNotNull(executeTool),
+                            )
+                            onTextDelta != null -> callClaudeStreamApi(
                                 prompt, effectiveModel, key, systemInstruction, conversationHistory, onTextDelta
                             )
-                        } else {
-                            callClaudeApi(prompt, effectiveModel, key, systemInstruction, conversationHistory)
+                            else -> callClaudeApi(
+                                prompt, effectiveModel, key, systemInstruction, conversationHistory
+                            )
                         }
                         providerReplayState = result.replayState
                         resolvedModel = result.resolvedModel
