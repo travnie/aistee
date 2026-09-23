@@ -811,6 +811,66 @@ class AiChatService {
         )
     }
 
+    private suspend fun callGeminiToolApi(
+        prompt: String,
+        model: String,
+        apiKey: String,
+        systemInstruction: String?,
+        conversationHistory: List<ModelChatMessage>,
+        tools: List<NativeToolDefinition>,
+        executeTool: suspend (NativeToolCall) -> NativeToolResult,
+    ): GeminiGenerationResult {
+        val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+        val contents = buildGeminiContents(
+            prompt = prompt,
+            conversationHistory = conversationHistory,
+            modelName = model,
+            systemInstruction = systemInstruction,
+        ).toMutableList()
+        val toolDefinitions = buildGeminiToolDefinitions(tools)
+        var usage: ProviderUsage? = null
+
+        repeat(MAX_NATIVE_TOOL_ROUNDS) { round ->
+            val requestPayload = buildJsonObject {
+                put("contents", JsonArray(contents))
+                put("tools", toolDefinitions)
+                if (!systemInstruction.isNullOrBlank()) {
+                    putJsonObject("systemInstruction") {
+                        putJsonArray(JSON_PARTS_KEY) {
+                            addJsonObject { put(JSON_TEXT_KEY, systemInstruction) }
+                        }
+                    }
+                }
+            }
+            val request = Request.Builder()
+                .url(url)
+                .post(requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
+                .build()
+            val responseBody = executeCancellableJson(request, "Empty response from Gemini server")
+            val parsed = json.parseToJsonElement(responseBody).jsonObject
+            usage = mergeProviderUsage(usage, extractGeminiUsage(parsed))
+            val modelContent = extractGeminiReplayContent(parsed)
+                ?: throw IOException("Gemini response is missing model content")
+            val calls = parseGeminiToolCalls(modelContent, round)
+            if (calls.isEmpty()) {
+                return GeminiGenerationResult(
+                    text = extractGeminiStreamText(parsed)
+                        ?: "Received empty content response from Gemini.",
+                    replayState = encodeGeminiReplayState(listOf(modelContent)),
+                    usage = usage,
+                )
+            }
+            if (round == MAX_NATIVE_TOOL_ROUNDS - 1) {
+                throw IOException("Gemini exceeded the local tool-call round limit")
+            }
+
+            contents += modelContent
+            val results = executeNativeToolBatch(calls, tools, executeTool)
+            contents += buildGeminiToolResultContent(calls, results, json)
+        }
+        throw IOException("Gemini tool-call loop ended unexpectedly")
+    }
+
     // --- OpenAI Responses API ---
     private suspend fun callOpenAiApi(
         prompt: String,
