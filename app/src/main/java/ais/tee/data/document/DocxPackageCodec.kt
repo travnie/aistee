@@ -32,15 +32,22 @@ internal object DocxPackageCodec {
                     throw IllegalArgumentException("DOCX contains too many package entries.")
                 }
                 val normalizedName = normalizeEntryName(entry.name)
-                val content = readEntryBounded(zip) { count ->
+                val onBytesRead: (Int) -> Unit = { count ->
                     totalUncompressed += count
                     if (totalUncompressed > MAX_UNCOMPRESSED_BYTES) {
                         throw IllegalArgumentException("DOCX expands beyond the supported limit.")
                     }
                 }
+                if (entry.isDirectory) {
+                    zip.closeEntry()
+                    continue
+                }
                 when (normalizedName) {
-                    "word/document.xml" -> documentXml = content.decodeToString()
-                    "word/styles.xml" -> stylesXml = content.decodeToString()
+                    "word/document.xml" ->
+                        documentXml = readEntryBounded(zip, onBytesRead).decodeToString()
+                    "word/styles.xml" ->
+                        stylesXml = readEntryBounded(zip, onBytesRead).decodeToString()
+                    else -> drainEntryBounded(zip, onBytesRead)
                 }
                 zip.closeEntry()
             }
@@ -88,6 +95,18 @@ internal object DocxPackageCodec {
         return output.toByteArray()
     }
 
+    private fun drainEntryBounded(
+        zip: ZipInputStream,
+        onBytesRead: (Int) -> Unit
+    ) {
+        val buffer = ByteArray(BUFFER_SIZE)
+        while (true) {
+            val count = zip.read(buffer)
+            if (count < 0) break
+            onBytesRead(count)
+        }
+    }
+
     private fun writeEntry(zip: ZipOutputStream, name: String, content: String) {
         val bytes = content.encodeToByteArray()
         require(bytes.size <= MAX_ENTRY_BYTES) { "Generated DOCX entry is too large." }
@@ -97,7 +116,7 @@ internal object DocxPackageCodec {
     }
 
     private fun normalizeEntryName(name: String): String {
-        val normalized = name.replace('\\', '/').removePrefix("/")
+        val normalized = name.replace('\\', '/').trim('/')
         require(
             normalized.isNotBlank() &&
                 normalized.split('/').none { it == ".." || it.isEmpty() }
