@@ -207,11 +207,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun refreshProjectLibrary() {
-        val archive = projectLibraryStore.load()
-        _uiState.update { it.copy(projectLibrary = archive, isProjectLibraryReady = true) }
-    }
-
     private suspend fun reloadProjectLibraryFromDisk() {
         val archive = withContext(Dispatchers.IO) { projectLibraryStore.load() }
         _uiState.update { it.copy(projectLibrary = archive, isProjectLibraryReady = true) }
@@ -560,9 +555,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         scheduleNativeChatDraftPersistence()
     }
 
-    fun createProject(name: String): Boolean {
-        val project = projectLibraryStore.createProject(name) ?: return false
-        refreshProjectLibrary()
+    suspend fun createProject(name: String): Boolean {
+        val project = withContext(Dispatchers.IO) {
+            projectLibraryStore.createProject(name)
+        } ?: return false
+        reloadProjectLibraryFromDisk()
         moveActiveConversationToProject(project.id)
         return true
     }
@@ -577,35 +574,43 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         return true
     }
 
-    fun saveActiveChatToProjectLibrary(): ProjectLibraryAsset? {
+    suspend fun saveActiveChatToProjectLibrary(): ProjectLibraryAsset? {
         val conversation = _uiState.value.activeNativeConversation ?: return null
-        val markdown = renderChatMarkdown(
-            messages = conversation.messages,
-            maxUtf8Bytes = ProjectLibraryStore.MAX_ASSET_BYTES,
-        ) ?: return null
-        val asset = projectLibraryStore.saveTextAsset(
-            projectId = conversation.projectId,
-            title = conversation.title,
-            mediaType = "text/markdown",
-            extension = "md",
-            text = markdown,
-        ) ?: return null
-        refreshProjectLibrary()
+        val markdown = withContext(Dispatchers.Default) {
+            renderChatMarkdown(
+                messages = conversation.messages,
+                maxUtf8Bytes = ProjectLibraryStore.MAX_ASSET_BYTES,
+            )
+        } ?: return null
+        val asset = withContext(Dispatchers.IO) {
+            projectLibraryStore.saveTextAsset(
+                projectId = conversation.projectId,
+                title = conversation.title,
+                mediaType = "text/markdown",
+                extension = "md",
+                text = markdown,
+            )
+        } ?: return null
+        reloadProjectLibraryFromDisk()
         return asset
     }
 
-    fun loadProjectLibraryAsset(assetId: String): String? =
-        projectLibraryStore.loadTextAsset(assetId)?.text
+    suspend fun loadProjectLibraryAsset(assetId: String): String? =
+        withContext(Dispatchers.IO) { projectLibraryStore.loadTextAsset(assetId)?.text }
 
-    fun deleteProjectLibraryAsset(assetId: String): Boolean {
-        val deleted = projectLibraryStore.deleteAsset(assetId)
-        if (deleted) refreshProjectLibrary()
+    suspend fun deleteProjectLibraryAsset(assetId: String): Boolean {
+        val deleted = withContext(Dispatchers.IO) {
+            projectLibraryStore.deleteAsset(assetId)
+        }
+        if (deleted) reloadProjectLibraryFromDisk()
         return deleted
     }
 
-    fun importNativeChatMarkdown(source: String): Boolean {
+    suspend fun importNativeChatMarkdown(source: String): Boolean {
         if (!_uiState.value.isNativeConversationStoreReady) return false
-        val imported = parseChatMarkdown(source).chat ?: return false
+        val imported = withContext(Dispatchers.Default) {
+            parseChatMarkdown(source).chat
+        } ?: return false
         val now = System.currentTimeMillis()
         val messages = imported.turns.mapIndexed { index, turn ->
             ModelChatMessage(
@@ -639,14 +644,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
         persistNativeChat()
-        projectLibraryStore.saveTextAsset(
-            projectId = conversation.projectId,
-            title = conversation.title,
-            mediaType = "text/markdown",
-            extension = "md",
-            text = source,
-        )
-        refreshProjectLibrary()
+        withContext(Dispatchers.IO) {
+            projectLibraryStore.saveTextAsset(
+                projectId = conversation.projectId,
+                title = conversation.title,
+                mediaType = "text/markdown",
+                extension = "md",
+                text = source,
+            )
+        }
+        reloadProjectLibraryFromDisk()
         return true
     }
 
