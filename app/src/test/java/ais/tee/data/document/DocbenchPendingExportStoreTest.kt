@@ -72,6 +72,26 @@ class DocbenchPendingExportStoreTest {
     }
 
     @Test
+    fun pendingMergeSurvivesRecreationWithoutPuttingEditorTextInSavedState() {
+        val directory = Files.createTempDirectory(TEMP_DIRECTORY_PREFIX).toFile()
+        try {
+            val original = TextDocumentCodec.decodeUtf8(
+                byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) +
+                    "unsaved notes\r\n".repeat(30_000).encodeToByteArray()
+            )
+            val savedId = DocbenchPendingExportStore(directory).save(original)
+
+            val recreatedStore = DocbenchPendingExportStore(directory)
+            recreatedStore.pruneOrphans(savedId)
+            assertEquals(original, recreatedStore.load(savedId))
+            recreatedStore.delete(savedId)
+            assertNull(DocbenchPendingExportStore(directory).load(savedId))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsUntrustedIdentifiersOutsideTheStoreDirectory() {
         val directory = Files.createTempDirectory(TEMP_DIRECTORY_PREFIX).toFile()
         try {
