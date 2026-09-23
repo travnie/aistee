@@ -8,7 +8,6 @@ internal const val WORDPROCESSINGML_NS =
     "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 private const val MAX_DOCX_XML_CHARS = 8 * 1024 * 1024
 private const val MAX_DOCX_STYLES = 2_048
-private val HEADING_STYLE_PATTERN = Regex("""(?i)^heading\\s*([1-9])$""")
 
 /** Text/outline subset of WordprocessingML used by the Android DOCX package adapter. */
 object DocxWordprocessingMl {
@@ -313,8 +312,12 @@ object DocxWordprocessingMl {
         }
     }
 
-    private fun String.headingLevelFromStyleName(): Int? =
-        HEADING_STYLE_PATTERN.matchEntire(trim())?.groupValues?.get(1)?.toIntOrNull()
+    private fun String.headingLevelFromStyleName(): Int? {
+        val normalized = trim()
+        if (!normalized.startsWith("heading", ignoreCase = true)) return null
+        val levelText = normalized.substring("heading".length).trim()
+        return levelText.toIntOrNull()?.takeIf { it in 1..9 }
+    }
 
     private fun hasOnlyXml10Characters(value: String): Boolean {
         var index = 0
