@@ -210,6 +210,43 @@ class StructuredTextDiagnosticsTest {
         )
     }
 
+
+    @Test
+    fun formatsYamlWithoutDroppingCommentsAnchorsAliasesOrScalarStyles() {
+        val source = """
+            # keep this comment
+            base: &defaults {model: "fast", items: [one,two]} # inline
+            copy: *defaults
+            note: |
+              keep
+              these lines
+        """.trimIndent()
+
+        val result = StructuredTextDiagnostics.formatYaml(source)
+
+        assertTrue(result.isSuccess)
+        assertTrue(result.changed)
+        assertTrue(result.text.contains("# keep this comment"))
+        assertTrue(result.text.contains("# inline"))
+        assertTrue(result.text.contains("&defaults"))
+        assertTrue(result.text.contains("*defaults"))
+        assertTrue(result.text.contains(""fast""))
+        assertTrue(result.text.contains("|"))
+        assertTrue(
+            StructuredTextDiagnostics.validate(result.text, StructuredTextFormat.YAML).isValid
+        )
+    }
+
+    @Test
+    fun malformedYamlFormattingLeavesSourceUntouched() {
+        val source = "name: \"unterminated\n"
+        val result = StructuredTextDiagnostics.formatYaml(source)
+
+        assertFalse(result.isSuccess)
+        assertFalse(result.changed)
+        assertEquals(source, result.text)
+    }
+
     @Test
     fun xmlValidationAcceptsPortableWellFormedSyntax() {
         listOf(

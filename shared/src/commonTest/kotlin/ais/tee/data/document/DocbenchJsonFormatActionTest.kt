@@ -63,6 +63,25 @@ class DocbenchJsonFormatActionTest {
         assertTrue(completed.text.contains("0x1f90"))
     }
 
+
+    @Test
+    fun yamlFormattingUsesCommentAndAnchorPreservingCore() {
+        val source = "# keep\nbase: &item {name: Aistee}\ncopy: *item\n"
+        val result = DocbenchJsonFormatAction.execute(
+            text = source,
+            format = StructuredTextFormat.YAML,
+            surface = BenchToolSurface.COMPANION_UI,
+            isEnabled = true,
+            grantedPermissions = DOCUMENT_READ_GRANT
+        )
+
+        val completed = assertIs<DocbenchJsonFormatActionResult.Completed>(result)
+        assertTrue(completed.changed)
+        assertTrue(completed.text.contains("# keep"))
+        assertTrue(completed.text.contains("&item"))
+        assertTrue(completed.text.contains("*item"))
+    }
+
     @Test
     fun invalidOrAmbiguousJsonIsRejectedWithoutReturningModifiedText() {
         listOf(

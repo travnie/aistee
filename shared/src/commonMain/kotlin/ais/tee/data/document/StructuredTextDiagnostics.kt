@@ -1,6 +1,9 @@
 package ais.tee.data.document
 
+import it.krzeminski.snakeyaml.engine.kmp.api.DumpSettings
 import it.krzeminski.snakeyaml.engine.kmp.api.LoadSettings
+import it.krzeminski.snakeyaml.engine.kmp.api.StreamDataWriter
+import it.krzeminski.snakeyaml.engine.kmp.emitter.Emitter
 import it.krzeminski.snakeyaml.engine.kmp.events.AliasEvent
 import it.krzeminski.snakeyaml.engine.kmp.events.Event
 import it.krzeminski.snakeyaml.engine.kmp.events.NodeEvent
@@ -54,6 +57,7 @@ object StructuredTextDiagnostics {
     private const val MAX_JSON5_CHARS = 3 * 1024 * 1024
     private const val MAX_JSON5_NESTING = 128
     private const val MAX_YAML_CODE_POINTS = 3 * 1024 * 1024
+    private const val MAX_YAML_FORMATTED_CHARS = 8 * 1024 * 1024
     private const val MAX_XML_CHARS = 3 * 1024 * 1024
     private const val MAX_XML_NESTING = 128
 
@@ -143,6 +147,63 @@ object StructuredTextDiagnostics {
             text = formatted,
             changed = formatted != text
         )
+    }
+
+
+    /**
+     * Re-emits valid YAML through SnakeYAML's event pipeline. Parsing events rather than loading
+     * values keeps anchors, aliases, tags, scalar styles and comments source-visible while
+     * normalizing layout. The bounded writer prevents formatting expansion from allocating
+     * unbounded output.
+     */
+    fun formatYaml(text: String): StructuredTextFormatResult {
+        val validation = validateYaml(text)
+        if (!validation.isValid) {
+            return StructuredTextFormatResult(
+                text = text,
+                changed = false,
+                errorMessage = validation.errorMessage ?: "Invalid YAML."
+            )
+        }
+
+        return try {
+            val loadSettings = LoadSettings(
+                label = "Aistee document",
+                codePointLimit = MAX_YAML_CODE_POINTS,
+                parseComments = true
+            )
+            val parser = ParserImpl(loadSettings, StreamReader(loadSettings, text))
+            val writer = BoundedYamlWriter(MAX_YAML_FORMATTED_CHARS)
+            val emitter = Emitter(
+                DumpSettings(
+                    dumpComments = true,
+                    bestLineBreak = "\n",
+                    isSplitLines = false,
+                    indent = 2
+                ),
+                writer
+            )
+            while (parser.hasNext()) {
+                emitter.emit(parser.next())
+            }
+            val formatted = writer.toString()
+            StructuredTextFormatResult(
+                text = formatted,
+                changed = formatted != text
+            )
+        } catch (_: YamlFormattingLimitExceededException) {
+            StructuredTextFormatResult(
+                text = text,
+                changed = false,
+                errorMessage = "Formatting blocked: formatted YAML would exceed the 8 MiB safety limit."
+            )
+        } catch (error: YamlEngineException) {
+            StructuredTextFormatResult(
+                text = text,
+                changed = false,
+                errorMessage = error.message ?: "Could not format YAML."
+            )
+        }
     }
 
     private fun validateJson(text: String): StructuredTextValidationResult {
@@ -843,6 +904,35 @@ object StructuredTextDiagnostics {
         val value: String? = null,
         val errorMessage: String? = null
     )
+
+
+    private class BoundedYamlWriter(
+        private val maxChars: Int
+    ) : StreamDataWriter {
+        private val output = StringBuilder(minOf(maxChars, 64 * 1024))
+
+        override fun write(str: String) {
+            append(str, 0, str.length)
+        }
+
+        override fun write(str: String, off: Int, len: Int) {
+            append(str, off, len)
+        }
+
+        private fun append(str: String, off: Int, len: Int) {
+            require(off >= 0 && len >= 0 && off <= str.length - len) {
+                "Invalid YAML writer range."
+            }
+            if (len > maxChars - output.length) {
+                throw YamlFormattingLimitExceededException()
+            }
+            output.append(str, off, off + len)
+        }
+
+        override fun toString(): String = output.toString()
+    }
+
+    private class YamlFormattingLimitExceededException : RuntimeException()
 
     private class JsonFormattingLimitExceededException : RuntimeException()
 
