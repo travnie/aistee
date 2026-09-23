@@ -107,7 +107,7 @@ internal fun DocbenchTextTransformPanel(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .testTag("docbench_structured_formatter_input")
+                .testTag("docbench_json_formatter_input")
         )
         OutlinedButton(
             onClick = onMergeFiles,
@@ -128,7 +128,7 @@ internal fun DocbenchTextTransformPanel(
                     enabled = !state.working && !state.merging && !state.exporting,
                     label = { Text(format.name) },
                     modifier = Modifier.testTag(
-                        "docbench_structured_mode_${format.name.lowercase()}"
+                        "docbench_json_mode_${format.name.lowercase()}"
                     )
                 )
             }
@@ -136,7 +136,7 @@ internal fun DocbenchTextTransformPanel(
         Button(
             onClick = { launchStructuredFormat(scope, state, isEnabled) },
             enabled = state.canTransform,
-            modifier = Modifier.testTag("docbench_structured_formatter_run")
+            modifier = Modifier.testTag("docbench_json_formatter_run")
         ) {
             Text(if (state.working) "Working…" else "Format ${state.structuredFormat.name}")
         }
