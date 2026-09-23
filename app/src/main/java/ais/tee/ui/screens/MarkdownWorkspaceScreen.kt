@@ -30,6 +30,8 @@ import ais.tee.data.document.LineEnding
 import ais.tee.data.document.LineEndingCounts
 import ais.tee.data.document.MarkdownDocumentFileAccess
 import ais.tee.data.document.MarkdownRecentDocumentsStore
+import ais.tee.data.document.MarkdownStructureValidationResult
+import ais.tee.data.document.MarkdownStructureDiagnostics
 import ais.tee.data.document.RecentMarkdownDocument
 import ais.tee.data.document.TextDocument
 import ais.tee.data.document.TextDocumentCodec
@@ -62,6 +64,7 @@ private sealed class PendingDestructiveWorkspaceAction {
 private data class MarkdownWorkspaceAnalysis(
     val lineEndings: LineEndingCounts,
     val diagnostics: List<DocumentDiagnostic>,
+    val markdownStructure: MarkdownStructureValidationResult,
     val safety: TextInspectionResult,
     val tokenCount: Int?
 )
@@ -467,6 +470,7 @@ private fun rememberMarkdownWorkspaceAnalysis(
         MarkdownWorkspaceAnalysis(
             lineEndings = lineEndings,
             diagnostics = DocumentDiagnostics.inspect(document),
+            markdownStructure = MarkdownStructureDiagnostics.validate(text),
             safety = TextInspector.inspect(text),
             tokenCount = text.takeIf { it.length <= MAX_TOKENIZED_CHARS }?.let(LocalTokenCounter::count)
         )
@@ -679,8 +683,9 @@ private fun WorkspaceDiagnostics(
     }
     val mixed = analysis.diagnostics.firstOrNull { it.kind == DocumentDiagnosticKind.MIXED_LINE_ENDINGS }
     val nul = analysis.diagnostics.firstOrNull { it.kind == DocumentDiagnosticKind.NUL_CHARACTER }
+    val markdownStructure = analysis.markdownStructure
     val safety = analysis.safety
-    if (mixed == null && nul == null && !safety.hasFindings) return
+    if (mixed == null && nul == null && markdownStructure.isValid && !safety.hasFindings) return
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -694,6 +699,7 @@ private fun WorkspaceDiagnostics(
                 }
             }
             nul?.let { NulDiagnostic(it) }
+            if (!markdownStructure.isValid) MarkdownStructureSummary(markdownStructure)
             if (safety.hasFindings) TextInspectorSummary(safety)
         }
     }
@@ -706,6 +712,30 @@ private fun NulDiagnostic(diagnostic: DocumentDiagnostic) {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.error
     )
+}
+
+@Composable
+private fun MarkdownStructureSummary(validation: MarkdownStructureValidationResult) {
+    validation.errorMessage?.let { error ->
+        Text(
+            "Markdown structure: $error",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+        )
+    }
+    validation.issues.take(3).forEach { issue ->
+        Text(
+            "Markdown · ${issue.line}:${issue.column} · ${issue.message}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+        )
+    }
+    if (validation.issues.size > 3) {
+        Text(
+            "${validation.issues.size - 3} more Markdown structure issue(s).",
+            style = MaterialTheme.typography.labelSmall
+        )
+    }
 }
 
 @Composable
