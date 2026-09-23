@@ -308,6 +308,7 @@ class MainActivity : ComponentActivity() {
     private fun consumeNavigationIntent(intent: Intent) {
         intent.action = Intent.ACTION_MAIN
         intent.data = null
+        intent.clipData = null
         intent.removeExtra(AisteeQuickActionNavigation.EXTRA_DESTINATION)
         intent.removeExtra(AisteeQuickActionNavigation.EXTRA_NATIVE_CONVERSATION_ID)
         intent.removeExtra(AisteeQuickActionNavigation.EXTRA_WEB_SERVICE_ID)
