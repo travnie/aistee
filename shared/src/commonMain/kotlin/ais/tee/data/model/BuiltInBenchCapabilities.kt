@@ -30,6 +30,7 @@ enum class BenchToolDataKind {
 /** Sensitive capabilities a first-party tool may need before an invocation can be offered. */
 enum class BenchToolPermission {
     READ_USER_SELECTED_CONTENT,
+    WRITE_PROJECT_LIBRARY,
     WRITE_USER_EXPORT,
     CAMERA,
     NETWORK
@@ -165,6 +166,7 @@ fun BuiltInBenchTool.capabilities(): BuiltInBenchToolCapabilities = when (this) 
         requiredPermissions = emptySet(),
         optionalPermissions = setOf(
             BenchToolPermission.READ_USER_SELECTED_CONTENT,
+            BenchToolPermission.WRITE_PROJECT_LIBRARY,
             BenchToolPermission.WRITE_USER_EXPORT,
             BenchToolPermission.CAMERA
         ),
