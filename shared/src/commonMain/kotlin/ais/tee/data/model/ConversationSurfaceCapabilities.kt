@@ -15,24 +15,32 @@ enum class ConversationSurfaceCapability {
 }
 
 class ConversationSurfaceCapabilities internal constructor(
-    supported: Set<ConversationSurfaceCapability>
+    decisions: Map<ConversationSurfaceCapability, CapabilityDecision>
 ) {
-    private val supported = supported.toSet()
+    private val decisions = decisions.toMap()
 
-    fun supports(capability: ConversationSurfaceCapability): Boolean = capability in supported
+    fun decision(capability: ConversationSurfaceCapability): CapabilityDecision =
+        decisions[capability] ?: CapabilityDecision.DENY
+
+    fun supports(capability: ConversationSurfaceCapability): Boolean =
+        decision(capability) == CapabilityDecision.ALLOW
 }
 
-private val NATIVE_CONVERSATION_CAPABILITIES = ConversationSurfaceCapabilities(
-    supported = setOf(
-        ConversationSurfaceCapability.MESSAGE_HISTORY,
-        ConversationSurfaceCapability.COMPLETION_NOTIFICATION,
-        ConversationSurfaceCapability.DIRECT_REPLY,
-        ConversationSurfaceCapability.DEEP_LINK
-    )
+private fun allowedConversationCapabilities(
+    vararg capabilities: ConversationSurfaceCapability
+): ConversationSurfaceCapabilities = ConversationSurfaceCapabilities(
+    decisions = capabilities.associateWith { CapabilityDecision.ALLOW }
 )
 
-private val ACCOUNT_WEB_CONVERSATION_CAPABILITIES = ConversationSurfaceCapabilities(
-    supported = setOf(ConversationSurfaceCapability.DEEP_LINK)
+private val NATIVE_CONVERSATION_CAPABILITIES = allowedConversationCapabilities(
+    ConversationSurfaceCapability.MESSAGE_HISTORY,
+    ConversationSurfaceCapability.COMPLETION_NOTIFICATION,
+    ConversationSurfaceCapability.DIRECT_REPLY,
+    ConversationSurfaceCapability.DEEP_LINK
+)
+
+private val ACCOUNT_WEB_CONVERSATION_CAPABILITIES = allowedConversationCapabilities(
+    ConversationSurfaceCapability.DEEP_LINK
 )
 
 /**
