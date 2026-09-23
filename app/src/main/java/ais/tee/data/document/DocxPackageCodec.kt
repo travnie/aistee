@@ -23,6 +23,7 @@ internal object DocxPackageCodec {
         var stylesXml: String? = null
         var entryCount = 0
         var totalUncompressed = 0L
+        val seenEntries = mutableSetOf<String>()
 
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
             while (true) {
@@ -41,6 +42,9 @@ internal object DocxPackageCodec {
                 if (entry.isDirectory) {
                     zip.closeEntry()
                     continue
+                }
+                require(seenEntries.add(normalizedName)) {
+                    "DOCX contains duplicate package entry: $normalizedName"
                 }
                 when (normalizedName) {
                     "word/document.xml" ->
