@@ -20,6 +20,7 @@ object DocxWordprocessingMl {
         rejectDtd(xml)
         val reader = xmlStreaming.newReader(xml, expandEntities = false)
         val blocks = mutableListOf<DocbenchStructuredBlock>()
+        val outline = mutableListOf<DocbenchOutlineEntry>()
         var paragraph: ParagraphBuilder? = null
         var insideText = false
 
@@ -69,7 +70,18 @@ object DocxWordprocessingMl {
                             "p" -> {
                                 val completed = paragraph
                                     ?: throw IllegalArgumentException("Unexpected Word paragraph end.")
-                                blocks += completed.build()
+                                val block = completed.build()
+                                val blockIndex = blocks.size
+                                blocks += block
+                                completed.headingLevel?.let { level ->
+                                    if (block.text.isNotBlank()) {
+                                        outline += DocbenchOutlineEntry(
+                                            title = block.text.take(MAX_DOCBENCH_OUTLINE_TITLE_CHARS),
+                                            level = level,
+                                            blockIndex = blockIndex
+                                        )
+                                    }
+                                }
                                 paragraph = null
                                 insideText = false
                             }
@@ -95,7 +107,7 @@ object DocxWordprocessingMl {
             reader.close()
         }
         if (paragraph != null) throw IllegalArgumentException("Unclosed Word paragraph.")
-        return DocbenchStructuredDocument(blocks)
+        return DocbenchStructuredDocument(blocks = blocks, outline = outline)
     }
 
     fun decodeHeadingStyles(xml: String): Map<String, Int> {
@@ -172,11 +184,14 @@ object DocxWordprocessingMl {
             append("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""")
             append("""<w:document xmlns:w="$WORDPROCESSINGML_NS">""")
             append("<w:body>")
-            document.blocks.forEach { block ->
+            val outlineByBlock = document.outline.groupBy(DocbenchOutlineEntry::blockIndex)
+            document.blocks.forEachIndexed { blockIndex, block ->
                 append("<w:p>")
-                block.headingLevel?.let { level ->
-                    append("""<w:pPr><w:pStyle w:val="Heading$level"/></w:pPr>""")
-                }
+                outlineByBlock[blockIndex]
+                    ?.minByOrNull(DocbenchOutlineEntry::level)
+                    ?.let { entry ->
+                        append("""<w:pPr><w:pStyle w:val="Heading${entry.level}"/></w:pPr>""")
+                    }
 
                 val bookmarkIds = mutableListOf<Int>()
                 block.bookmarks.forEach { rawName ->
@@ -336,7 +351,6 @@ object DocxWordprocessingMl {
 
         fun build(): DocbenchStructuredBlock = DocbenchStructuredBlock(
             text = text.toString(),
-            headingLevel = headingLevel,
             bookmarks = bookmarks.toList()
         )
     }
