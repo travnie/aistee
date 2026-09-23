@@ -14,10 +14,11 @@ class DocxPackageCodecTest {
     @Test
     fun packageRoundTripPreservesPortableStructure() {
         val source = DocbenchStructuredDocument(
-            listOf(
-                DocbenchStructuredBlock("Title", headingLevel = 1, bookmarks = listOf("title")),
+            blocks = listOf(
+                DocbenchStructuredBlock("Title", bookmarks = listOf("title")),
                 DocbenchStructuredBlock("Body\nline two")
-            )
+            ),
+            outline = listOf(DocbenchOutlineEntry("Title", level = 1, blockIndex = 0))
         )
 
         val encoded = DocxPackageCodec.encode(source)
