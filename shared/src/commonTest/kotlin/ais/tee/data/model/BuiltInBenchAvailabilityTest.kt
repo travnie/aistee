@@ -8,6 +8,54 @@ import kotlin.test.assertTrue
 
 class BuiltInBenchAvailabilityTest {
     @Test
+    fun decisionDistinguishesConsentFromExplicitInteractionAndHardDenial() {
+        fun inspect(
+            enabled: Boolean = true,
+            mode: BenchToolInvocationMode = BenchToolInvocationMode.EXPLICIT_USER_ACTION,
+            input: BenchToolDataKind = BenchToolDataKind.TEXT,
+            grants: Set<BenchToolPermission> = emptySet(),
+        ) = BuiltInBenchTool.DOCBENCH_TEXT_INSPECTOR.availability(
+            surface = BenchToolSurface.ACCOUNT_WEB_CHAT,
+            invocationMode = mode,
+            inputKind = input,
+            isEnabled = enabled,
+            grantedPermissions = grants,
+            networkAvailable = false,
+        )
+
+        assertEquals(CapabilityDecision.ASK, inspect().decision)
+        assertFalse(inspect().canOffer)
+        val grants = setOf(BenchToolPermission.READ_USER_SELECTED_CONTENT)
+        assertEquals(CapabilityDecision.ALLOW, inspect(grants = grants).decision)
+        assertTrue(inspect(grants = grants).canOffer)
+
+        // A content grant never upgrades an explicit-user bridge to model execution.
+        for (permissions in listOf(emptySet(), grants)) {
+            val automatic = inspect(mode = BenchToolInvocationMode.MODEL_TOOL_CALL, grants = permissions)
+            assertEquals(CapabilityDecision.REQUIRES_USER_INTERACTION, automatic.decision)
+            assertFalse(automatic.canOffer)
+        }
+        assertEquals(CapabilityDecision.DENY, inspect(enabled = false).decision)
+        assertEquals(CapabilityDecision.DENY, inspect(input = BenchToolDataKind.IMAGE).decision)
+        assertEquals(CapabilityDecision.DENY, inspect(enabled = false, mode = BenchToolInvocationMode.MODEL_TOOL_CALL).decision)
+    }
+
+    @Test
+    fun offlineRequiredNetworkDeniesBeforeRequestingPermission() {
+        val availability = BuiltInBenchTool.STREAMBENCH_PLAYER.availability(
+            surface = BenchToolSurface.COMPANION_UI,
+            invocationMode = BenchToolInvocationMode.EXPLICIT_USER_ACTION,
+            inputKind = BenchToolDataKind.MEDIA_STREAM,
+            isEnabled = true,
+            grantedPermissions = emptySet(),
+            networkAvailable = false,
+            actionRequiredPermissions = setOf(BenchToolPermission.NETWORK),
+        )
+        assertEquals(CapabilityDecision.DENY, availability.decision)
+        assertFalse(availability.canOffer)
+    }
+
+    @Test
     fun localDocbenchRequiresContentGrantButNotNetworkAvailability() {
         val blocked = BuiltInBenchTool.DOCBENCH_DOCUMENT.availability(
             surface = BenchToolSurface.NATIVE_CHAT,
