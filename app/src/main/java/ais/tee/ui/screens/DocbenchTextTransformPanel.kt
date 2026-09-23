@@ -24,6 +24,8 @@ import ais.tee.data.document.DocbenchJsonFormatAction
 import ais.tee.data.document.DocbenchJsonFormatActionResult
 import ais.tee.data.document.DocbenchLineEndingNormalizeAction
 import ais.tee.data.document.DocbenchLineEndingNormalizeActionResult
+import ais.tee.data.document.DocbenchMarkdownRepairAction
+import ais.tee.data.document.DocbenchMarkdownRepairActionResult
 import ais.tee.data.document.LineEnding
 import ais.tee.data.document.StructuredTextFormat
 import ais.tee.data.document.TextDocument
@@ -92,7 +94,7 @@ internal fun DocbenchTextTransformPanel(
         modifier = modifier.padding(16.dp)
     ) {
         Text(
-            "Merge local Markdown/text files into this editor, format JSON, JSON5 or YAML, normalize line endings, then print or export locally.",
+            "Merge local Markdown/text files, safely repair unclosed Markdown fences, format JSON, JSON5 or YAML, normalize line endings, then print or export locally.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -140,6 +142,15 @@ internal fun DocbenchTextTransformPanel(
             modifier = Modifier.testTag("docbench_json_formatter_run")
         ) {
             Text(if (state.working) "Working…" else "Format ${state.structuredFormat.name}")
+        }
+        OutlinedButton(
+            onClick = { launchMarkdownRepair(scope, state, isEnabled) },
+            enabled = state.canTransform,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("docbench_markdown_repair")
+        ) {
+            Text(if (state.working) "Working…" else "Repair Markdown fences")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LineEnding.entries.forEach { target ->
@@ -238,6 +249,60 @@ private fun applyStructuredFormatResult(
         }
         is DocbenchJsonFormatActionResult.Blocked -> {
             state.message = "Formatting is blocked by the current Bench policy."
+        }
+    }
+}
+
+private fun launchMarkdownRepair(
+    scope: CoroutineScope,
+    state: DocbenchTextTransformUiState,
+    isEnabled: () -> Boolean
+) {
+    val sourceToRepair = state.source
+    val generation = state.sourceGeneration
+    scope.launch {
+        state.working = true
+        try {
+            val action = withContext(Dispatchers.Default) {
+                DocbenchMarkdownRepairAction.execute(
+                    text = sourceToRepair,
+                    surface = BenchToolSurface.COMPANION_UI,
+                    isEnabled = isEnabled(),
+                    grantedPermissions = DOCUMENT_READ_GRANT
+                )
+            }
+            if (!isEnabled() || generation != state.sourceGeneration) return@launch
+            applyMarkdownRepairResult(state, action)
+        } finally {
+            state.working = false
+        }
+    }
+}
+
+private fun applyMarkdownRepairResult(
+    state: DocbenchTextTransformUiState,
+    action: DocbenchMarkdownRepairActionResult
+) {
+    when (action) {
+        is DocbenchMarkdownRepairActionResult.Completed -> {
+            if (action.text.length > MAX_INTERACTIVE_TOKENIZED_CHARS) {
+                state.message =
+                    "Repaired result was not applied because it exceeds the " +
+                        "1,000,000-character interactive display limit. Original text is unchanged."
+                return
+            }
+            state.source = action.text
+            state.message = if (action.changed) {
+                "Closed ${action.repairedIssueCount} unclosed Markdown code fence(s) locally."
+            } else {
+                "Markdown structure check found no repairable fence issues."
+            }
+        }
+        is DocbenchMarkdownRepairActionResult.Rejected -> {
+            state.message = docbenchValidationErrorPreview(action.message)
+        }
+        is DocbenchMarkdownRepairActionResult.Blocked -> {
+            state.message = "Markdown repair is blocked by the current Bench policy."
         }
     }
 }
