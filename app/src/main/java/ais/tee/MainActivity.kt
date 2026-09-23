@@ -37,6 +37,7 @@ import ais.tee.data.security.TextInspector
 import ais.tee.navigation.AisteeQuickActionNavigation
 import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.notifications.NativeChatNotificationVisibility
+import ais.tee.notifications.WebChatDraftReply
 import ais.tee.share.CreateMessageAppAction
 import ais.tee.share.IncomingSharePayload
 import ais.tee.share.PendingWebShare
@@ -258,6 +259,27 @@ class MainActivity : ComponentActivity() {
 
     private fun handleNavigationIntent(intent: Intent) {
         when {
+            AisteeQuickActionNavigation.isOpenWebDraftReplyAction(intent.action) -> {
+                val serviceId = AisteeQuickActionNavigation.webServiceId(
+                    currentExtra = intent.getStringExtra(AisteeQuickActionNavigation.EXTRA_WEB_SERVICE_ID),
+                    dataScheme = intent.data?.scheme,
+                    dataHost = intent.data?.host,
+                    dataLastPathSegment = intent.data?.lastPathSegment,
+                )
+                val service = WebAiService.entries.firstOrNull { candidate ->
+                    serviceId?.equals(candidate.id, ignoreCase = true) == true
+                }
+                if (service != null) {
+                    val replyText = WebChatDraftReply.replyText(intent)
+                    val opened = if (replyText != null) {
+                        viewModel.stageWebDraftReply(service, replyText)
+                    } else {
+                        viewModel.openStagedWebDraft(service)
+                    }
+                    if (!opened) viewModel.showSnackbar("No staged draft reply is available.")
+                }
+                consumeNavigationIntent(intent)
+            }
             AisteeQuickActionNavigation.isOpenNativeConversationAction(intent.action) -> {
                 val conversationId = AisteeQuickActionNavigation.nativeConversationId(
                     currentExtra = intent.getStringExtra(AisteeQuickActionNavigation.EXTRA_NATIVE_CONVERSATION_ID),
@@ -288,6 +310,7 @@ class MainActivity : ComponentActivity() {
         intent.data = null
         intent.removeExtra(AisteeQuickActionNavigation.EXTRA_DESTINATION)
         intent.removeExtra(AisteeQuickActionNavigation.EXTRA_NATIVE_CONVERSATION_ID)
+        intent.removeExtra(AisteeQuickActionNavigation.EXTRA_WEB_SERVICE_ID)
         intent.removeExtra(AisteeQuickActionNavigation.LEGACY_WIDGET_EXTRA_DESTINATION)
     }
 
