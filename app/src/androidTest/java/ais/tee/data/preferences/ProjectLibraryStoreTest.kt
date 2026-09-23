@@ -6,7 +6,6 @@ import java.io.File
 import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,8 +20,8 @@ class ProjectLibraryStoreTest {
             val initial = store.load(now = 1)
             assertTrue(initial.projects.any { it.id == DEFAULT_PROJECT_ID })
 
-            val project = assertNotNull(store.createProject("Docs", now = 2))
-            val asset = assertNotNull(
+            val project = requireNotNull(store.createProject("Docs", now = 2))
+            val asset = requireNotNull(
                 store.saveTextAsset(
                     projectId = project.id,
                     title = "Chat export",
@@ -32,7 +31,7 @@ class ProjectLibraryStoreTest {
                     now = 3,
                 )
             )
-            val loaded = assertNotNull(store.loadTextAsset(asset.id, now = 4))
+            val loaded = requireNotNull(store.loadTextAsset(asset.id, now = 4))
             assertEquals("# private content", loaded.text)
             assertFalse(loaded.toString().contains("# private content"))
             assertEquals("text/markdown", loaded.metadata.mediaType)
