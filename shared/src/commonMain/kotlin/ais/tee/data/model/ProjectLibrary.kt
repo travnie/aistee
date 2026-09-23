@@ -72,7 +72,9 @@ fun ProjectLibraryArchive.normalizedProjectLibrary(now: Long): ProjectLibraryArc
             id.isEmpty() ||
             projectId !in seenProjects ||
             title.isEmpty() ||
-            fileName.isEmpty() ||
+            !fileName.matches(Regex("^[A-Za-z0-9._-]{1,160}$")) ||
+            fileName == "." ||
+            fileName == ".." ||
             mediaType.isEmpty() ||
             asset.sizeBytes < 0 ||
             !seenAssets.add(id)
