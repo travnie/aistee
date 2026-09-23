@@ -67,6 +67,15 @@ class BuiltInBenchCapabilitiesTest {
     }
 
     @Test
+    fun codebenchDeclaresScopedProjectLibraryWrite() {
+        val capabilities = BuiltInBenchTool.CODEBENCH_QR_BARCODE.capabilities()
+
+        assertTrue(BenchToolPermission.WRITE_PROJECT_LIBRARY in capabilities.optionalPermissions)
+        assertFalse(BenchToolPermission.WRITE_PROJECT_LIBRARY in capabilities.requiredPermissions)
+        assertTrue(BenchToolPermission.WRITE_USER_EXPORT in capabilities.optionalPermissions)
+    }
+
+    @Test
     fun localOnlyCapabilityRejectsOptionalNetworkPermission() {
         assertFailsWith<IllegalArgumentException> {
             capability(
