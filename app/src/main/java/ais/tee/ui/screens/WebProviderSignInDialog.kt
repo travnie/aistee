@@ -83,4 +83,9 @@ private fun identityMethodLabel(method: ProviderIdentityMethod): String = when (
     ProviderIdentityMethod.GOOGLE -> "Google"
     ProviderIdentityMethod.GITHUB -> "GitHub"
     ProviderIdentityMethod.MICROSOFT -> "Microsoft"
+    ProviderIdentityMethod.APPLE -> "Apple"
+    ProviderIdentityMethod.EMAIL -> "Email"
+    ProviderIdentityMethod.X -> "X"
+    ProviderIdentityMethod.META_ACCOUNT -> "Meta account"
+    ProviderIdentityMethod.WALLET_CONNECT -> "WalletConnect"
 }
