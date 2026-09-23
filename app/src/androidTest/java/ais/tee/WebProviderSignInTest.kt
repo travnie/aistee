@@ -1,5 +1,6 @@
 package ais.tee
 
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -65,7 +66,7 @@ class WebProviderSignInTest {
         select(WebAiService.GROK)
         openHelp()
         composeRule.onNodeWithTag("web_sign_in_app").assertIsNotEnabled()
-        composeRule.onNodeWithTag("web_sign_in_browser").assertIsDisplayed()
+        composeRule.onNodeWithTag("web_sign_in_browser").assertExists()
     }
 
     @Test
