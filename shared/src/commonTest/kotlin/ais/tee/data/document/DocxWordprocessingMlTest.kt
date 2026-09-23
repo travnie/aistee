@@ -66,6 +66,29 @@ class DocxWordprocessingMlTest {
     }
 
     @Test
+    fun headingStyleNameIsRecognizedWithoutOutlineLevel() {
+        val styles = """
+            <w:styles xmlns:w="$WORDPROCESSINGML_NS">
+              <w:style w:type="paragraph" w:styleId="CustomHeading">
+                <w:name w:val="heading 3"/>
+              </w:style>
+            </w:styles>
+        """.trimIndent()
+        val document = """
+            <w:document xmlns:w="$WORDPROCESSINGML_NS"><w:body>
+              <w:p><w:pPr><w:pStyle w:val="CustomHeading"/></w:pPr><w:r><w:t>Three</w:t></w:r></w:p>
+            </w:body></w:document>
+        """.trimIndent()
+
+        val decoded = DocxWordprocessingMl.decodeDocument(
+            document,
+            DocxWordprocessingMl.decodeHeadingStyles(styles)
+        )
+
+        assertEquals(3, decoded.blocks.single().headingLevel)
+    }
+
+    @Test
     fun bookmarkNamesAreSanitizedAndMadeUniqueForWord() {
         val source = DocbenchStructuredDocument(
             listOf(
