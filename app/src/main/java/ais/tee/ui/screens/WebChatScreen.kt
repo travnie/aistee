@@ -1304,7 +1304,8 @@ fun WebChatScreen(
         WebProviderSignInDialog(
             service = selectedService,
             preferredMethod = preferredIdentityMethod,
-            canOpenInApp = activeWebView != null &&\n                ProviderWebRegistry.hasVerifiedTopLevelNavigationPolicy(selectedService),
+            canOpenInApp = activeWebView != null &&
+                ProviderWebRegistry.hasVerifiedTopLevelNavigationPolicy(selectedService),
             onChooseMethod = { method ->
                 webPreferences.savePreferredIdentityMethod(method)
                 preferredIdentityMethod = method
