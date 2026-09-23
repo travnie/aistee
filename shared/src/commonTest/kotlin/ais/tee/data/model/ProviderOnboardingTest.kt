@@ -38,7 +38,8 @@ class ProviderOnboardingTest {
         val expected = mapOf(
             WebAiService.QWEN to listOf(
                 ProviderIdentityMethod.GOOGLE,
-                ProviderIdentityMethod.GITHUB
+                ProviderIdentityMethod.GITHUB,
+                ProviderIdentityMethod.EMAIL
             ),
             WebAiService.COPILOT to listOf(
                 ProviderIdentityMethod.MICROSOFT,
@@ -47,7 +48,8 @@ class ProviderOnboardingTest {
             ),
             WebAiService.ZAI to listOf(
                 ProviderIdentityMethod.GOOGLE,
-                ProviderIdentityMethod.GITHUB
+                ProviderIdentityMethod.GITHUB,
+                ProviderIdentityMethod.EMAIL
             ),
             WebAiService.GROK to listOf(
                 ProviderIdentityMethod.X,
