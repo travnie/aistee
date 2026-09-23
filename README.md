@@ -137,8 +137,9 @@ Backends are optional, not the default. If a feature truly needs one, prefer a t
 - [ ] add browser-backed auth handoff only for providers that expose a verifiable redirect/session contract; never bridge browser cookies into WebView
 - [x] add a local Markdown prompt vault with edit/import/export and chat-to-`.md` workflows
 - [x] add manually editable/importable `SKILL.md` assets with safe capability gating
-- [ ] bring Docbench's format validation/repair, EOL normalization, local tokenizer and hidden-text/prompt-smuggling inspector into prompt/file tooling
-- [ ] add first-party Docbench/Codebench tools/plugins for compatible chats, plus a persistent Streambench radio player as first-party companion UI
+- [x] bring Docbench format/repair, EOL normalization, o200k token counting and Text Inspector into local prompt/file tooling and native typed chat tools
+- [x] add first-party Docbench typed chat tools and local Codebench QR-to-Library generation for compatible native providers
+- [ ] add richer Codebench decode/camera chat handoffs and keep Streambench as companion UI rather than a model tool
 - [ ] modernize chat/navigation UX with current stable Material 3 Adaptive, measured Compose performance work and large-screen list-detail layouts
 - [x] add provider-aware chat/message widgets and native/API notification Direct Reply where the transport can safely send in background
 - [ ] treat security/privacy as a cross-cutting release gate: sensitive storage/backup rules, WebView isolation, tool permissions, redacted widgets/notifications, safe exports and security regression tests
@@ -154,3 +155,5 @@ Mobile UX is a product constraint: long chats must stay responsive, file upload 
 ## License
 
 ISC, see [LICENSE](LICENSE).
+
+- [x] add a local Project Library for reusable chat Markdown and generated text/SVG artifacts, with canonical Aistee chat Markdown import/export
