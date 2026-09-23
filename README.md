@@ -137,6 +137,7 @@ Backends are optional, not the default. If a feature truly needs one, prefer a t
 - [ ] add browser-backed auth handoff only for providers that expose a verifiable redirect/session contract; never bridge browser cookies into WebView
 - [x] add a local Markdown prompt vault with edit/import/export and chat-to-`.md` workflows
 - [x] add manually editable/importable `SKILL.md` assets with safe capability gating
+- [x] add a local Project Library for reusable chat Markdown and generated text/SVG artifacts, with canonical Aistee chat Markdown import/export
 - [x] bring Docbench format/repair, EOL normalization, o200k token counting and Text Inspector into local prompt/file tooling and native typed chat tools
 - [x] add first-party Docbench typed chat tools and local Codebench QR-to-Library generation for compatible native providers
 - [ ] add richer Codebench decode/camera chat handoffs and keep Streambench as companion UI rather than a model tool
@@ -156,4 +157,3 @@ Mobile UX is a product constraint: long chats must stay responsive, file upload 
 
 ISC, see [LICENSE](LICENSE).
 
-- [x] add a local Project Library for reusable chat Markdown and generated text/SVG artifacts, with canonical Aistee chat Markdown import/export
