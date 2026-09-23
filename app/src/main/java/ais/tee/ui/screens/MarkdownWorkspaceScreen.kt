@@ -64,7 +64,7 @@ private sealed class PendingDestructiveWorkspaceAction {
 private data class MarkdownWorkspaceAnalysis(
     val lineEndings: LineEndingCounts,
     val diagnostics: List<DocumentDiagnostic>,
-    val markdownStructure: MarkdownStructureValidationResult,
+    val markdownStructure: MarkdownStructureValidationResult?,
     val safety: TextInspectionResult,
     val tokenCount: Int?
 )
@@ -470,7 +470,7 @@ private fun rememberMarkdownWorkspaceAnalysis(
         MarkdownWorkspaceAnalysis(
             lineEndings = lineEndings,
             diagnostics = DocumentDiagnostics.inspect(document),
-            markdownStructure = MarkdownStructureDiagnostics.validate(text),
+            markdownStructure = text.takeIf { it.length <= MAX_EDITABLE_MARKDOWN_CHARS }\n                ?.let(MarkdownStructureDiagnostics::validate),
             safety = TextInspector.inspect(text),
             tokenCount = text.takeIf { it.length <= MAX_TOKENIZED_CHARS }?.let(LocalTokenCounter::count)
         )
@@ -685,7 +685,7 @@ private fun WorkspaceDiagnostics(
     val nul = analysis.diagnostics.firstOrNull { it.kind == DocumentDiagnosticKind.NUL_CHARACTER }
     val markdownStructure = analysis.markdownStructure
     val safety = analysis.safety
-    if (mixed == null && nul == null && markdownStructure.isValid && !safety.hasFindings) return
+    if (mixed == null && nul == null && (markdownStructure == null || markdownStructure.isValid) && !safety.hasFindings) return
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -699,7 +699,7 @@ private fun WorkspaceDiagnostics(
                 }
             }
             nul?.let { NulDiagnostic(it) }
-            if (!markdownStructure.isValid) MarkdownStructureSummary(markdownStructure)
+            markdownStructure?.takeUnless { it.isValid }?.let { MarkdownStructureSummary(it) }
             if (safety.hasFindings) TextInspectorSummary(safety)
         }
     }
