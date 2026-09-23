@@ -17,13 +17,20 @@ import android.print.pdf.PrintedPdfDocument
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
-import java.io.FileOutputStream
 import java.io.IOException
+import kotlin.math.ceil
 import kotlin.math.min
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val DOCBENCH_PRINT_JOB_NAME = "Aistee Docbench"
 private const val DOCBENCH_PRINT_DOCUMENT_NAME = "docbench.txt"
 private const val DOCBENCH_PRINT_TEXT_SIZE_PT = 10f
+private const val MAX_DOCBENCH_PRINT_PAGES = 1_000
 
 internal fun launchDocbenchTextPrint(context: Context, text: String): String {
     val activity = context.findActivity()
@@ -61,10 +68,19 @@ private data class DocbenchPrintLayout(
         get() = pageStartLines.size
 }
 
+private sealed interface DocbenchPrintWriteOutcome {
+    data class Completed(val writtenRanges: Array<PageRange>) : DocbenchPrintWriteOutcome
+    data object Cancelled : DocbenchPrintWriteOutcome
+    data object Failed : DocbenchPrintWriteOutcome
+}
+
 internal class DocbenchTextPrintAdapter(
     private val context: Context,
     private val text: String
 ) : PrintDocumentAdapter() {
+    private val workerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    @Volatile
     private var layout: DocbenchPrintLayout? = null
 
     override fun onLayout(
@@ -84,21 +100,27 @@ internal class DocbenchTextPrintAdapter(
             return
         }
 
-        val prepared = runCatching { prepareLayout(attributes) }.getOrElse { error ->
-            callback.onLayoutFailed(error.message ?: "Could not lay out the text for printing.")
-            return
+        layout = null
+        workerScope.launch {
+            val prepared = runCatching { prepareLayout(attributes) }
+            withContext(Dispatchers.Main.immediate) {
+                when {
+                    cancellationSignal.isCanceled -> callback.onLayoutCancelled()
+                    prepared.isFailure -> callback.onLayoutFailed(
+                        "Could not lay out the text for printing."
+                    )
+                    else -> {
+                        val completedLayout = requireNotNull(prepared.getOrNull())
+                        layout = completedLayout
+                        val info = PrintDocumentInfo.Builder(DOCBENCH_PRINT_DOCUMENT_NAME)
+                            .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                            .setPageCount(completedLayout.pageCount)
+                            .build()
+                        callback.onLayoutFinished(info, oldAttributes != newAttributes)
+                    }
+                }
+            }
         }
-        if (cancellationSignal.isCanceled) {
-            callback.onLayoutCancelled()
-            return
-        }
-
-        layout = prepared
-        val info = PrintDocumentInfo.Builder(DOCBENCH_PRINT_DOCUMENT_NAME)
-            .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
-            .setPageCount(prepared.pageCount)
-            .build()
-        callback.onLayoutFinished(info, oldAttributes != newAttributes)
     }
 
     override fun onWrite(
@@ -114,34 +136,69 @@ internal class DocbenchTextPrintAdapter(
         }
         val requestedPages = requestedPageIndexes(prepared.pageCount, pages)
         if (requestedPages.isEmpty()) {
-            callback.onWriteFinished(emptyArray())
+            callback.onWriteFailed("No requested pages are in the document.")
             return
         }
 
+        workerScope.launch {
+            val outcome = writeRequestedPages(
+                prepared = prepared,
+                requestedPages = requestedPages,
+                destination = destination,
+                cancellationSignal = cancellationSignal
+            )
+            withContext(Dispatchers.Main.immediate) {
+                when (outcome) {
+                    is DocbenchPrintWriteOutcome.Completed ->
+                        callback.onWriteFinished(outcome.writtenRanges)
+                    DocbenchPrintWriteOutcome.Cancelled -> callback.onWriteCancelled()
+                    DocbenchPrintWriteOutcome.Failed ->
+                        callback.onWriteFailed("Could not render the print document.")
+                }
+            }
+        }
+    }
+
+    override fun onFinish() {
+        layout = null
+        workerScope.cancel()
+        super.onFinish()
+    }
+
+    private fun writeRequestedPages(
+        prepared: DocbenchPrintLayout,
+        requestedPages: IntArray,
+        destination: ParcelFileDescriptor,
+        cancellationSignal: CancellationSignal
+    ): DocbenchPrintWriteOutcome {
         val document = PrintedPdfDocument(context, prepared.attributes)
-        try {
-            for (pageIndex in requestedPages) {
+        return try {
+            ParcelFileDescriptor.AutoCloseOutputStream(destination).use { output ->
+                for (pageIndex in requestedPages) {
+                    if (cancellationSignal.isCanceled) {
+                        return DocbenchPrintWriteOutcome.Cancelled
+                    }
+                    val page = document.startPage(pageIndex)
+                    try {
+                        drawPage(page.canvas, prepared, pageIndex)
+                    } finally {
+                        document.finishPage(page)
+                    }
+                }
                 if (cancellationSignal.isCanceled) {
-                    callback.onWriteCancelled()
-                    return
+                    return DocbenchPrintWriteOutcome.Cancelled
                 }
-                val page = document.startPage(pageIndex)
-                try {
-                    drawPage(page.canvas, prepared, pageIndex)
-                } finally {
-                    document.finishPage(page)
+                document.writeTo(output)
+                if (cancellationSignal.isCanceled) {
+                    DocbenchPrintWriteOutcome.Cancelled
+                } else {
+                    DocbenchPrintWriteOutcome.Completed(pageIndexesToRanges(requestedPages))
                 }
             }
-            if (cancellationSignal.isCanceled) {
-                callback.onWriteCancelled()
-                return
-            }
-            FileOutputStream(destination.fileDescriptor).use(document::writeTo)
-            callback.onWriteFinished(pageIndexesToRanges(requestedPages))
-        } catch (error: IOException) {
-            callback.onWriteFailed(error.message ?: "Could not write the print document.")
-        } catch (error: RuntimeException) {
-            callback.onWriteFailed(error.message ?: "Could not render the print document.")
+        } catch (_: IOException) {
+            DocbenchPrintWriteOutcome.Failed
+        } catch (_: RuntimeException) {
+            DocbenchPrintWriteOutcome.Failed
         } finally {
             document.close()
         }
@@ -162,6 +219,13 @@ internal class DocbenchTextPrintAdapter(
             textSize = DOCBENCH_PRINT_TEXT_SIZE_PT
             typeface = Typeface.MONOSPACE
         }
+        val nominalLineHeight = ceil(paint.fontSpacing.toDouble()).toInt().coerceAtLeast(1)
+        val nominalLinesPerPage = (contentRect.height() / nominalLineHeight).coerceAtLeast(1)
+        val explicitLineCount = text.count { it == '\n' } + 1
+        require(explicitLineCount <= nominalLinesPerPage * MAX_DOCBENCH_PRINT_PAGES) {
+            "The document would exceed the supported print page limit."
+        }
+
         val textLayout = StaticLayout.Builder
             .obtain(text, 0, text.length, paint, contentRect.width())
             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
@@ -172,11 +236,15 @@ internal class DocbenchTextPrintAdapter(
         val lineTops = IntArray(textLayout.lineCount + 1) { line ->
             if (line == textLayout.lineCount) textLayout.height else textLayout.getLineTop(line)
         }
+        val pageStartLines = docbenchPrintPageStartLines(lineTops, contentRect.height())
+        require(pageStartLines.size <= MAX_DOCBENCH_PRINT_PAGES) {
+            "The document would exceed the supported print page limit."
+        }
         return DocbenchPrintLayout(
             attributes = attributes,
             contentRect = contentRect,
             textLayout = textLayout,
-            pageStartLines = docbenchPrintPageStartLines(lineTops, contentRect.height())
+            pageStartLines = pageStartLines
         )
     }
 
@@ -268,7 +336,7 @@ internal fun docbenchRequestedPageIndexes(
 }
 
 private fun pageIndexesToRanges(pageIndexes: IntArray): Array<PageRange> {
-    if (pageIndexes.isEmpty()) return emptyArray()
+    require(pageIndexes.isNotEmpty()) { "Written page ranges must not be empty." }
     val ranges = mutableListOf<PageRange>()
     var start = pageIndexes.first()
     var end = start

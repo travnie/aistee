@@ -156,30 +156,32 @@ internal fun DocbenchTextTransformPanel(
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(
-                selected = state.includeUtf8Bom,
-                onClick = { state.includeUtf8Bom = !state.includeUtf8Bom },
-                enabled = !state.working && !state.merging && !state.exporting,
-                label = {
-                    Text(if (state.includeUtf8Bom) "UTF-8 BOM" else "UTF-8 no BOM")
-                },
-                modifier = Modifier.testTag("docbench_export_bom")
-            )
-            OutlinedButton(
-                onClick = onPrint,
-                enabled = state.canExport,
-                modifier = Modifier.testTag("docbench_print_text")
-            ) {
-                Text("Print")
-            }
-            OutlinedButton(
-                onClick = onExport,
-                enabled = state.canExport,
-                modifier = Modifier.testTag("docbench_export_text")
-            ) {
-                Text(if (state.exporting) "Exporting..." else "Export text")
-            }
+        FilterChip(
+            selected = state.includeUtf8Bom,
+            onClick = { state.includeUtf8Bom = !state.includeUtf8Bom },
+            enabled = !state.working && !state.merging && !state.exporting,
+            label = {
+                Text(if (state.includeUtf8Bom) "UTF-8 BOM" else "UTF-8 no BOM")
+            },
+            modifier = Modifier.testTag("docbench_export_bom")
+        )
+        OutlinedButton(
+            onClick = onPrint,
+            enabled = state.canExport,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("docbench_print_text")
+        ) {
+            Text("Print / save PDF")
+        }
+        OutlinedButton(
+            onClick = onExport,
+            enabled = state.canExport,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("docbench_export_text")
+        ) {
+            Text(if (state.exporting) "Exporting..." else "Export text")
         }
         state.message?.let { status ->
             Text(status, style = MaterialTheme.typography.bodySmall)
