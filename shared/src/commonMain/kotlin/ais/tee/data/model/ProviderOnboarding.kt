@@ -1,10 +1,15 @@
 package ais.tee.data.model
 
-/** Identity providers surfaced by a provider's own verified sign-in page. */
+/** Identity methods surfaced by a provider's own sign-in surface or current provider documentation. */
 enum class ProviderIdentityMethod {
     GOOGLE,
     GITHUB,
-    MICROSOFT
+    MICROSOFT,
+    APPLE,
+    EMAIL,
+    X,
+    META_ACCOUNT,
+    WALLET_CONNECT
 }
 
 /**
@@ -32,9 +37,9 @@ data class ProviderOnboardingCapabilities(
 /**
  * Conservative provider-onboarding metadata.
  *
- * Only identity methods already verified on provider-owned sign-in surfaces belong here. A listed
- * method does not imply that OAuth succeeds inside Android WebView or that a browser session can be
- * transferred back into it. Unknown providers deliberately return no preferred identity method.
+ * A listed identity method means the provider currently offers that path. It does not imply that
+ * OAuth succeeds inside Android WebView or that a browser session can be transferred back into it.
+ * Embedded navigation remains a separate Android-verified policy in ProviderWebRegistry.
  */
 fun WebAiService.onboardingCapabilities(): ProviderOnboardingCapabilities = when (this) {
     WebAiService.QWEN -> ProviderOnboardingCapabilities(
@@ -45,7 +50,11 @@ fun WebAiService.onboardingCapabilities(): ProviderOnboardingCapabilities = when
         signInUrl = "https://chat.qwen.ai/auth?action=signin"
     )
     WebAiService.COPILOT -> ProviderOnboardingCapabilities(
-        preferredIdentityMethods = listOf(ProviderIdentityMethod.MICROSOFT),
+        preferredIdentityMethods = listOf(
+            ProviderIdentityMethod.MICROSOFT,
+            ProviderIdentityMethod.GOOGLE,
+            ProviderIdentityMethod.APPLE
+        ),
         signInUrl = url
     )
     WebAiService.ZAI -> ProviderOnboardingCapabilities(
@@ -54,6 +63,34 @@ fun WebAiService.onboardingCapabilities(): ProviderOnboardingCapabilities = when
             ProviderIdentityMethod.GITHUB
         ),
         signInUrl = "https://chat.z.ai/auth"
+    )
+    WebAiService.GROK -> ProviderOnboardingCapabilities(
+        preferredIdentityMethods = listOf(
+            ProviderIdentityMethod.X,
+            ProviderIdentityMethod.GOOGLE,
+            ProviderIdentityMethod.APPLE,
+            ProviderIdentityMethod.EMAIL
+        ),
+        signInUrl = url
+    )
+    WebAiService.CHARACTER_AI -> ProviderOnboardingCapabilities(
+        preferredIdentityMethods = listOf(
+            ProviderIdentityMethod.GOOGLE,
+            ProviderIdentityMethod.APPLE,
+            ProviderIdentityMethod.EMAIL
+        ),
+        signInUrl = url
+    )
+    WebAiService.VENICE -> ProviderOnboardingCapabilities(
+        preferredIdentityMethods = listOf(
+            ProviderIdentityMethod.EMAIL,
+            ProviderIdentityMethod.WALLET_CONNECT
+        ),
+        signInUrl = url
+    )
+    WebAiService.META_AI -> ProviderOnboardingCapabilities(
+        preferredIdentityMethods = listOf(ProviderIdentityMethod.META_ACCOUNT),
+        signInUrl = url
     )
     else -> ProviderOnboardingCapabilities(
         embeddedSessionHandoff = EmbeddedSessionHandoff.UNSUPPORTED
