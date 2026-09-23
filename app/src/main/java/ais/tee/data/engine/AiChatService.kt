@@ -912,6 +912,73 @@ class AiChatService {
         )
     }
 
+    private suspend fun callOpenAiToolApi(
+        prompt: String,
+        model: String,
+        apiKey: String,
+        systemInstruction: String?,
+        conversationHistory: List<ModelChatMessage>,
+        tools: List<NativeToolDefinition>,
+        executeTool: suspend (NativeToolCall) -> NativeToolResult,
+    ): OpenAiGenerationResult {
+        val url = "https://api.openai.com/v1/responses"
+        val input = buildOpenAiResponseInput(
+            prompt = prompt,
+            conversationHistory = conversationHistory,
+            systemInstruction = systemInstruction,
+            modelName = model,
+        ).toMutableList()
+        val replayItems = mutableListOf<JsonObject>()
+        val toolDefinitions = buildOpenAiToolDefinitions(tools)
+        var usage: ProviderUsage? = null
+
+        repeat(MAX_NATIVE_TOOL_ROUNDS) { round ->
+            val basePayload = buildOpenAiRequestPayload(
+                model = model,
+                stream = false,
+                systemInstruction = systemInstruction,
+                input = JsonArray(input),
+            )
+            val requestPayload = JsonObject(basePayload + ("tools" to toolDefinitions))
+            val request = Request.Builder()
+                .url(url)
+                .addHeader(HEADER_AUTHORIZATION, bearerToken(apiKey))
+                .addHeader(HEADER_CONTENT_TYPE, JSON_MEDIA_TYPE)
+                .post(requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
+                .build()
+
+            val responseBody = executeCancellableJson(request, "Empty response from OpenAI server")
+            val parsed = json.parseToJsonElement(responseBody).jsonObject
+            ensureOpenAiBufferedResponseCompleted(parsed)
+            usage = mergeProviderUsage(usage, extractOpenAiUsage(parsed))
+            val output = (parsed[JSON_OUTPUT_KEY] as? JsonArray)
+                ?.mapNotNull { it as? JsonObject }
+                ?: throw IOException("OpenAI response is missing output")
+            replayItems += output
+
+            val calls = parseOpenAiToolCalls(parsed, json)
+            if (calls.isEmpty()) {
+                return OpenAiGenerationResult(
+                    text = extractOpenAiResponseText(parsed)
+                        ?: "Received empty message content from OpenAI.",
+                    replayState = encodeOpenAiReplayState(replayItems),
+                    usage = usage,
+                )
+            }
+            if (round == MAX_NATIVE_TOOL_ROUNDS - 1) {
+                throw IOException("OpenAI exceeded the local tool-call round limit")
+            }
+
+            input += output
+            val results = executeNativeToolBatch(calls, tools, executeTool)
+            val resultItems = buildOpenAiToolResultItems(results)
+                .mapNotNull { it as? JsonObject }
+            input += resultItems
+            replayItems += resultItems
+        }
+        throw IOException("OpenAI tool-call loop ended unexpectedly")
+    }
+
     internal fun parseClaudeModelMaxTokens(rawJson: String): Int? = runCatching {
         json.parseToJsonElement(rawJson).jsonObject[JSON_MAX_TOKENS_KEY]?.jsonPrimitive?.intOrNull
     }.getOrNull()?.takeIf { it > 0 }
