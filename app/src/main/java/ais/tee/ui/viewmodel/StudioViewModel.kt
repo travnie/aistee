@@ -608,6 +608,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 sender = turn.role,
                 text = turn.text,
                 timestamp = now + index,
+                isImported = true,
             )
         }
         val firstUser = messages.firstOrNull { it.sender == CHAT_ROLE_USER } ?: return false
