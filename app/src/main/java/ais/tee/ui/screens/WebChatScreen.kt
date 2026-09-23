@@ -143,6 +143,12 @@ private data class PendingSharedTextInsertion(
     val webView: WebView
 )
 
+private data class PendingDraftTextInsertion(
+    val service: WebAiService,
+    val draftId: String,
+    val webView: WebView
+)
+
 private data class WebGenerationProbeTarget(
     val service: WebAiService,
     val webView: WebView,
@@ -185,6 +191,7 @@ fun WebChatScreen(
     var preferredIdentityMethod by remember { mutableStateOf(webPreferences.loadPreferredIdentityMethod()) }
     val browserLaunchFailure = stringResource(R.string.web_sign_in_browser_failure)
     val currentPendingWebShare by rememberUpdatedState(uiState.pendingWebShare)
+    val currentPendingWebDraft by rememberUpdatedState(uiState.pendingWebDraft)
     var currentUrl by remember { mutableStateOf(selectedService.url) }
     var loadingProgress by remember { mutableIntStateOf(0) }
     var isLoading by remember { mutableStateOf(false) }
@@ -203,6 +210,9 @@ fun WebChatScreen(
     }
     val pendingSharedTextInsertion = remember {
         mutableStateOf<PendingSharedTextInsertion?>(null)
+    }
+    val pendingDraftTextInsertion = remember {
+        mutableStateOf<PendingDraftTextInsertion?>(null)
     }
     var nextFileChooserRequestId by remember { mutableIntStateOf(0) }
     val fileChooserLatestRequestIds = remember { mutableStateMapOf<WebAiService, Int>() }
@@ -298,12 +308,19 @@ fun WebChatScreen(
     val currentIsActive by rememberUpdatedState(isActive)
     var livePoolDecisionRequestId by remember { mutableIntStateOf(0) }
 
-    fun releaseSharedTextClaimFor(webView: WebView) {
-        val insertion = pendingSharedTextInsertion.value
+    fun releasePendingTextClaimsFor(webView: WebView) {
+        pendingSharedTextInsertion.value
             ?.takeIf { it.webView === webView }
-            ?: return
-        pendingSharedTextInsertion.value = null
-        viewModel.releasePendingWebShareTextClaim(insertion.service, insertion.shareId)
+            ?.let { insertion ->
+                pendingSharedTextInsertion.value = null
+                viewModel.releasePendingWebShareTextClaim(insertion.service, insertion.shareId)
+            }
+        pendingDraftTextInsertion.value
+            ?.takeIf { it.webView === webView }
+            ?.let { insertion ->
+                pendingDraftTextInsertion.value = null
+                viewModel.releasePendingWebDraftClaim(insertion.service, insertion.draftId)
+            }
     }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
@@ -373,7 +390,7 @@ fun WebChatScreen(
     fun handleRendererGone(service: WebAiService, deadView: WebView, didCrash: Boolean) {
         if (findSession?.webView === deadView) closeFindInPage(rendererGone = true)
         val isCurrentInstance = webViewMap[service] === deadView
-        releaseSharedTextClaimFor(deadView)
+        releasePendingTextClaimsFor(deadView)
         if (isCurrentInstance) {
             invalidateRendererWaiveEligibility(service)
             // Renderer loss must not cancel an in-flight provider selection. Existing
@@ -896,6 +913,86 @@ fun WebChatScreen(
         )
     }
 
+    fun copyClaimedDraftText(
+        service: WebAiService,
+        draftId: String,
+        text: String,
+        successMessage: String
+    ) {
+        val copied = runCatching {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("Draft reply", text))
+        }.isSuccess
+        if (!copied) {
+            viewModel.releasePendingWebDraftClaim(service, draftId)
+            viewModel.showSnackbar("Could not insert or copy draft reply.")
+            return
+        }
+        if (viewModel.completePendingWebDraft(service, draftId)) {
+            viewModel.showSnackbar(successMessage)
+        }
+    }
+
+    fun hasDraftTextClaim(service: WebAiService, draftId: String): Boolean =
+        currentPendingWebDraft?.let { pending ->
+            pending.service == service && pending.id == draftId && pending.isClaimed
+        } == true
+
+    fun finishDraftTextInsertion(
+        insertion: PendingDraftTextInsertion,
+        text: String,
+        result: StudioPromptApplyResult
+    ) {
+        if (pendingDraftTextInsertion.value != insertion) return
+        pendingDraftTextInsertion.value = null
+        if (result == StudioPromptApplyResult.INSERTED) {
+            if (viewModel.completePendingWebDraft(insertion.service, insertion.draftId)) {
+                viewModel.showSnackbar("Draft inserted into ${insertion.service.shortName}; review and send it yourself.")
+            }
+            return
+        }
+        if (hasDraftTextClaim(insertion.service, insertion.draftId)) {
+            copyClaimedDraftText(
+                insertion.service,
+                insertion.draftId,
+                text,
+                "Could not insert draft reply; copied it instead."
+            )
+        }
+    }
+
+    fun applyDraftText() {
+        val service = selectedService
+        val pending = currentPendingWebDraft?.takeIf { it.service == service } ?: return
+        val text = viewModel.claimPendingWebDraft(service, pending.id) ?: return
+        val webView = webViewMap[service]
+        if (webView == null) {
+            copyClaimedDraftText(
+                service,
+                pending.id,
+                text,
+                "Provider is not ready yet; draft reply copied instead."
+            )
+            return
+        }
+
+        val insertion = PendingDraftTextInsertion(service, pending.id, webView)
+        pendingDraftTextInsertion.value = insertion
+        val insertionError = runCatching {
+            applyStudioPromptToFocusedEditor(webView, service, text) { result ->
+                finishDraftTextInsertion(insertion, text, result)
+            }
+        }.exceptionOrNull()
+        if (insertionError == null || pendingDraftTextInsertion.value != insertion) return
+        pendingDraftTextInsertion.value = null
+        copyClaimedDraftText(
+            service,
+            pending.id,
+            text,
+            "Could not insert draft reply; copied it instead."
+        )
+    }
+
     BackHandler(enabled = isActive && findSession == null && canGoBack && drawerState.currentValue == DrawerValue.Closed) {
         activeWebView?.let {
             if (it.canGoBack()) {
@@ -1195,7 +1292,7 @@ fun WebChatScreen(
                             }
                         },
                         onRelease = { wv ->
-                            releaseSharedTextClaimFor(wv)
+                            releasePendingTextClaimsFor(wv)
                             if (webViewMap.remove(service) === wv) {
                                 if (findSession?.webView === wv) closeFindInPage()
                                 releaseWebView(wv)
@@ -1207,20 +1304,36 @@ fun WebChatScreen(
                     }
                 }
 
-                currentPendingWebShare
-                    ?.takeIf { it.service == selectedService }
-                    ?.let { pending ->
-                        SharedContentBanner(
-                            service = pending.service,
-                            payload = pending.payload,
-                            isTextClaimed = pending.isTextClaimed,
-                            onInsertText = ::applySharedText,
-                            onDismiss = {
-                                viewModel.dismissPendingWebShare(pending.service, pending.id)
-                            },
-                            modifier = Modifier.align(Alignment.TopCenter)
-                        )
-                    }
+                Column(
+                    modifier = Modifier.align(Alignment.TopCenter)
+                ) {
+                    currentPendingWebDraft
+                        ?.takeIf { it.service == selectedService }
+                        ?.let { pending ->
+                            DraftReplyBanner(
+                                service = pending.service,
+                                text = pending.text,
+                                isClaimed = pending.isClaimed,
+                                onInsertText = ::applyDraftText,
+                                onDismiss = {
+                                    viewModel.dismissPendingWebDraft(pending.service, pending.id)
+                                }
+                            )
+                        }
+                    currentPendingWebShare
+                        ?.takeIf { it.service == selectedService }
+                        ?.let { pending ->
+                            SharedContentBanner(
+                                service = pending.service,
+                                payload = pending.payload,
+                                isTextClaimed = pending.isTextClaimed,
+                                onInsertText = ::applySharedText,
+                                onDismiss = {
+                                    viewModel.dismissPendingWebShare(pending.service, pending.id)
+                                }
+                            )
+                        }
+                }
             }
         }
         }
