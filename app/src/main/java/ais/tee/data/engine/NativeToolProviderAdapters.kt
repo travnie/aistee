@@ -79,7 +79,7 @@ internal fun buildOpenAiToolDefinitions(tools: List<NativeToolDefinition>): Json
                 put("name", tool.name)
                 put("description", tool.description)
                 put("parameters", tool.inputSchema)
-                put("strict", true)
+                put("strict", false)
             })
         }
     }
