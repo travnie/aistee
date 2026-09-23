@@ -421,29 +421,35 @@ private fun NativeChatDetailPane(
                 }
             },
             onCreateProject = { name ->
-                if (!viewModel.createProject(name)) {
-                    viewModel.showSnackbar("Could not create project.")
+                scope.launch {
+                    if (!viewModel.createProject(name)) {
+                        viewModel.showSnackbar("Could not create project.")
+                    }
                 }
             },
             onOpenAsset = { asset ->
-                val text = viewModel.loadProjectLibraryAsset(asset.id)
-                if (text == null) {
-                    viewModel.showSnackbar("Could not open Library asset.")
-                } else {
-                    openMarkdownAsset(
-                        PendingMarkdownAsset(
-                            text = text,
-                            displayName = asset.title,
-                            sourceDescription = "Project Library",
-                        ),
-                        allowDiscardDirty = false,
-                    )
-                    showProjectLibrary = false
+                scope.launch {
+                    val text = viewModel.loadProjectLibraryAsset(asset.id)
+                    if (text == null) {
+                        viewModel.showSnackbar("Could not open Library asset.")
+                    } else {
+                        openMarkdownAsset(
+                            PendingMarkdownAsset(
+                                text = text,
+                                displayName = asset.title,
+                                sourceDescription = "Project Library",
+                            ),
+                            allowDiscardDirty = false,
+                        )
+                        showProjectLibrary = false
+                    }
                 }
             },
             onDeleteAsset = { asset ->
-                if (!viewModel.deleteProjectLibraryAsset(asset.id)) {
-                    viewModel.showSnackbar("Could not delete Library asset.")
+                scope.launch {
+                    if (!viewModel.deleteProjectLibraryAsset(asset.id)) {
+                        viewModel.showSnackbar("Could not delete Library asset.")
+                    }
                 }
             },
             onDismiss = { showProjectLibrary = false },
@@ -672,14 +678,16 @@ private fun NativeChatDetailPane(
                                         enabled = canOpenChatAsMarkdown && uiState.isProjectLibraryReady,
                                         onClick = {
                                             showChatActionsMenu = false
-                                            val asset = viewModel.saveActiveChatToProjectLibrary()
-                                            viewModel.showSnackbar(
-                                                if (asset != null) {
-                                                    "Saved chat Markdown to Project Library."
-                                                } else {
-                                                    "Could not save chat to Project Library."
-                                                }
-                                            )
+                                            scope.launch {
+                                                val asset = viewModel.saveActiveChatToProjectLibrary()
+                                                viewModel.showSnackbar(
+                                                    if (asset != null) {
+                                                        "Saved chat Markdown to Project Library."
+                                                    } else {
+                                                        "Could not save chat to Project Library."
+                                                    }
+                                                )
+                                            }
                                         },
                                         modifier = Modifier.testTag("btn_save_chat_library")
                                     )
