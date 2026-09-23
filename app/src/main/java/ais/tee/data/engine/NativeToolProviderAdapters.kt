@@ -5,6 +5,7 @@ import ais.tee.data.model.NativeToolCall
 import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
 import ais.tee.data.model.validateNativeToolResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -56,6 +57,8 @@ internal suspend fun executeNativeToolBatch(
         } else {
             try {
                 validateNativeToolResult(call, executor(call))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 NativeToolResult(
                     callId = call.callId,
