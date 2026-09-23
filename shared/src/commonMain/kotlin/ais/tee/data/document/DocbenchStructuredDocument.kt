@@ -1,7 +1,9 @@
 package ais.tee.data.document
 
 const val MAX_DOCBENCH_STRUCTURED_BLOCKS = 20_000
+const val MAX_DOCBENCH_STRUCTURED_TEXT_CHARS = 8 * 1024 * 1024
 const val MAX_DOCBENCH_BOOKMARKS_PER_BLOCK = 32
+const val MAX_DOCBENCH_BOOKMARK_NAME_CHARS = 255
 
 /**
  * Portable text-first document structure used by DOCX/PDF adapters.
@@ -12,7 +14,20 @@ const val MAX_DOCBENCH_BOOKMARKS_PER_BLOCK = 32
  */
 data class DocbenchStructuredDocument(
     val blocks: List<DocbenchStructuredBlock>
-)
+) {
+    init {
+        require(blocks.size <= MAX_DOCBENCH_STRUCTURED_BLOCKS) {
+            "Structured document has too many blocks."
+        }
+        var textChars = 0L
+        blocks.forEach { block ->
+            textChars += block.text.length
+            require(textChars <= MAX_DOCBENCH_STRUCTURED_TEXT_CHARS) {
+                "Structured document text exceeds the supported limit."
+            }
+        }
+    }
+}
 
 data class DocbenchStructuredBlock(
     val text: String,
@@ -25,6 +40,9 @@ data class DocbenchStructuredBlock(
         }
         require(bookmarks.size <= MAX_DOCBENCH_BOOKMARKS_PER_BLOCK) {
             "Too many bookmarks on one document block."
+        }
+        require(bookmarks.all { it.length <= MAX_DOCBENCH_BOOKMARK_NAME_CHARS }) {
+            "Bookmark name exceeds the supported limit."
         }
     }
 }
