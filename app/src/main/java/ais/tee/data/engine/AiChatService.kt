@@ -1172,6 +1172,91 @@ class AiChatService {
         )
     }
 
+    private suspend fun callClaudeToolApi(
+        prompt: String,
+        model: String,
+        apiKey: String,
+        systemInstruction: String?,
+        conversationHistory: List<ModelChatMessage>,
+        tools: List<NativeToolDefinition>,
+        executeTool: suspend (NativeToolCall) -> NativeToolResult,
+    ): ClaudeGenerationResult {
+        val metadata = resolveClaudeMetadata(model, apiKey)
+        val messages = buildClaudeMessages(
+            prompt,
+            conversationHistory,
+            systemInstruction,
+            metadata.resolvedModel,
+        ).toMutableList()
+        val toolDefinitions = buildClaudeToolDefinitions(tools)
+        var usage: ProviderUsage? = null
+        var resolvedModel = metadata.resolvedModel
+
+        repeat(MAX_NATIVE_TOOL_ROUNDS) { round ->
+            val basePayload = buildClaudeRequestPayload(
+                model = resolvedModel,
+                maxTokens = metadata.maxTokens,
+                stream = false,
+                systemInstruction = systemInstruction,
+                messages = JsonArray(messages),
+                reasoningCapabilities = metadata.reasoningCapabilities,
+            )
+            val requestPayload = JsonObject(basePayload + ("tools" to toolDefinitions))
+            val request = Request.Builder()
+                .url(CLAUDE_MESSAGES_API_URL)
+                .addHeader(HEADER_ANTHROPIC_API_KEY, apiKey)
+                .addHeader(HEADER_ANTHROPIC_VERSION, ANTHROPIC_API_VERSION)
+                .addHeader(HEADER_CONTENT_TYPE_LOWER, JSON_MEDIA_TYPE)
+                .post(requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
+                .build()
+
+            val responseBody = executeCancellableJson(request, "Empty response from Anthropic server")
+            val parsed = json.parseToJsonElement(responseBody).jsonObject
+            val responseModel = extractClaudeResponseModel(parsed) ?: resolvedModel
+            if (responseModel != resolvedModel) {
+                invalidateClaudeMetadata(apiKey, model, resolvedModel)
+                resolvedModel = responseModel
+            }
+            usage = mergeProviderUsage(usage, extractClaudeUsage(parsed))
+            val stopReason = extractClaudeStopReason(parsed)
+            val isPartial = isClaudePartialStopReason(stopReason)
+            val calls = parseClaudeToolCalls(parsed)
+
+            if (calls.isEmpty()) {
+                return ClaudeGenerationResult(
+                    text = extractClaudeResponseText(parsed)
+                        ?: "Received empty content block from Claude.",
+                    replayState = if (isPartial) null else extractClaudeReplayState(parsed),
+                    resolvedModel = resolvedModel,
+                    isPartial = isPartial,
+                    usage = usage,
+                )
+            }
+            if (isPartial) {
+                throw IOException("Claude stopped before completing requested tool calls")
+            }
+            if (stopReason != "tool_use") {
+                throw IOException("Claude returned tool_use blocks without tool_use stop reason")
+            }
+            if (round == MAX_NATIVE_TOOL_ROUNDS - 1) {
+                throw IOException("Claude exceeded the local tool-call round limit")
+            }
+
+            val assistantContent = parsed[JSON_CONTENT_KEY] as? JsonArray
+                ?: throw IOException("Claude tool response is missing content")
+            messages += buildJsonObject {
+                put(JSON_ROLE_KEY, CHAT_ROLE_ASSISTANT)
+                put(JSON_CONTENT_KEY, assistantContent)
+            }
+            val results = executeNativeToolBatch(calls, tools, executeTool)
+            messages += buildJsonObject {
+                put(JSON_ROLE_KEY, CHAT_ROLE_USER)
+                put(JSON_CONTENT_KEY, buildClaudeToolResultContent(results))
+            }
+        }
+        throw IOException("Claude tool-call loop ended unexpectedly")
+    }
+
     private fun JsonObject.hasClaudeStringField(name: String): Boolean =
         (this[name] as? JsonPrimitive)?.isString == true
 
