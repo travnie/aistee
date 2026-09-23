@@ -7,12 +7,11 @@ import kotlin.test.assertTrue
 
 class DocxWordprocessingMlTest {
     @Test
-    fun roundTripPreservesTextHeadingsBookmarksBreaksAndTabs() {
+    fun roundTripPreservesTextOutlineBookmarksBreaksAndTabs() {
         val source = DocbenchStructuredDocument(
-            listOf(
+            blocks = listOf(
                 DocbenchStructuredBlock(
                     text = "Chapter 1",
-                    headingLevel = 1,
                     bookmarks = listOf("chapter-one")
                 ),
                 DocbenchStructuredBlock(
@@ -20,6 +19,9 @@ class DocxWordprocessingMlTest {
                     bookmarks = listOf("body mark")
                 ),
                 DocbenchStructuredBlock(text = "")
+            ),
+            outline = listOf(
+                DocbenchOutlineEntry(title = "Chapter 1", level = 1, blockIndex = 0)
             )
         )
 
@@ -30,12 +32,14 @@ class DocxWordprocessingMlTest {
         val decoded = DocxWordprocessingMl.decodeDocument(xml, styles)
 
         assertEquals(
-            listOf(
-                source.blocks[0].copy(bookmarks = listOf("chapter_one")),
-                source.blocks[1].copy(bookmarks = listOf("body_mark")),
-                source.blocks[2]
+            source.copy(
+                blocks = listOf(
+                    source.blocks[0].copy(bookmarks = listOf("chapter_one")),
+                    source.blocks[1].copy(bookmarks = listOf("body_mark")),
+                    source.blocks[2]
+                )
             ),
-            decoded.blocks
+            decoded
         )
         assertTrue(xml.contains("w:pStyle w:val=\"Heading1\""))
         assertTrue(xml.contains("<w:br/>"))
@@ -43,7 +47,7 @@ class DocxWordprocessingMlTest {
     }
 
     @Test
-    fun customParagraphStyleOutlineLevelBecomesHeading() {
+    fun customParagraphStyleOutlineLevelBecomesOutlineEntry() {
         val styles = """
             <w:styles xmlns:w="$WORDPROCESSINGML_NS">
               <w:style w:type="paragraph" w:styleId="ChapterTitle">
@@ -58,11 +62,16 @@ class DocxWordprocessingMlTest {
             </w:body></w:document>
         """.trimIndent()
 
-        val headingStyles = DocxWordprocessingMl.decodeHeadingStyles(styles)
-        val decoded = DocxWordprocessingMl.decodeDocument(document, headingStyles)
+        val decoded = DocxWordprocessingMl.decodeDocument(
+            document,
+            DocxWordprocessingMl.decodeHeadingStyles(styles)
+        )
 
-        assertEquals(2, decoded.blocks.single().headingLevel)
         assertEquals("Two", decoded.blocks.single().text)
+        assertEquals(
+            listOf(DocbenchOutlineEntry(title = "Two", level = 2, blockIndex = 0)),
+            decoded.outline
+        )
     }
 
     @Test
@@ -85,7 +94,10 @@ class DocxWordprocessingMlTest {
             DocxWordprocessingMl.decodeHeadingStyles(styles)
         )
 
-        assertEquals(3, decoded.blocks.single().headingLevel)
+        assertEquals(
+            listOf(DocbenchOutlineEntry(title = "Three", level = 3, blockIndex = 0)),
+            decoded.outline
+        )
     }
 
     @Test
