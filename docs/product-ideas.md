@@ -74,7 +74,7 @@ These are Docbench-style capabilities to bring into Aistee, not changes to Docbe
 ## Built-in Bench tools / plugins
 
 - Treat useful capabilities from `travnie/twojstar` Benches as first-party Aistee tools instead of requiring an external MCP or another service for capabilities Aistee should provide locally.
-- Keep a small capability registry so each built-in tool declares its inputs, outputs, permissions, local/network behavior and which chat/provider transports can use it.
+- Built-in tools declare inputs, outputs, permissions, local/network behavior and supported surfaces in the shared registry. Its SDK-independent decision is `ALLOW`, `DENY`, `ASK` or `REQUIRES_USER_INTERACTION`; only `ALLOW` permits execution. Unsupported/disabled/offline routes deny before requesting consent. Missing permissions on a supported user action ask; model requests for user-only tools require an explicit UI handoff and remain non-executable after a permission grant. Decisions never grant permissions or invoke an SDK automatically.
 - Expose tools selectively per provider. Native/API chats can receive real tool calls where supported; account-backed WebViews should get only reliable, explicit user-approved bridges or one-tap insert/share flows rather than brittle page scraping.
 - Keep one source of truth for Bench logic. Prefer extracting/reusing portable cores or a narrow typed bridge over copying implementations into Aistee and letting them diverge.
 - **Docbench tool:** document/Markdown/JSON/YAML/XML validation, repair and formatting; EOL/BOM handling; the real local tokenizer; safe previews; and selected PDF operations where they fit a chat workflow.
