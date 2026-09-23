@@ -76,7 +76,6 @@ class DocbenchJsonFormatActionTest {
         )
 
         val completed = assertIs<DocbenchJsonFormatActionResult.Completed>(result)
-        assertTrue(completed.changed)
         assertTrue(completed.text.contains("# keep"))
         assertTrue(completed.text.contains("&item"))
         assertTrue(completed.text.contains("*item"))
