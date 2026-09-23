@@ -158,7 +158,7 @@ object MarkdownStructureDiagnostics {
         val startNode = node.children.firstOrNull { it.type == MarkdownTokenTypes.CODE_FENCE_START }
             ?: return null
         val start = startNode.startOffset.coerceIn(0, text.length)
-        val end = startNode.endOffset.coerceIn(start, text.length)
+        val end = nextLineEnd(text, start)
         val raw = text.substring(start, end)
         val match = fenceRun(raw) ?: return null
         val delimiterOffset = start + match.first
@@ -187,6 +187,12 @@ object MarkdownStructureDiagnostics {
             index = end
         }
         return null
+    }
+
+    private fun nextLineEnd(text: String, offset: Int): Int {
+        var index = offset
+        while (index < text.length && text[index] != '\n' && text[index] != '\r') index++
+        return index
     }
 
     private fun previousLineStart(text: String, offset: Int): Int {
