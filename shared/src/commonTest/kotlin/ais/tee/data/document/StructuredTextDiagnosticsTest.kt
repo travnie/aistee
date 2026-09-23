@@ -230,7 +230,7 @@ class StructuredTextDiagnosticsTest {
         assertTrue(result.text.contains("# inline"))
         assertTrue(result.text.contains("&defaults"))
         assertTrue(result.text.contains("*defaults"))
-        assertTrue(result.text.contains(""fast""))
+        assertTrue(result.text.contains("\\\"fast\\\""))
         assertTrue(result.text.contains("|"))
         assertTrue(
             StructuredTextDiagnostics.validate(result.text, StructuredTextFormat.YAML).isValid
