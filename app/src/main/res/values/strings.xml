@@ -45,6 +45,7 @@
     <string name="notification_settings_cancel">Cancel</string>
     <string name="notification_permission_denied">Notification permission was not granted.</string>
     <string name="notification_reply_action">Reply</string>
+    <string name="notification_draft_reply_action">Draft reply</string>
     <string name="notification_reply_sending">Sending reply…</string>
     <string name="notification_reply_failed">Reply failed. Open Aistee to retry.</string>
     <string name="notification_system_disabled">Notifications are disabled for Aistee in Android settings.</string>

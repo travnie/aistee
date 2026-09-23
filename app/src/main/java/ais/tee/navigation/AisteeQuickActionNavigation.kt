@@ -11,11 +11,14 @@ internal object AisteeQuickActionNavigation {
     const val EXTRA_DESTINATION = "ais.tee.extra.DESTINATION"
     const val ACTION_OPEN_NATIVE_CONVERSATION = "ais.tee.action.OPEN_NATIVE_CONVERSATION"
     const val EXTRA_NATIVE_CONVERSATION_ID = "ais.tee.extra.NATIVE_CONVERSATION_ID"
+    const val ACTION_OPEN_WEB_DRAFT_REPLY = "ais.tee.action.OPEN_WEB_DRAFT_REPLY"
+    const val EXTRA_WEB_SERVICE_ID = "ais.tee.extra.WEB_SERVICE_ID"
     const val LEGACY_WIDGET_ACTION_OPEN_DESTINATION = "ais.tee.action.OPEN_WIDGET_DESTINATION"
     const val LEGACY_WIDGET_EXTRA_DESTINATION = "ais.tee.extra.WIDGET_DESTINATION"
 
     private const val URI_SCHEME = "aistee"
     private const val NATIVE_CHAT_HOST = "native-chat"
+    private const val WEB_CHAT_HOST = "web-chat"
 
     const val DESTINATION_WEB_AI = "web_ai"
     const val DESTINATION_COMPARE = "compare"
@@ -44,11 +47,29 @@ internal object AisteeQuickActionNavigation {
         }
     }
 
+    fun webDraftReplyLaunchIntent(context: Context, serviceId: String): Intent {
+        val normalizedId = serviceId.trim()
+        require(normalizedId.isNotEmpty()) { "serviceId must not be blank" }
+        return Intent(context, MainActivity::class.java).apply {
+            action = ACTION_OPEN_WEB_DRAFT_REPLY
+            data = Uri.Builder()
+                .scheme(URI_SCHEME)
+                .authority(WEB_CHAT_HOST)
+                .appendPath(normalizedId)
+                .build()
+            putExtra(EXTRA_WEB_SERVICE_ID, normalizedId)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+    }
+
     fun isOpenDestinationAction(value: String?): Boolean =
         value == ACTION_OPEN_DESTINATION || value == LEGACY_WIDGET_ACTION_OPEN_DESTINATION
 
     fun isOpenNativeConversationAction(value: String?): Boolean =
         value == ACTION_OPEN_NATIVE_CONVERSATION
+
+    fun isOpenWebDraftReplyAction(value: String?): Boolean =
+        value == ACTION_OPEN_WEB_DRAFT_REPLY
 
     fun nativeConversationId(
         currentExtra: String?,
@@ -58,6 +79,17 @@ internal object AisteeQuickActionNavigation {
     ): String? {
         currentExtra?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
         if (dataScheme != URI_SCHEME || dataHost != NATIVE_CHAT_HOST) return null
+        return dataLastPathSegment?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    fun webServiceId(
+        currentExtra: String?,
+        dataScheme: String?,
+        dataHost: String?,
+        dataLastPathSegment: String?
+    ): String? {
+        currentExtra?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        if (dataScheme != URI_SCHEME || dataHost != WEB_CHAT_HOST) return null
         return dataLastPathSegment?.trim()?.takeIf { it.isNotEmpty() }
     }
 

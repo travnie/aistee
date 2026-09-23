@@ -40,6 +40,7 @@ private val NATIVE_CONVERSATION_CAPABILITIES = allowedConversationCapabilities(
 )
 
 private val ACCOUNT_WEB_CONVERSATION_CAPABILITIES = allowedConversationCapabilities(
+    ConversationSurfaceCapability.DRAFT_REPLY,
     ConversationSurfaceCapability.DEEP_LINK
 )
 
@@ -52,8 +53,8 @@ fun AiProvider.conversationSurfaceCapabilities(): ConversationSurfaceCapabilitie
 
 /**
  * Account-backed WebViews keep provider-owned history and sessions. Aistee can reopen the provider
- * surface, but it must not promise history, background send, Direct Reply or staged draft delivery
- * until those bridges are explicitly implemented and verified.
+ * surface and stage a local draft for explicit user insertion/send, but it must not promise history,
+ * background send or Direct Reply without a verified provider transport.
  */
 fun WebAiService.conversationSurfaceCapabilities(): ConversationSurfaceCapabilities =
     ACCOUNT_WEB_CONVERSATION_CAPABILITIES
