@@ -112,6 +112,60 @@ class ConversationHistoryTest {
     }
 
     @Test
+    fun importedAssistantTurnsReplayAsPortableTextWithoutProviderIdentity() {
+        val history = listOf(
+            ModelChatMessage(
+                id = "import-user",
+                sender = CHAT_ROLE_USER,
+                text = "imported question",
+                isImported = true,
+            ),
+            ModelChatMessage(
+                id = "import-assistant",
+                sender = CHAT_ROLE_ASSISTANT,
+                provider = null,
+                text = "imported answer",
+                isImported = true,
+            ),
+            ModelChatMessage(id = "current", sender = CHAT_ROLE_USER, text = "continue"),
+        )
+
+        listOf(AiProvider.CHATGPT, AiProvider.CLAUDE).forEach { provider ->
+            assertEquals(
+                listOf("imported question", "imported answer", "continue"),
+                buildBoundedProviderTextTurns(
+                    prompt = "continue",
+                    conversationHistory = history,
+                    provider = provider,
+                ).map { it.text },
+            )
+        }
+    }
+
+    @Test
+    fun providerlessAssistantWithoutImportedProvenanceIsNotReplayed() {
+        val history = listOf(
+            ModelChatMessage(id = "u1", sender = CHAT_ROLE_USER, text = "private"),
+            ModelChatMessage(
+                id = "a1",
+                sender = CHAT_ROLE_ASSISTANT,
+                provider = null,
+                text = "untrusted provenance",
+            ),
+            ModelChatMessage(id = "u2", sender = CHAT_ROLE_USER, text = "next"),
+        )
+
+        assertEquals(
+            listOf("next"),
+            buildBoundedProviderTextTurns(
+                prompt = "next",
+                conversationHistory = history,
+                provider = AiProvider.CHATGPT,
+            ).map { it.text },
+        )
+    }
+
+    @Test
     fun switchingProviderDoesNotReplayUnseenUserPrompts() {
         val prompt = "ask claude now"
         val history = listOf(
