@@ -470,7 +470,8 @@ private fun rememberMarkdownWorkspaceAnalysis(
         MarkdownWorkspaceAnalysis(
             lineEndings = lineEndings,
             diagnostics = DocumentDiagnostics.inspect(document),
-            markdownStructure = text.takeIf { it.length <= MAX_EDITABLE_MARKDOWN_CHARS }\n                ?.let(MarkdownStructureDiagnostics::validate),
+            markdownStructure = text.takeIf { it.length <= MAX_EDITABLE_MARKDOWN_CHARS }
+                ?.let(MarkdownStructureDiagnostics::validate),
             safety = TextInspector.inspect(text),
             tokenCount = text.takeIf { it.length <= MAX_TOKENIZED_CHARS }?.let(LocalTokenCounter::count)
         )
