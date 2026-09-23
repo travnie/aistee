@@ -1,6 +1,5 @@
 package ais.tee
 
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -16,6 +15,7 @@ import ais.tee.data.preferences.WebChatPreferencesStore
 import ais.tee.ui.viewmodel.StudioViewModel
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -66,7 +66,7 @@ class WebProviderSignInTest {
         select(WebAiService.GROK)
         openHelp()
         composeRule.onNodeWithTag("web_sign_in_app").assertIsNotEnabled()
-        composeRule.onNodeWithTag("web_sign_in_browser").assertExists()
+        assertTrue(composeRule.onAllNodesWithTag("web_sign_in_browser").fetchSemanticsNodes().isNotEmpty())
     }
 
     @Test
