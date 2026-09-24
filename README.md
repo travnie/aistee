@@ -139,7 +139,6 @@ Backends are optional, not the default. If a feature truly needs one, prefer a t
 - [x] add a local Project Library for reusable chat Markdown and generated text/SVG artifacts, with canonical Aistee chat Markdown import/export
 - [x] bring Docbench format/repair, EOL normalization, o200k token counting and Text Inspector into local prompt/file tooling and native typed chat tools
 - [x] add first-party Docbench typed chat tools and local Codebench QR-to-Library generation for compatible native providers
-- [ ] add richer Codebench decode/camera chat handoffs and keep Streambench as companion UI rather than a model tool
 - [ ] **7. UX/security polish:** modernize chat/navigation with stable Material 3 Adaptive and measured Compose work, finish large-screen/list-detail and IME/predictive-back polish, and keep sensitive storage/backup, WebView isolation, tool permissions, safe exports and regression tests as release gates
 - [x] add provider-aware chat/message widgets and native/API notification Direct Reply where the transport can safely send in background
 - [x] add local staged Draft Reply handoff for account WebViews without background sending or cookie/session automation

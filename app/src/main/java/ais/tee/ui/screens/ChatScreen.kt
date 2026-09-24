@@ -858,7 +858,7 @@ private fun NativeChatDetailPane(
 
                         val processingModes = selectedProvider.supportedNativeApiProcessingModes()
                         if (processingModes.size > 1) {
-                            Spacer(Modifier.width(4.dp))
+                            Spacer(Modifier.height(4.dp))
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
