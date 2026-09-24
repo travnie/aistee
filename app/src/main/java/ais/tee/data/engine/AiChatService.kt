@@ -2,6 +2,7 @@ package ais.tee.data.engine
 
 import ais.tee.data.model.AiProvider
 import ais.tee.data.model.ApiKeyConfig
+import ais.tee.data.model.ApiProcessingMode
 import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ClaudeReasoningCapabilities
@@ -89,6 +90,7 @@ private const val JSON_MAX_TOKENS_KEY = "max_tokens"
 private const val JSON_STOP_REASON_KEY = "stop_reason"
 private const val JSON_STORE_KEY = "store"
 private const val JSON_STREAM_KEY = "stream"
+private const val JSON_SERVICE_TIER_KEY = "service_tier"
 private const val JSON_INSTRUCTIONS_KEY = "instructions"
 private const val JSON_THINKING_KEY = "thinking"
 private const val JSON_ADAPTIVE_KEY = "adaptive"
@@ -146,6 +148,7 @@ private const val ANTHROPIC_API_VERSION = "2023-06-01"
 private const val CLAUDE_METADATA_TIMEOUT_SECONDS = 2L
 private const val CLAUDE_ALIAS_CACHE_TTL_MILLIS = 5 * 60 * 1000L
 private const val CLAUDE_METADATA_FAILURE_TTL_MILLIS = 30 * 1000L
+private const val OPENAI_FLEX_TIMEOUT_MINUTES = 15L
 
 internal fun buildClaudeMetadataHttpClient(baseClient: OkHttpClient): OkHttpClient =
     baseClient.newBuilder()
@@ -203,6 +206,10 @@ class AiChatService {
 
     private val streamingHttpClient: OkHttpClient = httpClient.newBuilder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
+        .build()
+    private val openAiFlexHttpClient: OkHttpClient = httpClient.newBuilder()
+        .callTimeout(OPENAI_FLEX_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+        .readTimeout(OPENAI_FLEX_TIMEOUT_MINUTES, TimeUnit.MINUTES)
         .build()
     private val claudeMetadataHttpClient: OkHttpClient = buildClaudeMetadataHttpClient(httpClient)
 
@@ -370,6 +377,7 @@ class AiChatService {
         onTextDelta: ((String) -> Unit)? = null,
         tools: List<NativeToolDefinition> = emptyList(),
         executeTool: (suspend (NativeToolCall) -> NativeToolResult)? = null,
+        apiProcessingMode: ApiProcessingMode = ApiProcessingMode.AUTO,
     ): ModelChatMessage = withContext(Dispatchers.IO) {
         require(tools.isEmpty() || executeTool != null) {
             "A tool executor is required when client tools are offered"
@@ -434,12 +442,15 @@ class AiChatService {
                                 conversationHistory = conversationHistory,
                                 tools = tools,
                                 executeTool = checkNotNull(executeTool),
+                                apiProcessingMode = apiProcessingMode,
                             )
                             onTextDelta != null -> callOpenAiStreamApi(
-                                prompt, effectiveModel, key, systemInstruction, conversationHistory, onTextDelta
+                                prompt, effectiveModel, key, systemInstruction, conversationHistory, onTextDelta,
+                                apiProcessingMode
                             )
                             else -> callOpenAiApi(
-                                prompt, effectiveModel, key, systemInstruction, conversationHistory
+                                prompt, effectiveModel, key, systemInstruction, conversationHistory,
+                                apiProcessingMode
                             )
                         }
                         providerReplayState = result.replayState
@@ -651,11 +662,18 @@ class AiChatService {
         model: String,
         stream: Boolean,
         systemInstruction: String?,
-        input: JsonArray
+        input: JsonArray,
+        apiProcessingMode: ApiProcessingMode = ApiProcessingMode.AUTO,
     ): JsonObject = buildJsonObject {
         put(JSON_MODEL_KEY, model)
         put(JSON_INPUT_KEY, input)
         put(JSON_STORE_KEY, false)
+        when (apiProcessingMode) {
+            ApiProcessingMode.AUTO -> Unit
+            ApiProcessingMode.STANDARD -> put(JSON_SERVICE_TIER_KEY, "default")
+            ApiProcessingMode.FLEX -> put(JSON_SERVICE_TIER_KEY, "flex")
+            ApiProcessingMode.FAST -> put(JSON_SERVICE_TIER_KEY, "fast")
+        }
         putJsonArray(JSON_INCLUDE_KEY) {
             add(OPENAI_REASONING_ENCRYPTED_CONTENT)
         }
@@ -877,7 +895,8 @@ class AiChatService {
         model: String,
         apiKey: String,
         systemInstruction: String?,
-        conversationHistory: List<ModelChatMessage>
+        conversationHistory: List<ModelChatMessage>,
+        apiProcessingMode: ApiProcessingMode,
     ): OpenAiGenerationResult {
         val url = "https://api.openai.com/v1/responses"
         val input = buildOpenAiResponseInput(
@@ -890,7 +909,8 @@ class AiChatService {
             model = model,
             stream = false,
             systemInstruction = systemInstruction,
-            input = input
+            input = input,
+            apiProcessingMode = apiProcessingMode,
         )
 
         val body = requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType())
@@ -901,7 +921,11 @@ class AiChatService {
             .post(body)
             .build()
 
-        val responseBody = executeCancellableJson(request, "Empty response from OpenAI server")
+        val responseBody = executeCancellableJson(
+            request,
+            "Empty response from OpenAI server",
+            client = if (apiProcessingMode == ApiProcessingMode.FLEX) openAiFlexHttpClient else httpClient,
+        )
         val parsed = json.parseToJsonElement(responseBody).jsonObject
         ensureOpenAiBufferedResponseCompleted(parsed)
         return OpenAiGenerationResult(
@@ -920,6 +944,7 @@ class AiChatService {
         conversationHistory: List<ModelChatMessage>,
         tools: List<NativeToolDefinition>,
         executeTool: suspend (NativeToolCall) -> NativeToolResult,
+        apiProcessingMode: ApiProcessingMode,
     ): OpenAiGenerationResult {
         val url = "https://api.openai.com/v1/responses"
         val input = buildOpenAiResponseInput(
@@ -938,6 +963,7 @@ class AiChatService {
                 stream = false,
                 systemInstruction = systemInstruction,
                 input = JsonArray(input),
+                apiProcessingMode = apiProcessingMode,
             )
             val requestPayload = JsonObject(basePayload + ("tools" to toolDefinitions))
             val request = Request.Builder()
@@ -947,7 +973,11 @@ class AiChatService {
                 .post(requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
                 .build()
 
-            val responseBody = executeCancellableJson(request, "Empty response from OpenAI server")
+            val responseBody = executeCancellableJson(
+                request,
+                "Empty response from OpenAI server",
+                client = if (apiProcessingMode == ApiProcessingMode.FLEX) openAiFlexHttpClient else httpClient,
+            )
             val parsed = json.parseToJsonElement(responseBody).jsonObject
             ensureOpenAiBufferedResponseCompleted(parsed)
             usage = mergeProviderUsage(usage, extractOpenAiUsage(parsed))
@@ -1561,7 +1591,8 @@ class AiChatService {
         apiKey: String,
         systemInstruction: String?,
         conversationHistory: List<ModelChatMessage>,
-        onTextDelta: (String) -> Unit
+        onTextDelta: (String) -> Unit,
+        apiProcessingMode: ApiProcessingMode,
     ): OpenAiGenerationResult {
         val input = buildOpenAiResponseInput(
             prompt = prompt,
@@ -1573,7 +1604,8 @@ class AiChatService {
             model = model,
             stream = true,
             systemInstruction = systemInstruction,
-            input = input
+            input = input,
+            apiProcessingMode = apiProcessingMode,
         )
         val request = Request.Builder()
             .url("https://api.openai.com/v1/responses")
