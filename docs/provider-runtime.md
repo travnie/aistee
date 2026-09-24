@@ -48,6 +48,8 @@ For account-backed WebViews, `StudioPromptBridge` applies the rendered prompt on
 
 Do not add one universal set of sampling/reasoning parameters just because the UI can expose sliders. Provider defaults and model families differ. Controls should be capability-driven and omitted when the provider recommends its default.
 
+The native/API chat may expose a small set of practical processing modes when a provider has a clean typed contract. OpenAI currently offers per-conversation **Auto** and **Flex** in Aistee; Flex maps only to Responses API `service_tier: "flex"`. Unsupported providers normalize back to Auto, and the setting follows the locally owned conversation so notification Direct Reply uses the same mode. Background and batch execution belong in explicit job surfaces later rather than masquerading as ordinary streaming chat toggles.
+
 Example: Gemini 3 documentation recommends keeping temperature at the default `1.0`; lowering it can degrade reasoning behavior. A global temperature override would therefore be actively harmful for some current models.
 
 ## Reasoning/state gaps
@@ -107,6 +109,8 @@ Costs are recorded only when the response reports them. Aistee does not estimate
 
 ## API/runtime TODO
 
+- [x] Add a lightweight provider-aware request-mode contract and OpenAI Auto/Flex UI without adding generic sampling sliders.
+- [ ] Add explicit background/batch job surfaces where provider semantics and status/result retrieval can be represented honestly.
 - [x] Make gateway model-catalog refresh cancellable through the same OkHttp coroutine bridge used by generation.
 - [x] Add a provider capability model for transport, instruction placement, response metadata and state strategy; extend it as reasoning controls land.
 - [x] Add a provider-neutral client-tool contract with bounded execution loops for Gemini GenerateContent, OpenAI Responses and Anthropic Messages; keep OpenAI-compatible gateways disabled until their routed-model tool guarantees are explicit.

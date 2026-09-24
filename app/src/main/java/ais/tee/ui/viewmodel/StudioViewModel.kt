@@ -132,6 +132,8 @@ data class StudioUiState(
         get() = activeNativeConversation?.selectedProvider ?: AiProvider.ALL
     val selectedChatModel: String
         get() = activeNativeConversation?.selectedModel ?: "all"
+    val selectedApiProcessingMode: NativeApiProcessingMode
+        get() = activeNativeConversation?.apiProcessingMode ?: NativeApiProcessingMode.AUTO
     val includeSystemProfileInChat: Boolean
         get() = activeNativeConversation?.includeSystemProfile ?: true
 }
@@ -828,7 +830,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             else -> ""
         }
         updateActiveNativeConversation { conversation ->
-            conversation.copy(selectedProvider = provider, selectedModel = newModel)
+            conversation.copy(
+                selectedProvider = provider,
+                selectedModel = newModel,
+                apiProcessingMode = provider.normalizeNativeApiProcessingMode(conversation.apiProcessingMode),
+            )
         }
         if (provider.usesLiveGatewayModelCatalog()) refreshGatewayModelCatalog(provider)
     }
@@ -836,6 +842,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun setChatModel(modelName: String) {
         if (!_uiState.value.isNativeConversationStoreReady) return
         updateActiveNativeConversation { it.copy(selectedModel = modelName) }
+    }
+
+    fun setApiProcessingMode(mode: NativeApiProcessingMode) {
+        if (!_uiState.value.isNativeConversationStoreReady) return
+        updateActiveNativeConversation { conversation ->
+            conversation.copy(
+                apiProcessingMode = conversation.selectedProvider.normalizeNativeApiProcessingMode(mode)
+            )
+        }
     }
 
     fun refreshGatewayModelCatalog(provider: AiProvider) {
@@ -1208,6 +1223,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         profile = promptContext.activeProfile,
                         conversationHistory = currentMessages,
                         allowSingleProviderSimulationFallback = targetProvider != AiProvider.ALL,
+                        apiProcessingMode = _uiState.value.selectedApiProcessingMode,
                         tools = toolDefinitions,
                         executeTool = benchTools::execute,
                     ),

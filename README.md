@@ -132,19 +132,19 @@ Backends are optional, not the default. If a feature truly needs one, prefer a t
 - [x] add privacy-safe provider diagnostics for embedded capability verification
 - [x] show generating and unread response status on ChatGPT, Claude, Gemini, DeepSeek, Kimi and Vibe web tabs
 - [x] add Qwen, Microsoft Copilot, Z.ai, Grok, Character.AI, Venice and Meta AI account-backed WebView entries
-- [ ] verify embedded sign-in, embedded upload flows and provider-specific generation activity probes for Qwen, Copilot, Z.ai, Grok, Character.AI, Venice and Meta AI
+- [ ] **1. New Web provider verification:** verify embedded sign-in, upload flows and provider-specific generation/activity probes for Qwen, Copilot, Z.ai, Grok, Character.AI, Venice and Meta AI; add browser-backed auth handoff only where a verifiable redirect/session contract exists
 - [x] add identity-assisted provider onboarding metadata and provider-owned sign-in guidance for Qwen, Copilot, Z.ai, Grok, Character.AI, Venice and Meta AI without a mandatory Aistee account or cookie/token copying
-- [ ] add browser-backed auth handoff only for providers that expose a verifiable redirect/session contract; never bridge browser cookies into WebView
 - [x] add a local Markdown prompt vault with edit/import/export and chat-to-`.md` workflows
 - [x] add manually editable/importable `SKILL.md` assets with safe capability gating
 - [x] add a local Project Library for reusable chat Markdown and generated text/SVG artifacts, with canonical Aistee chat Markdown import/export
 - [x] bring Docbench format/repair, EOL normalization, o200k token counting and Text Inspector into local prompt/file tooling and native typed chat tools
 - [x] add first-party Docbench typed chat tools and local Codebench QR-to-Library generation for compatible native providers
 - [ ] add richer Codebench decode/camera chat handoffs and keep Streambench as companion UI rather than a model tool
-- [ ] modernize chat/navigation UX with current stable Material 3 Adaptive, measured Compose performance work and large-screen list-detail layouts
+- [ ] **7. UX/security polish:** modernize chat/navigation with stable Material 3 Adaptive and measured Compose work, finish large-screen/list-detail and IME/predictive-back polish, and keep sensitive storage/backup, WebView isolation, tool permissions, safe exports and regression tests as release gates
 - [x] add provider-aware chat/message widgets and native/API notification Direct Reply where the transport can safely send in background
 - [x] add local staged Draft Reply handoff for account WebViews without background sending or cookie/session automation
-- [ ] treat security/privacy as a cross-cutting release gate: sensitive storage/backup rules, WebView isolation, tool permissions, redacted widgets/notifications, safe exports and security regression tests
+- [ ] **6. Widgets/notifications v2:** add richer recent/status widgets, Android conversation `MessagingStyle`/`Person`, long-lived conversation shortcuts and user-controlled privacy/redaction
+- [ ] **8. Native/API modes and jobs:** keep a small provider-aware GUI for useful processing choices instead of generic expert sliders; ship OpenAI Auto/Flex first, then add background/batch job surfaces where providers support them cleanly
 - [x] add CI build/lint checks
 - [x] document which providers work fully, partially, or block embedded login
 

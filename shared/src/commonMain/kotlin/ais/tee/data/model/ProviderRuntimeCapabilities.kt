@@ -1,5 +1,6 @@
 package ais.tee.data.model
 
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -14,6 +15,25 @@ enum class NativeChatTransport {
     ANTHROPIC_MESSAGES,
     OPENAI_COMPATIBLE_CHAT_COMPLETIONS
 }
+
+@Serializable
+enum class NativeApiProcessingMode(
+    val displayName: String,
+    val wireValue: String?,
+) {
+    AUTO("Auto", null),
+    FLEX("Flex", "flex"),
+}
+
+fun AiProvider.supportedNativeApiProcessingModes(): List<NativeApiProcessingMode> = when (this) {
+    AiProvider.CHATGPT -> listOf(NativeApiProcessingMode.AUTO, NativeApiProcessingMode.FLEX)
+    else -> listOf(NativeApiProcessingMode.AUTO)
+}
+
+fun AiProvider.normalizeNativeApiProcessingMode(
+    mode: NativeApiProcessingMode
+): NativeApiProcessingMode =
+    mode.takeIf { it in supportedNativeApiProcessingModes() } ?: NativeApiProcessingMode.AUTO
 
 enum class SystemInstructionPlacement {
     PER_PROVIDER,

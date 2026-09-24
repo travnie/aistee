@@ -329,6 +329,7 @@ private suspend fun processDirectReply(
             profile = promptContext.activeProfile,
             conversationHistory = reply.conversation.messages,
             allowSingleProviderSimulationFallback = false,
+            apiProcessingMode = reply.conversation.apiProcessingMode,
         ),
         aiChatService = AiChatService(),
     ).map { result ->

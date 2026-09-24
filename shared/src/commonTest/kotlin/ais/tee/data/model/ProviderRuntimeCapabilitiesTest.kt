@@ -135,4 +135,20 @@ class ProviderRuntimeCapabilitiesTest {
         assertEquals(ConversationStateStrategy.PROVIDER_FAN_OUT, capabilities.conversationStateStrategy)
         assertFalse(capabilities.reportsResolvedModel)
     }
+
+    @Test
+    fun nativeApiProcessingModesStayProviderAware() {
+        assertEquals(
+            listOf(NativeApiProcessingMode.AUTO, NativeApiProcessingMode.FLEX),
+            AiProvider.CHATGPT.supportedNativeApiProcessingModes()
+        )
+        assertEquals(
+            listOf(NativeApiProcessingMode.AUTO),
+            AiProvider.GEMINI.supportedNativeApiProcessingModes()
+        )
+        assertEquals(
+            NativeApiProcessingMode.AUTO,
+            AiProvider.GEMINI.normalizeNativeApiProcessingMode(NativeApiProcessingMode.FLEX)
+        )
+    }
 }

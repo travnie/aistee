@@ -95,6 +95,45 @@ class NativeChatThreadsTest {
     }
 
     @Test
+    fun codecPersistsSupportedApiProcessingMode() {
+        val conversation = NativeChatConversation(
+            id = "c1",
+            createdAtEpochMs = 1,
+            selectedProvider = AiProvider.CHATGPT,
+            selectedModel = AiProvider.CHATGPT.defaultModel,
+            apiProcessingMode = NativeApiProcessingMode.FLEX,
+        )
+        val archive = NativeChatArchive(
+            activeConversationId = conversation.id,
+            conversations = listOf(conversation)
+        )
+
+        val decoded = assertNotNull(NativeChatArchiveCodec.decode(NativeChatArchiveCodec.encode(archive)))
+
+        assertEquals(NativeApiProcessingMode.FLEX, assertNotNull(decoded.activeConversation).apiProcessingMode)
+    }
+
+    @Test
+    fun normalizationDropsUnsupportedApiProcessingMode() {
+        val conversation = NativeChatConversation(
+            id = "c1",
+            createdAtEpochMs = 1,
+            selectedProvider = AiProvider.GEMINI,
+            selectedModel = AiProvider.GEMINI.defaultModel,
+            apiProcessingMode = NativeApiProcessingMode.FLEX,
+        )
+
+        val normalized = assertNotNull(
+            NativeChatArchive(
+                activeConversationId = conversation.id,
+                conversations = listOf(conversation)
+            ).normalized()
+        )
+
+        assertEquals(NativeApiProcessingMode.AUTO, assertNotNull(normalized.activeConversation).apiProcessingMode)
+    }
+
+    @Test
     fun unsupportedArchiveVersionIsRejected() {
         val archive = NativeChatArchive(
             version = NATIVE_CHAT_ARCHIVE_VERSION + 1,

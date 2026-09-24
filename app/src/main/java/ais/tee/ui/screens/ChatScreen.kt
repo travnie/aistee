@@ -63,11 +63,13 @@ import ais.tee.data.document.MarkdownWorkspaceRecoveryStore
 import ais.tee.data.model.AiProvider
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ModelChatMessage
+import ais.tee.data.model.NativeApiProcessingMode
 import ais.tee.data.model.NativeChatConversation
 import ais.tee.data.model.ProjectLibraryArchive
 import ais.tee.data.model.ProjectLibraryAsset
 import ais.tee.data.model.renderChatMarkdown
 import ais.tee.data.model.isCompletedAssistantResponse
+import ais.tee.data.model.supportedNativeApiProcessingModes
 import ais.tee.notifications.NativeChatNotificationPreferences
 import ais.tee.notifications.NativeChatNotificationPreferencesStore
 import ais.tee.notifications.NativeChatNotificationPublisher
@@ -240,6 +242,7 @@ private fun NativeChatDetailPane(
     }
     val promptInput = uiState.nativeChatDraft
     var showModelMenu by remember { mutableStateOf(false) }
+    var showApiModeMenu by remember { mutableStateOf(false) }
     var showChatActionsMenu by remember { mutableStateOf(false) }
     val notificationPreferencesStore = remember(context.applicationContext) {
         NativeChatNotificationPreferencesStore(context.applicationContext)
@@ -849,6 +852,66 @@ private fun NativeChatDetailPane(
                                             }
                                         }
                                     )
+                                }
+                            }
+                        }
+
+                        val processingModes = selectedProvider.supportedNativeApiProcessingModes()
+                        if (processingModes.size > 1) {
+                            Spacer(Modifier.width(4.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.small)
+                                    .clickable { showApiModeMenu = true }
+                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    .testTag("api_processing_mode")
+                            ) {
+                                Text(
+                                    text = "API: ${uiState.selectedApiProcessingMode.displayName}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Change API processing mode",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                DropdownMenu(
+                                    expanded = showApiModeMenu,
+                                    onDismissRequest = { showApiModeMenu = false }
+                                ) {
+                                    processingModes.forEach { mode ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    if (mode == NativeApiProcessingMode.FLEX) {
+                                                        "Flex · cheaper, slower"
+                                                    } else {
+                                                        mode.displayName
+                                                    }
+                                                )
+                                            },
+                                            onClick = {
+                                                viewModel.setApiProcessingMode(mode)
+                                                showApiModeMenu = false
+                                            },
+                                            leadingIcon = {
+                                                if (uiState.selectedApiProcessingMode == mode) {
+                                                    Icon(
+                                                        Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = getProviderColor(selectedProvider),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
