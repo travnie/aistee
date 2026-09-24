@@ -11,6 +11,7 @@ import ais.tee.data.model.GatewayModelCatalogEntry
 import ais.tee.data.model.ClientToolCallingStrategy
 import ais.tee.data.model.MAX_NATIVE_TOOL_ROUNDS
 import ais.tee.data.model.ModelChatMessage
+import ais.tee.data.model.NativeApiMode
 import ais.tee.data.model.NativeToolCall
 import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
@@ -88,6 +89,8 @@ private const val JSON_MESSAGES_KEY = "messages"
 private const val JSON_MAX_TOKENS_KEY = "max_tokens"
 private const val JSON_STOP_REASON_KEY = "stop_reason"
 private const val JSON_STORE_KEY = "store"
+private const val JSON_SERVICE_TIER_KEY = "service_tier"
+private const val OPENAI_SERVICE_TIER_FLEX = "flex"
 private const val JSON_STREAM_KEY = "stream"
 private const val JSON_INSTRUCTIONS_KEY = "instructions"
 private const val JSON_THINKING_KEY = "thinking"
@@ -370,6 +373,7 @@ class AiChatService {
         onTextDelta: ((String) -> Unit)? = null,
         tools: List<NativeToolDefinition> = emptyList(),
         executeTool: (suspend (NativeToolCall) -> NativeToolResult)? = null,
+        apiMode: NativeApiMode = NativeApiMode.AUTO,
     ): ModelChatMessage = withContext(Dispatchers.IO) {
         require(tools.isEmpty() || executeTool != null) {
             "A tool executor is required when client tools are offered"
@@ -434,12 +438,13 @@ class AiChatService {
                                 conversationHistory = conversationHistory,
                                 tools = tools,
                                 executeTool = checkNotNull(executeTool),
+                                apiMode = apiMode,
                             )
                             onTextDelta != null -> callOpenAiStreamApi(
-                                prompt, effectiveModel, key, systemInstruction, conversationHistory, onTextDelta
+                                prompt, effectiveModel, key, systemInstruction, conversationHistory, onTextDelta, apiMode
                             )
                             else -> callOpenAiApi(
-                                prompt, effectiveModel, key, systemInstruction, conversationHistory
+                                prompt, effectiveModel, key, systemInstruction, conversationHistory, apiMode
                             )
                         }
                         providerReplayState = result.replayState
@@ -651,11 +656,15 @@ class AiChatService {
         model: String,
         stream: Boolean,
         systemInstruction: String?,
-        input: JsonArray
+        input: JsonArray,
+        apiMode: NativeApiMode = NativeApiMode.AUTO,
     ): JsonObject = buildJsonObject {
         put(JSON_MODEL_KEY, model)
         put(JSON_INPUT_KEY, input)
         put(JSON_STORE_KEY, false)
+        if (apiMode == NativeApiMode.FLEX) {
+            put(JSON_SERVICE_TIER_KEY, OPENAI_SERVICE_TIER_FLEX)
+        }
         putJsonArray(JSON_INCLUDE_KEY) {
             add(OPENAI_REASONING_ENCRYPTED_CONTENT)
         }
@@ -877,7 +886,8 @@ class AiChatService {
         model: String,
         apiKey: String,
         systemInstruction: String?,
-        conversationHistory: List<ModelChatMessage>
+        conversationHistory: List<ModelChatMessage>,
+        apiMode: NativeApiMode,
     ): OpenAiGenerationResult {
         val url = "https://api.openai.com/v1/responses"
         val input = buildOpenAiResponseInput(
@@ -890,7 +900,8 @@ class AiChatService {
             model = model,
             stream = false,
             systemInstruction = systemInstruction,
-            input = input
+            input = input,
+            apiMode = apiMode,
         )
 
         val body = requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType())
@@ -920,6 +931,7 @@ class AiChatService {
         conversationHistory: List<ModelChatMessage>,
         tools: List<NativeToolDefinition>,
         executeTool: suspend (NativeToolCall) -> NativeToolResult,
+        apiMode: NativeApiMode,
     ): OpenAiGenerationResult {
         val url = "https://api.openai.com/v1/responses"
         val input = buildOpenAiResponseInput(
@@ -938,6 +950,7 @@ class AiChatService {
                 stream = false,
                 systemInstruction = systemInstruction,
                 input = JsonArray(input),
+                apiMode = apiMode,
             )
             val requestPayload = JsonObject(basePayload + ("tools" to toolDefinitions))
             val request = Request.Builder()
@@ -1561,7 +1574,8 @@ class AiChatService {
         apiKey: String,
         systemInstruction: String?,
         conversationHistory: List<ModelChatMessage>,
-        onTextDelta: (String) -> Unit
+        onTextDelta: (String) -> Unit,
+        apiMode: NativeApiMode,
     ): OpenAiGenerationResult {
         val input = buildOpenAiResponseInput(
             prompt = prompt,
@@ -1573,7 +1587,8 @@ class AiChatService {
             model = model,
             stream = true,
             systemInstruction = systemInstruction,
-            input = input
+            input = input,
+            apiMode = apiMode,
         )
         val request = Request.Builder()
             .url("https://api.openai.com/v1/responses")
