@@ -61,7 +61,6 @@ import ais.tee.R
 import ais.tee.data.document.MarkdownDocumentFileAccess
 import ais.tee.data.document.MarkdownWorkspaceRecoveryStore
 import ais.tee.data.model.AiProvider
-import ais.tee.data.model.ApiProcessingMode
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatConversation
