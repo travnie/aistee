@@ -4,10 +4,12 @@ import ais.tee.data.model.AiProvider
 import ais.tee.data.model.ApiKeyConfig
 import ais.tee.data.model.ClientToolCallingStrategy
 import ais.tee.data.model.ModelChatMessage
+import ais.tee.data.model.NativeApiMode
 import ais.tee.data.model.NativeToolCall
 import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
 import ais.tee.data.model.runtimeCapabilities
+import ais.tee.data.model.sanitizeNativeApiMode
 import ais.tee.data.model.Profile
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -18,6 +20,7 @@ internal data class NativeChatSendRequest(
     val targetProvider: AiProvider,
     val providersToRun: List<AiProvider>,
     val selectedModel: String,
+    val apiMode: NativeApiMode = NativeApiMode.AUTO,
     val apiKeys: ApiKeyConfig,
     val systemInstruction: String?,
     val profile: Profile?,
@@ -74,6 +77,7 @@ internal suspend fun executeNativeChatSend(
             onTextDelta = { delta -> onTextDelta(provider, model, delta) },
             tools = providerTools,
             executeTool = request.executeTool,
+            apiMode = provider.sanitizeNativeApiMode(request.apiMode),
         )
         return NativeChatGeneratedResponse(provider, model, response).also(onResponse)
     }
