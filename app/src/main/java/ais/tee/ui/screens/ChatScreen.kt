@@ -53,6 +53,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -1727,7 +1729,10 @@ fun ApiKeySettingsDialog(
             ) {
                 Text("Cancel")
             }
-        }
+        },
+        properties = DialogProperties(
+            securePolicy = SecureFlagPolicy.SecureOn,
+        ),
     )
 }
 
