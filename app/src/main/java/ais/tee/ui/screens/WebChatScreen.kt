@@ -199,6 +199,7 @@ fun WebChatScreen(
     var canGoForward by remember { mutableStateOf(false) }
     var showPromptHelperDialog by remember { mutableStateOf(false) }
     var showProviderDiagnosticsDialog by remember { mutableStateOf(false) }
+    var showClearProviderSessionsDialog by remember { mutableStateOf(false) }
     var diagnosticsProbeResult by remember { mutableStateOf<ProviderDiagnosticsProbeResult?>(null) }
     var diagnosticsProbeRequestId by remember { mutableIntStateOf(0) }
     var pendingExternalIntentUri by remember { mutableStateOf<Uri?>(null) }
@@ -768,6 +769,66 @@ fun WebChatScreen(
     val isDesktopMode = desktopModes[selectedService] == true
     val studioPrompt = studioPromptForWebChat(uiState.renderedInstructions)
 
+    fun clearAllProviderWebSessions() {
+        val serviceToReopen = selectedService
+        showClearProviderSessionsDialog = false
+        closeFindInPage()
+        livePoolDecisionRequestId++
+        liveServices.forEach { service ->
+            cancelPendingUploadFor(service)
+            invalidateRendererWaiveEligibility(service)
+            documentRevisions[service] = (documentRevisions[service] ?: 0) + 1
+        }
+
+        // Drop every live renderer before clearing shared WebView session state.
+        // Keeping the old instances around would let a later provider selection
+        // reuse a renderer created with the session we just signed out.
+        val webViewsToRelease = webViewMap.values.toList()
+        webViewMap.clear()
+        webViewInstanceRevisions.clear()
+        liveServices = emptyList()
+        webViewsToRelease.forEach { webView ->
+            releasePendingTextClaimsFor(webView)
+            webView.clearCache(true)
+            releaseWebView(webView)
+        }
+
+        lastKnownUrls.clear()
+        activityStatuses.clear()
+        rendererCrashServices.clear()
+        deferredRendererRecoveryServices.clear()
+        rendererInactivityConfirmed.clear()
+        pendingDesktopModes.clear()
+        pendingExternalIntentUri = null
+        showSignInHelp = false
+        showPromptHelperDialog = false
+        showProviderDiagnosticsDialog = false
+        diagnosticsProbeResult = null
+        canGoBack = false
+        canGoForward = false
+        currentUrl = serviceToReopen.url
+        loadingProgress = 0
+        isLoading = false
+
+        CookieManager.getInstance().removeAllCookies {
+            CookieManager.getInstance().flush()
+            WebStorage.getInstance().deleteAllData()
+            WebViewDatabase.getInstance(context.applicationContext).apply {
+                clearHttpAuthUsernamePassword()
+                clearFormData()
+            }
+
+            // Recreate only after the shared browser state is gone. If this screen
+            // became inactive meanwhile, its normal activation effect will create
+            // a fresh renderer when the user returns.
+            if (currentIsActive) {
+                liveServices = listOf(serviceToReopen)
+                bumpWebViewInstance(serviceToReopen)
+                viewModel.showSnackbar("Provider web sessions cleared. Sign in again where needed.")
+            }
+        }
+    }
+
     fun copyStudioPrompt(message: String) {
         val prompt = studioPrompt ?: run {
             viewModel.showSnackbar("No Studio instructions are active.")
@@ -1065,6 +1126,9 @@ fun WebChatScreen(
                                 preferredIdentityMethod = webPreferences.loadPreferredIdentityMethod()
                                 showSignInHelp = true
                             },
+                            onClearProviderSessions = {
+                                showClearProviderSessionsDialog = true
+                            },
                             onFindInPage = {
                                 closeFindInPage()
                                 activeWebView?.let { findSession = WebFindInPageSession(it) }
@@ -1358,6 +1422,33 @@ fun WebChatScreen(
         }
     }
 
+    if (showClearProviderSessionsDialog && isActive) {
+        AlertDialog(
+            onDismissRequest = { showClearProviderSessionsDialog = false },
+            title = { Text("Clear provider web sessions?") },
+            text = {
+                Text(
+                    "This signs out account-backed Web chats in Aistee by clearing all provider " +
+                        "cookies, site storage and WebView cache. Native/API chats, Project Library " +
+                        "files and API keys are not deleted."
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearProviderSessionsDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = ::clearAllProviderWebSessions,
+                    modifier = Modifier.testTag("btn_confirm_clear_provider_sessions"),
+                ) {
+                    Text("Clear sessions")
+                }
+            },
+        )
+    }
+
     // Quick Prompt / Profile Copier Dialog
     ExternalIntentConfirmationDialog(
         uri = pendingExternalIntentUri.takeIf { isActive },
@@ -1561,6 +1652,7 @@ private fun WebChatToolbar(
     onShowPromptHelper: () -> Unit,
     onShowDiagnostics: () -> Unit,
     onShowSignInHelp: () -> Unit,
+    onClearProviderSessions: () -> Unit,
     onFindInPage: () -> Unit,
     onToggleDesktopMode: () -> Unit,
     onShowSnackbar: (String) -> Unit
@@ -1747,6 +1839,16 @@ private fun WebChatToolbar(
                                 }
                                 menuExpanded = false
                             }
+                        )
+                        HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Clear provider web sessions") },
+                            leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                onClearProviderSessions()
+                            },
+                            modifier = Modifier.testTag("btn_clear_provider_sessions"),
                         )
                     }
                 }
