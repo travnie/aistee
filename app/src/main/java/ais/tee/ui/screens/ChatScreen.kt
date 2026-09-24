@@ -64,10 +64,12 @@ import ais.tee.data.model.AiProvider
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatConversation
+import ais.tee.data.model.NativeApiMode
 import ais.tee.data.model.ProjectLibraryArchive
 import ais.tee.data.model.ProjectLibraryAsset
 import ais.tee.data.model.renderChatMarkdown
 import ais.tee.data.model.isCompletedAssistantResponse
+import ais.tee.data.model.supportedNativeApiModes
 import ais.tee.notifications.NativeChatNotificationPreferences
 import ais.tee.notifications.NativeChatNotificationPreferencesStore
 import ais.tee.notifications.NativeChatNotificationPublisher
@@ -240,6 +242,7 @@ private fun NativeChatDetailPane(
     }
     val promptInput = uiState.nativeChatDraft
     var showModelMenu by remember { mutableStateOf(false) }
+    var showApiModeMenu by remember { mutableStateOf(false) }
     var showChatActionsMenu by remember { mutableStateOf(false) }
     val notificationPreferencesStore = remember(context.applicationContext) {
         NativeChatNotificationPreferencesStore(context.applicationContext)
@@ -849,6 +852,82 @@ private fun NativeChatDetailPane(
                                             }
                                         }
                                     )
+                                }
+                            }
+                        }
+
+                        val apiModes = selectedProvider.supportedNativeApiModes()
+                        if (apiModes.size > 1) {
+                            Spacer(Modifier.height(2.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.small)
+                                    .clickable { showApiModeMenu = true }
+                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    .testTag("native_api_mode_selector")
+                            ) {
+                                Text(
+                                    text = "Mode: " + when (uiState.selectedNativeApiMode) {
+                                        NativeApiMode.AUTO -> "Auto"
+                                        NativeApiMode.FLEX -> "Flex"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Change API mode",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                DropdownMenu(
+                                    expanded = showApiModeMenu,
+                                    onDismissRequest = { showApiModeMenu = false }
+                                ) {
+                                    apiModes.forEach { mode ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(
+                                                        text = when (mode) {
+                                                            NativeApiMode.AUTO -> "Auto"
+                                                            NativeApiMode.FLEX -> "Flex"
+                                                        },
+                                                        fontWeight = if (uiState.selectedNativeApiMode == mode) {
+                                                            FontWeight.Bold
+                                                        } else {
+                                                            FontWeight.Normal
+                                                        }
+                                                    )
+                                                    if (mode == NativeApiMode.FLEX) {
+                                                        Text(
+                                                            text = "Lower cost, slower",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                viewModel.setNativeApiMode(mode)
+                                                showApiModeMenu = false
+                                            },
+                                            leadingIcon = {
+                                                if (uiState.selectedNativeApiMode == mode) {
+                                                    Icon(
+                                                        Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = getProviderColor(selectedProvider),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
