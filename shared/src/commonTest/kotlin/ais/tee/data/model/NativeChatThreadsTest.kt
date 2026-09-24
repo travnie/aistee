@@ -48,6 +48,33 @@ class NativeChatThreadsTest {
     }
 
     @Test
+    fun normalizationKeepsSupportedApiModeAndDropsUnsupportedMode() {
+        val openAi = NativeChatConversation(
+            id = "openai",
+            createdAtEpochMs = 1,
+            selectedProvider = AiProvider.CHATGPT,
+            selectedModel = AiProvider.CHATGPT.defaultModel,
+            apiMode = NativeApiMode.FLEX,
+        )
+        val claude = NativeChatConversation(
+            id = "claude",
+            createdAtEpochMs = 2,
+            selectedProvider = AiProvider.CLAUDE,
+            selectedModel = AiProvider.CLAUDE.defaultModel,
+            apiMode = NativeApiMode.FLEX,
+        )
+        val normalized = assertNotNull(
+            NativeChatArchive(
+                activeConversationId = openAi.id,
+                conversations = listOf(openAi, claude),
+            ).normalized()
+        )
+
+        assertEquals(NativeApiMode.FLEX, normalized.conversations.first { it.id == "openai" }.apiMode)
+        assertEquals(NativeApiMode.AUTO, normalized.conversations.first { it.id == "claude" }.apiMode)
+    }
+
+    @Test
     fun codecDoesNotPersistProviderReplayState() {
         val conversation = NativeChatConversation(
             id = "c1",
