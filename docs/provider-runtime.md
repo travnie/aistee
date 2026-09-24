@@ -82,6 +82,16 @@ The native path now has a typed client-tool boundary for verified direct provide
 
 OpenRouter and other OpenAI-compatible gateways may return the model actually used. Aistee captures that response metadata when present and falls back to the requested model/route otherwise, so aliases such as `openrouter/free` can show the actual responder. Vercel AI Gateway uses the same transport path and refreshes its `/v1/models` catalog, retaining text-capable language models ordered by listed input/output token price; Vercel account and API-key budgets remain the authoritative spend controls.
 
+## Lightweight API modes and jobs
+
+Keep native/API controls small and capability-driven rather than exposing one universal expert panel.
+
+- **Shipped foundation:** native conversations persist a provider-aware processing mode. OpenAI Responses exposes **Auto** (provider/project default) and **Flex** (lower-cost, slower processing); unsupported providers fail closed to Auto.
+- Flex is applied consistently to buffered, streaming, tool-calling and notification Direct Reply requests for the conversation.
+- Do not expose generic temperature/top-p/reasoning sliders merely because a transport accepts them. Add a control only when it is useful across the supported model family and its semantics are verified.
+- Keep asynchronous **Background** and **Batch** work as explicit jobs with status/result handling rather than pretending they are ordinary synchronous Send modes. Results should be reusable from the local Project Library where practical.
+- Extend this registry per provider as similarly useful low-friction modes are verified.
+
 ## Usage and comparison metadata
 
 Native/API responses retain provider-reported usage next to the existing local wall-clock latency. The portable message metadata normalizes input, output and total tokens while preserving optional cached-input and reasoning-token counts. Claude input includes direct, cache-creation and cache-read tokens so its normalized input matches Anthropic's billing/accounting semantics; Gemini keeps `thoughtsTokenCount` separate while preserving the provider's `totalTokenCount`.
