@@ -21533,3 +21533,8 @@ SPLais/tee/data/model/NativeChatConversation;->getApiProcessingMode()Lais/tee/da
 SPLais/tee/data/model/ProviderRuntimeCapabilitiesKt$WhenMappings;-><clinit>()V
 SPLais/tee/data/model/ProviderRuntimeCapabilitiesKt;->normalizeApiProcessingMode(Lais/tee/data/model/AiProvider;Lais/tee/data/model/ApiProcessingMode;)Lais/tee/data/model/ApiProcessingMode;
 SPLais/tee/data/model/ProviderRuntimeCapabilitiesKt;->supportedApiProcessingModes(Lais/tee/data/model/AiProvider;)Ljava/util/List;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$-1804626649$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$1798209196$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$1835574369$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/WebChatScreenKt$WebChatScreen$webChatContent$1$1$1$9$1;-><init>(Ljava/lang/Object;)V
+SPLais/tee/ui/screens/WebChatScreenKt;->WebChatToolbar(Landroid/webkit/WebView;Lais/tee/data/model/WebAiService;Lais/tee/data/model/WebChatActivityStatus;Landroid/graphics/Bitmap;Ljava/lang/String;ZZZZIZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
