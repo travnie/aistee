@@ -177,6 +177,109 @@ class AisteeWidgetTest {
     }
 
     @Test
+    fun pinnedConversationMessagesStayScopedAndLatestFirst() {
+        val pinned = oldConversation.copy(
+            messages = listOf(
+                ModelChatMessage(
+                    id = "pinned-old",
+                    sender = "user",
+                    text = "Pinned question",
+                    timestamp = 100L,
+                ),
+                ModelChatMessage(
+                    id = "pinned-new",
+                    sender = CHAT_ROLE_ASSISTANT,
+                    text = "Pinned answer",
+                    timestamp = 300L,
+                ),
+            )
+        )
+        val other = newestConversation.copy(
+            messages = listOf(
+                ModelChatMessage(
+                    id = "other-newer",
+                    sender = CHAT_ROLE_ASSISTANT,
+                    text = "Other answer",
+                    timestamp = 400L,
+                )
+            )
+        )
+        val archive = NativeChatArchive(
+            activeConversationId = pinned.id,
+            conversations = listOf(pinned, other),
+        )
+        val pinnedArchive = archive.copy(
+            activeConversationId = pinned.id,
+            conversations = listOf(pinned),
+        )
+
+        assertEquals(
+            listOf("pinned-new", "pinned-old"),
+            latestNativeMessagesForWidget(pinnedArchive, limit = 2).map { it.messageId },
+        )
+        assertEquals(
+            listOf("other-newer", "pinned-new"),
+            latestNativeMessagesForWidget(archive, limit = 2).map { it.messageId },
+        )
+    }
+
+    @Test
+    fun widgetFingerprintTracksPinnedCandidateMessagesOutsideGlobalTopThree() {
+        fun conversation(id: String, timestamp: Long) = NativeChatConversation(
+            id = id,
+            title = id,
+            createdAtEpochMs = timestamp,
+            updatedAtEpochMs = timestamp,
+            messages = listOf(
+                ModelChatMessage(
+                    id = "message-$id",
+                    sender = CHAT_ROLE_ASSISTANT,
+                    text = "message $id",
+                    timestamp = timestamp,
+                )
+            ),
+        )
+
+        val archive = NativeChatArchive(
+            activeConversationId = "newest",
+            conversations = listOf(
+                conversation("pinned", 1L),
+                conversation("newest", 500L),
+                conversation("second", 400L),
+                conversation("third", 300L),
+                conversation("fourth", 200L),
+            ),
+        )
+        val updated = archive.copy(
+            conversations = archive.conversations.map { conversation ->
+                if (conversation.id == "pinned") {
+                    conversation.copy(
+                        messages = listOf(
+                            ModelChatMessage(
+                                id = "message-pinned-new",
+                                sender = CHAT_ROLE_ASSISTANT,
+                                text = "updated pinned",
+                                timestamp = 2L,
+                            )
+                        )
+                    )
+                } else {
+                    conversation
+                }
+            }
+        )
+
+        assertNotEquals(
+            nativeChatWidgetArchiveFingerprint(archive).latestMessages,
+            nativeChatWidgetArchiveFingerprint(updated).latestMessages,
+        )
+        assertNotEquals(
+            nativeChatWidgetArchiveFingerprint(archive),
+            nativeChatWidgetArchiveFingerprint(updated),
+        )
+    }
+
+    @Test
     fun messageBodyIsRedactedUnlessPreviewIsExplicitlyEnabled() {
         assertEquals(
             "Assistant message",

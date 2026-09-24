@@ -230,7 +230,7 @@ private fun WidgetConfiguration(
             )
         }
 
-        if (mode == AisteeWidgetMode.MESSAGES) {
+        if (mode == AisteeWidgetMode.MESSAGES || mode == AisteeWidgetMode.PINNED_CHAT) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,

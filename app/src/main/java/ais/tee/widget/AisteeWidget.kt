@@ -152,7 +152,21 @@ internal fun nativeChatWidgetArchiveFingerprint(
                 )
             }
             .sortedBy { it.id },
-        latestMessages = latestNativeMessagesForWidget(archive),
+        latestMessages = archive.conversations
+            .mapNotNull { conversation ->
+                latestNativeMessagesForWidget(
+                    NativeChatArchive(
+                        activeConversationId = conversation.id,
+                        conversations = listOf(conversation),
+                    ),
+                    limit = 1,
+                ).singleOrNull()
+            }
+            .sortedWith(
+                compareByDescending<NativeChatWidgetMessage> { it.timestamp }
+                    .thenBy { it.conversationId }
+                    .thenBy { it.messageId }
+            ),
     )
 
 private data class NativeChatWidgetRow(
@@ -184,6 +198,11 @@ class AisteeWidget : GlanceAppWidget() {
             loadedArchive to widgetPreferences
         }
 
+        val pinnedConversation = if (preferences.mode == AisteeWidgetMode.PINNED_CHAT) {
+            pinnedNativeConversationForWidget(archive, preferences.pinnedConversationId)
+        } else {
+            null
+        }
         val rows = when (preferences.mode) {
             AisteeWidgetMode.RECENT_CHATS ->
                 recentNativeConversationsForWidget(archive).mapIndexed { index, conversation ->
@@ -224,28 +243,55 @@ class AisteeWidget : GlanceAppWidget() {
                         label = label,
                     )
                 }
-            AisteeWidgetMode.PINNED_CHAT ->
-                listOfNotNull(
-                    pinnedNativeConversationForWidget(
-                        archive,
-                        preferences.pinnedConversationId,
-                    )?.let { conversation ->
+            AisteeWidgetMode.PINNED_CHAT -> pinnedConversation?.let { conversation ->
+                val messages = archive.conversations
+                    .firstOrNull { it.id == conversation.id }
+                    ?.let { pinned ->
+                        latestNativeMessagesForWidget(
+                            NativeChatArchive(
+                                activeConversationId = pinned.id,
+                                conversations = listOf(pinned),
+                            )
+                        )
+                    }
+                    .orEmpty()
+                if (messages.isEmpty()) {
+                    listOf(
                         NativeChatWidgetRow(
                             id = conversation.id,
                             conversationId = conversation.id,
-                            label = privacySafeWidgetConversationTitle(
-                                title = conversation.title,
-                                hiddenTitle = context.getString(R.string.widget_pinned_chat),
-                                showConversationTitles = preferences.showConversationTitles,
+                            label = context.getString(R.string.widget_no_messages),
+                        )
+                    )
+                } else {
+                    messages.map { message ->
+                        val hiddenMessage = when (message.sender) {
+                            CHAT_ROLE_USER -> context.getString(R.string.widget_user_message)
+                            else -> context.getString(R.string.widget_assistant_message)
+                        }
+                        NativeChatWidgetRow(
+                            id = "${message.conversationId}:${message.messageId}",
+                            conversationId = message.conversationId,
+                            label = privacySafeWidgetMessagePreview(
+                                text = message.text,
+                                hiddenText = hiddenMessage,
+                                showMessagePreviews = preferences.showMessagePreviews,
                             ),
                         )
                     }
-                )
+                }
+            }.orEmpty()
         }
         val sectionTitle = when (preferences.mode) {
             AisteeWidgetMode.RECENT_CHATS -> context.getString(R.string.widget_recent_chats)
             AisteeWidgetMode.MESSAGES -> context.getString(R.string.widget_messages)
-            AisteeWidgetMode.PINNED_CHAT -> context.getString(R.string.widget_pinned_chat)
+            AisteeWidgetMode.PINNED_CHAT -> pinnedConversation?.let { conversation ->
+                privacySafeWidgetConversationTitle(
+                    title = conversation.title,
+                    hiddenTitle = context.getString(R.string.widget_pinned_chat),
+                    showConversationTitles = preferences.showConversationTitles,
+                )
+            } ?: context.getString(R.string.widget_pinned_chat)
         }
         val emptyText = when (preferences.mode) {
             AisteeWidgetMode.RECENT_CHATS -> context.getString(R.string.widget_no_recent_chats)
