@@ -78,7 +78,8 @@ data class ChatMessage(
 private data class NativeChatSendPlan(
     val targetProvider: AiProvider,
     val providersToRun: List<AiProvider>,
-    val apiKeys: ApiKeyConfig
+    val apiKeys: ApiKeyConfig,
+    val apiMode: NativeApiMode,
 )
 
 private data class NativeChatPromptContext(
@@ -132,6 +133,8 @@ data class StudioUiState(
         get() = activeNativeConversation?.selectedProvider ?: AiProvider.ALL
     val selectedChatModel: String
         get() = activeNativeConversation?.selectedModel ?: "all"
+    val selectedNativeApiMode: NativeApiMode
+        get() = activeNativeConversation?.apiMode ?: NativeApiMode.AUTO
     val includeSystemProfileInChat: Boolean
         get() = activeNativeConversation?.includeSystemProfile ?: true
 }
@@ -269,6 +272,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         messages = welcomeChatMessages(),
         selectedProvider = template?.selectedProvider ?: AiProvider.ALL,
         selectedModel = template?.selectedModel ?: "all",
+        apiMode = (template?.selectedProvider ?: AiProvider.ALL).sanitizeNativeApiMode(
+            template?.apiMode ?: NativeApiMode.AUTO
+        ),
         includeSystemProfile = template?.includeSystemProfile ?: true,
         projectId = template?.projectId ?: DEFAULT_PROJECT_ID,
     )
@@ -743,6 +749,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             messages = messages,
             selectedProvider = template?.selectedProvider ?: AiProvider.ALL,
             selectedModel = template?.selectedModel ?: "all",
+            apiMode = (template?.selectedProvider ?: AiProvider.ALL).sanitizeNativeApiMode(
+                template?.apiMode ?: NativeApiMode.AUTO
+            ),
             includeSystemProfile = template?.includeSystemProfile ?: true,
             projectId = template?.projectId ?: DEFAULT_PROJECT_ID,
         )
@@ -828,7 +837,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             else -> ""
         }
         updateActiveNativeConversation { conversation ->
-            conversation.copy(selectedProvider = provider, selectedModel = newModel)
+            conversation.copy(
+                selectedProvider = provider,
+                selectedModel = newModel,
+                apiMode = provider.sanitizeNativeApiMode(conversation.apiMode),
+            )
         }
         if (provider.usesLiveGatewayModelCatalog()) refreshGatewayModelCatalog(provider)
     }
@@ -836,6 +849,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun setChatModel(modelName: String) {
         if (!_uiState.value.isNativeConversationStoreReady) return
         updateActiveNativeConversation { it.copy(selectedModel = modelName) }
+    }
+
+    fun setNativeApiMode(mode: NativeApiMode) {
+        val state = _uiState.value
+        if (!state.isNativeConversationStoreReady) return
+        val sanitized = state.selectedChatProvider.sanitizeNativeApiMode(mode)
+        updateActiveNativeConversation { it.copy(apiMode = sanitized) }
     }
 
     fun refreshGatewayModelCatalog(provider: AiProvider) {
@@ -1103,7 +1123,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             showSnackbar("Add at least one direct provider API key to use All Models.")
             return null
         }
-        return NativeChatSendPlan(targetProvider, providersToRun, state.apiKeyConfig)
+        return NativeChatSendPlan(
+            targetProvider = targetProvider,
+            providersToRun = providersToRun,
+            apiKeys = state.apiKeyConfig,
+            apiMode = targetProvider.sanitizeNativeApiMode(state.selectedNativeApiMode),
+        )
     }
 
     private suspend fun prepareNativeChatPromptContext(state: StudioUiState): NativeChatPromptContext? {
@@ -1140,6 +1165,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val targetProvider = plan.targetProvider
         val providersToRun = plan.providersToRun
         val apiKeys = plan.apiKeys
+        val apiMode = plan.apiMode
 
         val generationId = streamingTextBatcher.withExclusiveAccess {
             streamingUiFlushJob?.cancel()
@@ -1203,6 +1229,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         targetProvider = targetProvider,
                         providersToRun = providersToRun,
                         selectedModel = _uiState.value.selectedChatModel,
+                        apiMode = apiMode,
                         apiKeys = apiKeys,
                         systemInstruction = promptContext.systemPrompt,
                         profile = promptContext.activeProfile,
