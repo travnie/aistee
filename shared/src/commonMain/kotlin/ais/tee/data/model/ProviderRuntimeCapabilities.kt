@@ -1,11 +1,36 @@
 package ais.tee.data.model
 
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+
+@Serializable
+enum class ApiProcessingMode(
+    val displayName: String,
+    val description: String,
+) {
+    AUTO("Auto", "Use the provider or project default"),
+    STANDARD("Standard", "Normal price and latency"),
+    FLEX("Flex", "Lower cost, slower and best-effort"),
+    FAST("Fast", "Higher cost, lower latency"),
+}
+
+fun AiProvider.supportedApiProcessingModes(): List<ApiProcessingMode> = when (this) {
+    AiProvider.CHATGPT -> listOf(
+        ApiProcessingMode.AUTO,
+        ApiProcessingMode.STANDARD,
+        ApiProcessingMode.FLEX,
+        ApiProcessingMode.FAST,
+    )
+    else -> listOf(ApiProcessingMode.AUTO)
+}
+
+fun AiProvider.normalizeApiProcessingMode(mode: ApiProcessingMode): ApiProcessingMode =
+    mode.takeIf { it in supportedApiProcessingModes() } ?: ApiProcessingMode.AUTO
 
 enum class NativeChatTransport {
     COMPARE_FAN_OUT,
