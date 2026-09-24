@@ -1,6 +1,7 @@
 package ais.tee.data.engine
 
 import ais.tee.data.model.AiProvider
+import ais.tee.data.model.ApiProcessingMode
 import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ClaudeReasoningCapabilities
@@ -758,6 +759,29 @@ class AiChatServiceTest {
         assertFalse("stream" in buffered)
         assertEquals("false", streaming.getValue("store").jsonPrimitive.content)
         assertEquals("true", streaming.getValue("stream").jsonPrimitive.content)
+    }
+
+    @Test
+    fun openAiRequestMapsSimpleProcessingModesToServiceTier() {
+        val service = AiChatService()
+        val input = service.buildOpenAiResponseInput(
+            prompt = FOLLOW_UP,
+            conversationHistory = emptyList(),
+            modelName = TEST_OPENAI_MODEL,
+        )
+
+        fun payload(mode: ApiProcessingMode) = service.buildOpenAiRequestPayload(
+            model = TEST_OPENAI_MODEL,
+            stream = false,
+            systemInstruction = null,
+            input = input,
+            apiProcessingMode = mode,
+        )
+
+        assertFalse("service_tier" in payload(ApiProcessingMode.AUTO))
+        assertEquals("default", payload(ApiProcessingMode.STANDARD).getValue("service_tier").jsonPrimitive.content)
+        assertEquals("flex", payload(ApiProcessingMode.FLEX).getValue("service_tier").jsonPrimitive.content)
+        assertEquals("fast", payload(ApiProcessingMode.FAST).getValue("service_tier").jsonPrimitive.content)
     }
 
     @Test

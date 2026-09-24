@@ -3,6 +3,15 @@
 This is a durable backlog of product directions worth exploring in Aistee.
 The ideas are inspired by observed workflows in other AI/document apps and by tools already maintained in `travnie/twojstar`; they are not implementation copies.
 
+## Current remaining focus
+
+The current project-plan numbering is intentionally preserved here so finished items do not renumber the remaining work. Detailed notes stay in the existing sections below.
+
+1. **New Web provider verification:** verify embedded sign-in, upload flows and stable provider-scoped generation/unread probes for Qwen, Copilot, Z.ai, Grok, Character.AI, Venice and Meta AI. Treat manual/account checks as a parallel lane rather than blocking unrelated work.
+6. **Widgets and conversation notifications v2:** finish richer recent/pinned chat surfaces, Android conversation metadata/shortcuts and privacy-aware status previews without scraping account WebViews.
+7. **UX and security polish:** continue Material 3 Adaptive/list-detail work, measured performance polish, safe export/backup coverage, WebView isolation and regression tests for sensitive surfaces.
+8. **Native/API modes and jobs:** keep the normal chat simple, but expose a small provider-aware set of useful processing choices. The first slice is per-chat OpenAI Auto/Standard/Flex/Fast. Follow with async Background/Batch job handling only where the provider has a real supported API, including status/cancel/result-to-Project-Library flows. Avoid a generic wall of sampling sliders; add controls only when they have a clear cost, latency or workflow benefit.
+
 ## Markdown workspace / prompt vault
 
 - Treat local `.md` files as editable source-of-truth assets, not one-shot attachments.

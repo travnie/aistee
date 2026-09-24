@@ -30,7 +30,8 @@ class NativeChatThreadsTest {
             createdAtEpochMs = 3,
             updatedAtEpochMs = 4,
             selectedProvider = AiProvider.GEMINI,
-            selectedModel = ""
+            selectedModel = "",
+            apiProcessingMode = ApiProcessingMode.FLEX,
         )
         val normalized = assertNotNull(
             NativeChatArchive(
@@ -44,6 +45,7 @@ class NativeChatThreadsTest {
         assertEquals("newer", normalized.activeConversationId)
         assertEquals(DEFAULT_NATIVE_CONVERSATION_TITLE, activeConversation.title)
         assertEquals(AiProvider.GEMINI.defaultModel, activeConversation.selectedModel)
+        assertEquals(ApiProcessingMode.AUTO, activeConversation.apiProcessingMode)
         assertEquals("older", normalized.conversations.first().id)
     }
 
@@ -92,6 +94,25 @@ class NativeChatThreadsTest {
         val decoded = assertNotNull(NativeChatArchiveCodec.decode(NativeChatArchiveCodec.encode(archive)))
 
         assertEquals("half-written prompt\nwith details", assertNotNull(decoded.activeConversation).draft)
+    }
+
+    @Test
+    fun codecPersistsSupportedApiProcessingMode() {
+        val conversation = NativeChatConversation(
+            id = "c1",
+            createdAtEpochMs = 1,
+            selectedProvider = AiProvider.CHATGPT,
+            selectedModel = AiProvider.CHATGPT.defaultModel,
+            apiProcessingMode = ApiProcessingMode.FLEX,
+        )
+        val archive = NativeChatArchive(
+            activeConversationId = conversation.id,
+            conversations = listOf(conversation),
+        )
+
+        val decoded = assertNotNull(NativeChatArchiveCodec.decode(NativeChatArchiveCodec.encode(archive)))
+
+        assertEquals(ApiProcessingMode.FLEX, assertNotNull(decoded.activeConversation).apiProcessingMode)
     }
 
     @Test

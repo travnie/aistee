@@ -132,6 +132,8 @@ data class StudioUiState(
         get() = activeNativeConversation?.selectedProvider ?: AiProvider.ALL
     val selectedChatModel: String
         get() = activeNativeConversation?.selectedModel ?: "all"
+    val apiProcessingMode: ApiProcessingMode
+        get() = activeNativeConversation?.apiProcessingMode ?: ApiProcessingMode.AUTO
     val includeSystemProfileInChat: Boolean
         get() = activeNativeConversation?.includeSystemProfile ?: true
 }
@@ -828,7 +830,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             else -> ""
         }
         updateActiveNativeConversation { conversation ->
-            conversation.copy(selectedProvider = provider, selectedModel = newModel)
+            conversation.copy(
+                selectedProvider = provider,
+                selectedModel = newModel,
+                apiProcessingMode = provider.normalizeApiProcessingMode(conversation.apiProcessingMode),
+            )
         }
         if (provider.usesLiveGatewayModelCatalog()) refreshGatewayModelCatalog(provider)
     }
@@ -836,6 +842,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun setChatModel(modelName: String) {
         if (!_uiState.value.isNativeConversationStoreReady) return
         updateActiveNativeConversation { it.copy(selectedModel = modelName) }
+    }
+
+    fun setApiProcessingMode(mode: ApiProcessingMode) {
+        val state = _uiState.value
+        if (!state.isNativeConversationStoreReady) return
+        val normalized = state.selectedChatProvider.normalizeApiProcessingMode(mode)
+        updateActiveNativeConversation { it.copy(apiProcessingMode = normalized) }
     }
 
     fun refreshGatewayModelCatalog(provider: AiProvider) {
@@ -1203,6 +1216,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         targetProvider = targetProvider,
                         providersToRun = providersToRun,
                         selectedModel = _uiState.value.selectedChatModel,
+                        apiProcessingMode = _uiState.value.apiProcessingMode,
                         apiKeys = apiKeys,
                         systemInstruction = promptContext.systemPrompt,
                         profile = promptContext.activeProfile,

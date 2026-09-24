@@ -68,6 +68,7 @@ import ais.tee.data.model.ProjectLibraryArchive
 import ais.tee.data.model.ProjectLibraryAsset
 import ais.tee.data.model.renderChatMarkdown
 import ais.tee.data.model.isCompletedAssistantResponse
+import ais.tee.data.model.supportedApiProcessingModes
 import ais.tee.notifications.NativeChatNotificationPreferences
 import ais.tee.notifications.NativeChatNotificationPreferencesStore
 import ais.tee.notifications.NativeChatNotificationPublisher
@@ -240,6 +241,7 @@ private fun NativeChatDetailPane(
     }
     val promptInput = uiState.nativeChatDraft
     var showModelMenu by remember { mutableStateOf(false) }
+    var showApiModeMenu by remember { mutableStateOf(false) }
     var showChatActionsMenu by remember { mutableStateOf(false) }
     val notificationPreferencesStore = remember(context.applicationContext) {
         NativeChatNotificationPreferencesStore(context.applicationContext)
@@ -790,6 +792,7 @@ private fun NativeChatDetailPane(
                         val selectedProvider = uiState.selectedChatProvider
                         val modelOptions = uiState.gatewayModelOptions[selectedProvider]
                             ?: selectedProvider.availableModels
+                        val processingModes = selectedProvider.supportedApiProcessingModes()
                         val isRefreshingCatalog = selectedProvider in uiState.refreshingGatewayCatalogs
                         Spacer(Modifier.height(4.dp))
                         Row(
@@ -849,6 +852,74 @@ private fun NativeChatDetailPane(
                                             }
                                         }
                                     )
+                                }
+                            }
+                        }
+
+                        if (processingModes.size > 1) {
+                            Spacer(Modifier.height(2.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .clip(MaterialTheme.shapes.small)
+                                    .clickable { showApiModeMenu = true }
+                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                    .testTag("api_processing_mode_menu")
+                            ) {
+                                Text(
+                                    text = "API mode: ${uiState.apiProcessingMode.displayName}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Change API processing mode",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                DropdownMenu(
+                                    expanded = showApiModeMenu,
+                                    onDismissRequest = { showApiModeMenu = false },
+                                ) {
+                                    processingModes.forEach { mode ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(
+                                                        text = mode.displayName,
+                                                        fontWeight = if (uiState.apiProcessingMode == mode) {
+                                                            FontWeight.Bold
+                                                        } else {
+                                                            FontWeight.Normal
+                                                        },
+                                                    )
+                                                    Text(
+                                                        text = mode.description,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                viewModel.setApiProcessingMode(mode)
+                                                showApiModeMenu = false
+                                            },
+                                            leadingIcon = {
+                                                if (uiState.apiProcessingMode == mode) {
+                                                    Icon(
+                                                        Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = getProviderColor(selectedProvider),
+                                                        modifier = Modifier.size(16.dp),
+                                                    )
+                                                }
+                                            },
+                                            modifier = Modifier.testTag("api_processing_mode_${mode.name.lowercase()}"),
+                                        )
+                                    }
                                 }
                             }
                         }

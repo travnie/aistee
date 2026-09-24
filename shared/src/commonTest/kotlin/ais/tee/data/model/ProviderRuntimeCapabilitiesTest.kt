@@ -7,6 +7,27 @@ import kotlin.test.assertTrue
 
 class ProviderRuntimeCapabilitiesTest {
     @Test
+    fun openAiExposesLightweightProcessingModesWhileOtherTransportsStayAutomatic() {
+        assertEquals(
+            listOf(
+                ApiProcessingMode.AUTO,
+                ApiProcessingMode.STANDARD,
+                ApiProcessingMode.FLEX,
+                ApiProcessingMode.FAST,
+            ),
+            AiProvider.CHATGPT.supportedApiProcessingModes(),
+        )
+        assertEquals(
+            listOf(ApiProcessingMode.AUTO),
+            AiProvider.GEMINI.supportedApiProcessingModes(),
+        )
+        assertEquals(
+            ApiProcessingMode.AUTO,
+            AiProvider.CLAUDE.normalizeApiProcessingMode(ApiProcessingMode.FLEX),
+        )
+    }
+
+    @Test
     fun nativeProvidersKeepNativeSystemInstructionFields() {
         assertEquals(
             SystemInstructionPlacement.NATIVE_FIELD,

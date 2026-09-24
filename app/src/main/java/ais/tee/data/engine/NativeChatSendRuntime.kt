@@ -1,12 +1,14 @@
 package ais.tee.data.engine
 
 import ais.tee.data.model.AiProvider
+import ais.tee.data.model.ApiProcessingMode
 import ais.tee.data.model.ApiKeyConfig
 import ais.tee.data.model.ClientToolCallingStrategy
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeToolCall
 import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
+import ais.tee.data.model.normalizeApiProcessingMode
 import ais.tee.data.model.runtimeCapabilities
 import ais.tee.data.model.Profile
 import kotlinx.coroutines.async
@@ -18,6 +20,7 @@ internal data class NativeChatSendRequest(
     val targetProvider: AiProvider,
     val providersToRun: List<AiProvider>,
     val selectedModel: String,
+    val apiProcessingMode: ApiProcessingMode = ApiProcessingMode.AUTO,
     val apiKeys: ApiKeyConfig,
     val systemInstruction: String?,
     val profile: Profile?,
@@ -61,10 +64,12 @@ internal suspend fun executeNativeChatSend(
             ClientToolCallingStrategy.NONE,
             ClientToolCallingStrategy.PER_PROVIDER -> emptyList()
         }
+        val processingMode = provider.normalizeApiProcessingMode(request.apiProcessingMode)
         val response = aiChatService.generateResponse(
             prompt = request.prompt,
             provider = provider,
             modelName = model,
+            apiProcessingMode = processingMode,
             apiKeys = request.apiKeys,
             systemInstruction = request.systemInstruction,
             profile = request.profile,

@@ -324,6 +324,7 @@ private suspend fun processDirectReply(
             targetProvider = reply.conversation.selectedProvider,
             providersToRun = missingProviders,
             selectedModel = reply.conversation.selectedModel,
+            apiProcessingMode = reply.conversation.apiProcessingMode,
             apiKeys = apiKeys,
             systemInstruction = promptContext.systemInstruction,
             profile = promptContext.activeProfile,
