@@ -27,6 +27,7 @@ import ais.tee.share.PendingWebShare
 import ais.tee.share.claimText
 import ais.tee.share.completeTextClaim
 import ais.tee.share.releaseTextClaim
+import ais.tee.notifications.NativeChatConversationShortcuts
 import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.widget.NativeChatWidgetUpdater
 import kotlinx.coroutines.Dispatchers
@@ -817,6 +818,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         persistNativeChat()
         NativeChatNotificationPublisher.cancelConversation(getApplication(), conversationId)
+        NativeChatConversationShortcuts.remove(getApplication(), conversationId)
     }
 
     fun setChatProvider(provider: AiProvider) {
