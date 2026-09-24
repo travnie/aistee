@@ -41,6 +41,19 @@ enum class ClientToolCallingStrategy {
     ANTHROPIC_CLIENT_TOOLS,
 }
 
+enum class NativeApiMode {
+    AUTO,
+    FLEX,
+}
+
+fun AiProvider.supportedNativeApiModes(): List<NativeApiMode> = when (this) {
+    AiProvider.CHATGPT -> listOf(NativeApiMode.AUTO, NativeApiMode.FLEX)
+    else -> listOf(NativeApiMode.AUTO)
+}
+
+fun AiProvider.sanitizeNativeApiMode(mode: NativeApiMode): NativeApiMode =
+    mode.takeIf { it in supportedNativeApiModes() } ?: NativeApiMode.AUTO
+
 fun AiProvider.reasoningControlStrategy(): ReasoningControlStrategy = when (this) {
     AiProvider.ALL -> ReasoningControlStrategy.PER_PROVIDER
     AiProvider.CLAUDE -> ReasoningControlStrategy.MODEL_CAPABILITY_METADATA
