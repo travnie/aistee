@@ -87,7 +87,6 @@ internal class AppLockStore private constructor(
  */
 internal object AppLock : Application.ActivityLifecycleCallbacks {
     private val session = AppLockSession()
-    private var lockScreenVisible = false
 
     fun isDeviceSecure(context: Context): Boolean =
         context.getSystemService(KeyguardManager::class.java)?.isDeviceSecure == true
@@ -97,31 +96,29 @@ internal object AppLock : Application.ActivityLifecycleCallbacks {
         session.markUnlocked()
     }
 
-    internal fun onLockScreenClosed() {
-        lockScreenVisible = false
-    }
-
-    private fun requiresLock(activity: Activity): Boolean =
-        AppLockStore.get(activity).enabled.value && !session.unlocked && isDeviceSecure(activity)
+    fun isLockRequired(context: Context): Boolean =
+        AppLockStore.get(context).enabled.value && !session.unlocked && isDeviceSecure(context)
 
     override fun onActivityStarted(activity: Activity) {
         session.onActivityStarted(SystemClock.elapsedRealtime())
-        if (activity is AppLockActivity || !requiresLock(activity)) return
         // Hide content until unlocked so it never flashes behind the lock screen.
-        activity.window.decorView.alpha = 0f
-        if (!lockScreenVisible) {
-            lockScreenVisible = true
-            activity.startActivity(
-                Intent(activity, AppLockActivity::class.java),
-                ActivityOptions.makeCustomAnimation(activity, 0, 0).toBundle(),
-            )
-        }
+        if (activity !is AppLockActivity && isLockRequired(activity)) activity.window.decorView.alpha = 0f
     }
 
     override fun onActivityResumed(activity: Activity) {
-        if (activity !is AppLockActivity && !requiresLock(activity)) {
+        if (activity is AppLockActivity) return
+        if (!isLockRequired(activity)) {
             activity.window.decorView.alpha = 1f
+            return
         }
+        // A locked activity on top has no lock screen above it: fresh start, return after the
+        // grace period, or a singleTask relaunch (share, shortcut, tile) that cleared the lock
+        // screen. AppLockActivity is singleTop, so a lock screen already on top is reused.
+        activity.window.decorView.alpha = 0f
+        activity.startActivity(
+            Intent(activity, AppLockActivity::class.java),
+            ActivityOptions.makeCustomAnimation(activity, 0, 0).toBundle(),
+        )
     }
 
     override fun onActivityStopped(activity: Activity) {

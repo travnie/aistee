@@ -91,6 +91,11 @@ class AppLockActivity : ComponentActivity() {
             unlock()
             return
         }
+        if (!AppLock.isLockRequired(this)) {
+            // Another lock screen instance already passed the check.
+            finish()
+            return
+        }
         if (!autoPromptDone) {
             autoPromptDone = true
             authenticate()
@@ -104,7 +109,6 @@ class AppLockActivity : ComponentActivity() {
 
     override fun onDestroy() {
         cancellation?.cancel()
-        if (!isChangingConfigurations) AppLock.onLockScreenClosed()
         super.onDestroy()
     }
 

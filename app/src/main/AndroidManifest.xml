@@ -67,6 +67,7 @@
         <activity
             android:name=".security.AppLockActivity"
             android:exported="false"
+            android:launchMode="singleTop"
             android:excludeFromRecents="true"
             android:theme="@style/Theme.Aistee" />
         <activity
