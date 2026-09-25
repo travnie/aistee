@@ -177,6 +177,34 @@ class AisteeWidgetTest {
     }
 
     @Test
+    fun latestMessageLookupStaysScopedToTheRequestedConversation() {
+        val old = oldConversation.copy(
+            messages = listOf(
+                ModelChatMessage(
+                    id = "old-answer",
+                    sender = CHAT_ROLE_ASSISTANT,
+                    text = "Old answer",
+                    timestamp = 500L,
+                )
+            )
+        )
+        val newest = newestConversation.copy(
+            messages = listOf(
+                ModelChatMessage(
+                    id = "newest-answer",
+                    sender = CHAT_ROLE_ASSISTANT,
+                    text = "Newest answer",
+                    timestamp = 300L,
+                )
+            )
+        )
+
+        assertEquals("Newest answer", latestNativeMessageForConversationForWidget(newest)?.text)
+        assertEquals("Old answer", latestNativeMessageForConversationForWidget(old)?.text)
+        assertNull(latestNativeMessageForConversationForWidget(old.copy(messages = emptyList())))
+    }
+
+    @Test
     fun pinnedConversationMessagesStayScopedAndLatestFirst() {
         val pinned = oldConversation.copy(
             messages = listOf(

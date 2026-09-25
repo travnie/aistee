@@ -25,6 +25,7 @@ import ais.tee.R
 import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.NativeChatArchive
+import ais.tee.data.model.NativeChatConversation
 import ais.tee.data.model.NATIVE_CHAT_WELCOME_MESSAGE_ID
 import ais.tee.data.preferences.AisteeWidgetMode
 import ais.tee.data.preferences.AisteeWidgetPreferencesStore
@@ -127,6 +128,17 @@ internal fun latestNativeMessagesForWidget(
         .toList()
 }
 
+internal fun latestNativeMessageForConversationForWidget(
+    conversation: NativeChatConversation,
+): NativeChatWidgetMessage? =
+    latestNativeMessagesForWidget(
+        NativeChatArchive(
+            activeConversationId = conversation.id,
+            conversations = listOf(conversation),
+        ),
+        limit = 1,
+    ).singleOrNull()
+
 internal fun pinnedNativeConversationForWidget(
     archive: NativeChatArchive,
     conversationId: String?,
@@ -153,15 +165,7 @@ internal fun nativeChatWidgetArchiveFingerprint(
             }
             .sortedBy { it.id },
         latestMessages = archive.conversations
-            .mapNotNull { conversation ->
-                latestNativeMessagesForWidget(
-                    NativeChatArchive(
-                        activeConversationId = conversation.id,
-                        conversations = listOf(conversation),
-                    ),
-                    limit = 1,
-                ).singleOrNull()
-            }
+            .mapNotNull(::latestNativeMessageForConversationForWidget)
             .sortedWith(
                 compareByDescending<NativeChatWidgetMessage> { it.timestamp }
                     .thenBy { it.conversationId }
@@ -204,18 +208,34 @@ class AisteeWidget : GlanceAppWidget() {
             null
         }
         val rows = when (preferences.mode) {
-            AisteeWidgetMode.RECENT_CHATS ->
+            AisteeWidgetMode.RECENT_CHATS -> {
+                val conversationsById = archive.conversations.associateBy { it.id }
                 recentNativeConversationsForWidget(archive).mapIndexed { index, conversation ->
+                    val title = privacySafeWidgetConversationTitle(
+                        title = conversation.title,
+                        hiddenTitle = context.getString(R.string.widget_recent_chat_hidden, index + 1),
+                        showConversationTitles = preferences.showConversationTitles,
+                    )
+                    val latestMessage =
+                        if (preferences.showMessagePreviews) {
+                            conversationsById[conversation.id]
+                                ?.let(::latestNativeMessageForConversationForWidget)
+                        } else {
+                            null
+                        }
                     NativeChatWidgetRow(
                         id = conversation.id,
                         conversationId = conversation.id,
-                        label = privacySafeWidgetConversationTitle(
-                            title = conversation.title,
-                            hiddenTitle = context.getString(R.string.widget_recent_chat_hidden, index + 1),
-                            showConversationTitles = preferences.showConversationTitles,
-                        ),
+                        label = latestMessage?.let { message ->
+                            context.getString(
+                                R.string.widget_message_with_conversation,
+                                title,
+                                message.text,
+                            )
+                        } ?: title,
                     )
                 }
+            }
             AisteeWidgetMode.MESSAGES ->
                 latestNativeMessagesForWidget(archive).map { message ->
                     val hiddenMessage = when (message.sender) {

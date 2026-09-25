@@ -230,26 +230,24 @@ private fun WidgetConfiguration(
             )
         }
 
-        if (mode == AisteeWidgetMode.MESSAGES || mode == AisteeWidgetMode.PINNED_CHAT) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.widget_config_show_message_previews),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = stringResource(R.string.widget_config_show_message_previews_summary),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                Switch(
-                    checked = showMessagePreviews,
-                    onCheckedChange = { showMessagePreviews = it },
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.widget_config_show_message_previews),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = stringResource(R.string.widget_config_show_message_previews_summary),
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
+            Switch(
+                checked = showMessagePreviews,
+                onCheckedChange = { showMessagePreviews = it },
+            )
         }
 
         Row(

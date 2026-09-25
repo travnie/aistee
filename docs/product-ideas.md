@@ -142,7 +142,7 @@ Treat Token Arena as the overlap between Bench tooling and a small experimental 
 
 - Build first-party home-screen widgets with Jetpack Glance and responsive layouts; update them from local state changes rather than aggressive polling.
 - Native/API conversations now persist locally with stable conversation IDs. Reuse that durable archive as the source for message widgets and conversation notifications instead of introducing a second history store.
-- Offer three configurable widget modes: **Chats** (recent/favorite conversations or provider shortcuts), **Messages** (latest locally known messages across chats), and **Pinned chat** (latest messages/status for one chosen conversation with a direct deep-link back into it).
+- **Shipped:** three configurable widget modes: **Chats** (recent local conversations with independently opt-in titles and latest-message previews), **Messages** (latest locally known messages across chats), and **Pinned chat** (latest messages for one chosen conversation with a direct deep-link back into it).
 - Back collection widgets with `LazyColumn` and stable item IDs so list state survives updates where the platform supports it; resize by showing more or fewer rows rather than scaling text into mush.
 - Treat WebView account providers honestly: if Aistee does not own their conversation history, the widget may expose provider/chat shortcuts and locally tracked status, but must not periodically scrape remote pages just to manufacture a message list.
 - Make widget rows deep-link directly to the corresponding local conversation/provider. Do not use background activity-launch trampolines.
