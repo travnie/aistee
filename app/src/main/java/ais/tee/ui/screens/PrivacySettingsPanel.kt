@@ -83,6 +83,7 @@ internal fun PrivacySettingsPanel(modifier: Modifier = Modifier) {
             },
             testTag = "switch_app_lock",
         )
+        DeleteLocalDataSection()
     }
 }
 
