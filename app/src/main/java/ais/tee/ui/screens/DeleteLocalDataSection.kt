@@ -24,7 +24,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 
 /**
- * Requests Android's app-data reset, equivalent to Settings � Clear storage.
+ * Requests Android's app-data reset, equivalent to Settings > Clear storage.
  *
  * This clears Aistee-owned app data and embedded session state. Provider-side/cloud data,
  * browser-owned sessions and files the user exported outside Aistee are intentionally outside
@@ -92,4 +92,8 @@ internal fun DeleteLocalDataSection(modifier: Modifier = Modifier) {
 
 /** Returns whether Android accepted the clear-data request. */
 private fun requestClearLocalData(context: Context): Boolean =
-    context.getSystemService(ActivityManager::class.java)?.clearApplicationUserData() == true
+    try {
+        context.getSystemService(ActivityManager::class.java)?.clearApplicationUserData() == true
+    } catch (_: SecurityException) {
+        false
+    }
