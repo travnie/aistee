@@ -21,6 +21,8 @@ import ais.tee.data.model.NATIVE_CHAT_WELCOME_MESSAGE_ID
 import ais.tee.data.model.NativeChatConversation
 import ais.tee.data.model.isCompletedAssistantResponse
 import ais.tee.navigation.AisteeQuickActionNavigation
+import ais.tee.security.QuickPrivacyModeStore
+import ais.tee.security.effectivePrivacySurfaceVisibility
 import java.util.concurrent.atomic.AtomicBoolean
 
 // Keep preference revocation and background publication in one critical section.
@@ -71,6 +73,21 @@ internal class NativeChatNotificationPreferencesStore(context: Context) {
             NativeChatNotificationPublisher.cancelPostedConversations(appContext)
         }
     }
+}
+
+private fun effectiveNativeChatNotificationPreferences(
+    context: Context,
+): NativeChatNotificationPreferences {
+    val stored = NativeChatNotificationPreferencesStore(context).load()
+    val visibility = effectivePrivacySurfaceVisibility(
+        showConversationTitles = stored.showConversationTitles,
+        showMessagePreviews = stored.showMessagePreviews,
+        quickPrivacyEnabled = QuickPrivacyModeStore.get(context).enabled.value,
+    )
+    return stored.copy(
+        showConversationTitles = visibility.showConversationTitles,
+        showMessagePreviews = visibility.showMessagePreviews,
+    )
 }
 
 internal data class NativeChatNotificationMessage(
@@ -189,7 +206,7 @@ internal object NativeChatNotificationPublisher {
 
     fun publishConversation(context: Context, conversation: NativeChatConversation): Boolean = synchronized(notificationPrivacyLock) {
         val appContext = context.applicationContext
-        val preferences = NativeChatNotificationPreferencesStore(appContext).load()
+        val preferences = effectiveNativeChatNotificationPreferences(appContext)
         if (
             !shouldPostNativeChatNotification(
                 enabled = preferences.enabled,
@@ -265,7 +282,7 @@ internal object NativeChatNotificationPublisher {
         status: String,
     ): Boolean = synchronized(notificationPrivacyLock) {
         val appContext = context.applicationContext
-        val preferences = NativeChatNotificationPreferencesStore(appContext).load()
+        val preferences = effectiveNativeChatNotificationPreferences(appContext)
         if (
             !shouldPostNativeChatNotification(
                 enabled = preferences.enabled,
@@ -343,7 +360,7 @@ internal object NativeChatNotificationPublisher {
         conversationIds.forEach { conversationId -> cancelConversation(context, conversationId) }
     }
 
-    fun cancelPostedConversations(context: Context) {
+    fun cancelPostedConversations(context: Context) = synchronized(notificationPrivacyLock) {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.activeNotifications
             .filter { posted ->
