@@ -15,7 +15,8 @@ import ais.tee.ui.viewmodel.StudioViewModel
 
 internal enum class StudioToolsSection {
     SKILLS,
-    BENCHES
+    BENCHES,
+    PRIVACY
 }
 
 /**
@@ -41,6 +42,7 @@ fun SkillsBrowserScreen(viewModel: StudioViewModel) {
                             when (candidate) {
                                 StudioToolsSection.SKILLS -> "Skills"
                                 StudioToolsSection.BENCHES -> "Benches"
+                                StudioToolsSection.PRIVACY -> "Privacy"
                             }
                         )
                     }
@@ -54,6 +56,9 @@ fun SkillsBrowserScreen(viewModel: StudioViewModel) {
                 modifier = Modifier.weight(1f)
             )
             StudioToolsSection.BENCHES -> BenchToolsScreen(
+                modifier = Modifier.weight(1f)
+            )
+            StudioToolsSection.PRIVACY -> PrivacySettingsPanel(
                 modifier = Modifier.weight(1f)
             )
         }
