@@ -65,7 +65,13 @@ class ChatMarkdownExportTest {
                         modelName = "gemini\nheading-injection",
                         text = "Visible response",
                         latencyMs = 987654321,
-                        activeProfileNotes = listOf("PRIVATE PROFILE NOTE")
+                        usage = ProviderUsage(
+                            inputTokens = 1234567,
+                            reasoningTokens = 7654321,
+                            costUsd = 98.7654321,
+                        ),
+                        activeProfileNotes = listOf("PRIVATE PROFILE NOTE"),
+                        providerReplayState = "PRIVATE HIDDEN REASONING HANDLE",
                     )
                 )
             )
@@ -76,7 +82,11 @@ class ChatMarkdownExportTest {
         assertTrue(markdown.contains("## Gemini · gemini heading-injection"))
         assertFalse(markdown.contains("PRIVATE SYSTEM TEXT"))
         assertFalse(markdown.contains("PRIVATE PROFILE NOTE"))
+        assertFalse(markdown.contains("PRIVATE HIDDEN REASONING HANDLE"))
         assertFalse(markdown.contains("987654321"))
+        assertFalse(markdown.contains("1234567"))
+        assertFalse(markdown.contains("7654321"))
+        assertFalse(markdown.contains("98.7654321"))
         assertFalse(markdown.contains("## heading-injection"))
     }
 
