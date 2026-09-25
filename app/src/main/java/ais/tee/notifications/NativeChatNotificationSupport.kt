@@ -232,6 +232,7 @@ internal object NativeChatNotificationPublisher {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val latestMessage = content.messages.last()
+        val shortcutId = NativeChatConversationShortcuts.publish(appContext, content.conversationId)
         val builder = NotificationCompat.Builder(appContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_quick_settings)
             .setSubText(content.title)
@@ -242,6 +243,7 @@ internal object NativeChatNotificationPublisher {
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setWhen(latestMessage.timestamp)
             .setShowWhen(true)
+        shortcutId?.let(builder::setShortcutId)
         NativeChatDirectReply.action(appContext, conversation)?.let(builder::addAction)
 
         return@synchronized notify(
@@ -298,7 +300,8 @@ internal object NativeChatNotificationPublisher {
             launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val notification = NotificationCompat.Builder(appContext, CHANNEL_ID)
+        val shortcutId = NativeChatConversationShortcuts.publish(appContext, content.conversationId)
+        val builder = NotificationCompat.Builder(appContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_quick_settings)
             .setSubText(content.title)
             .setContentText(status)
@@ -310,8 +313,8 @@ internal object NativeChatNotificationPublisher {
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setWhen(content.messages.last().timestamp)
             .setShowWhen(true)
-            .build()
-        return@synchronized notify(appContext, content.conversationId, notification)
+        shortcutId?.let(builder::setShortcutId)
+        return@synchronized notify(appContext, content.conversationId, builder.build())
     }
 
     private fun notify(
