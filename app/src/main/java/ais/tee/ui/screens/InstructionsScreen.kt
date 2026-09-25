@@ -1,8 +1,5 @@
 package ais.tee.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,6 +20,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ais.tee.share.copyPlainTextToClipboard
 import ais.tee.data.tokenizer.LocalTokenCounter
 import ais.tee.ui.theme.*
 import ais.tee.ui.viewmodel.StudioUiState
@@ -86,8 +84,12 @@ fun InstructionsScreen(
                 actions = {
                     IconButton(
                         onClick = {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("AI System Instructions", renderedText))
+                            copyPlainTextToClipboard(
+                                context = context,
+                                label = "AI System Instructions",
+                                text = renderedText,
+                                sensitive = true,
+                            )
                             viewModel.showSnackbar("Copied instructions to clipboard!")
                         },
                         modifier = Modifier.testTag("btn_copy_instructions")
@@ -336,8 +338,12 @@ fun InstructionsScreen(
                             )
                             IconButton(
                                 onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    clipboard.setPrimaryClip(ClipData.newPlainText("Raw System Prompt", renderedText))
+                                    copyPlainTextToClipboard(
+                                        context = context,
+                                        label = "Raw System Prompt",
+                                        text = renderedText,
+                                        sensitive = true,
+                                    )
                                     viewModel.showSnackbar("Raw instructions copied!")
                                 },
                                 modifier = Modifier.size(28.dp)

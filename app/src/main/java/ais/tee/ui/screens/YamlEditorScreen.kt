@@ -1,8 +1,5 @@
 package ais.tee.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -25,6 +22,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import ais.tee.share.copyPlainTextToClipboard
 import ais.tee.data.document.MarkdownWorkspaceRecoveryStore
 import ais.tee.data.engine.YamlParser
 import ais.tee.ui.theme.AccentEmerald
@@ -129,8 +127,12 @@ private fun YamlProfileLayersScreen(
         topBar = {
             YamlProfileTopBar(
                 onCopy = {
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("Profile YAML", yamlText))
+                    copyPlainTextToClipboard(
+                        context = context,
+                        label = "Profile YAML",
+                        text = yamlText,
+                        sensitive = true,
+                    )
                     viewModel.showSnackbar("Copied YAML to clipboard!")
                 }
             )

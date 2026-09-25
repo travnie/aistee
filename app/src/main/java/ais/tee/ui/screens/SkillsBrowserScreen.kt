@@ -1,9 +1,6 @@
 package ais.tee.ui.screens
 
 import android.content.ActivityNotFoundException
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -25,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import ais.tee.share.copyPlainTextToClipboard
 import ais.tee.data.document.MarkdownDocumentFileAccess
 import ais.tee.data.repository.SkillsAndDocsRepository
 import ais.tee.data.skills.LocalSkillAlreadyExistsException
@@ -481,8 +479,12 @@ fun SkillsBrowserScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText(title, content))
+                        copyPlainTextToClipboard(
+                            context = context,
+                            label = title,
+                            text = content,
+                            sensitive = true,
+                        )
                         viewModel.showSnackbar("Copied '$title' to clipboard!")
                         selectedItemContent = null
                     }
