@@ -1511,6 +1511,7 @@ SPLais/tee/widget/AisteeWidgetKt;->$r8$lambda$IaHi_QWIDcIXZ8HjjngyckR-QrE(Lais/t
 SPLais/tee/widget/AisteeWidgetKt;->latestNativeMessagesForWidget$default(Lais/tee/data/model/NativeChatArchive;IILjava/lang/Object;)Ljava/util/List;
 SPLais/tee/widget/AisteeWidgetKt;->latestNativeMessagesForWidget$lambda$0$0(Lais/tee/data/model/ModelChatMessage;)Z
 SPLais/tee/widget/AisteeWidgetKt;->latestNativeMessagesForWidget$lambda$0(Lais/tee/data/model/NativeChatConversation;)Lkotlin/sequences/Sequence;
+SPLais/tee/widget/AisteeWidgetKt;->latestNativeMessageForConversationForWidget(Lais/tee/data/model/NativeChatConversation;)Lais/tee/widget/NativeChatWidgetMessage;
 SPLais/tee/widget/AisteeWidgetKt;->latestNativeMessagesForWidget(Lais/tee/data/model/NativeChatArchive;I)Ljava/util/List;
 SPLais/tee/widget/AisteeWidgetKt;->nativeChatWidgetArchiveFingerprint(Lais/tee/data/model/NativeChatArchive;)Lais/tee/widget/NativeChatWidgetArchiveFingerprint;
 SPLais/tee/widget/AisteeWidgetKt;->recentNativeConversationsForWidget$default(Lais/tee/data/model/NativeChatArchive;IILjava/lang/Object;)Ljava/util/List;
@@ -21589,3 +21590,5 @@ SPLais/tee/security/AppLockStore;->getEnabled()Lkotlinx/coroutines/flow/StateFlo
 SPLais/tee/security/AppLockStore$Companion;-><init>()V
 SPLais/tee/security/AppLockStore$Companion;-><init>(Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 SPLais/tee/security/AppLockStore$Companion;->get(Landroid/content/Context;)Lais/tee/security/AppLockStore;
+Lais/tee/security/AppLock;
+SPLais/tee/security/AppLock;->isLockRequired(Landroid/content/Context;)Z
