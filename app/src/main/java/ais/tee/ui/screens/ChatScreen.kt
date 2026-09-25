@@ -1,8 +1,5 @@
 package ais.tee.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -59,6 +56,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
+import ais.tee.share.copyPlainTextToClipboard
 import ais.tee.R
 import ais.tee.data.document.MarkdownDocumentFileAccess
 import ais.tee.data.document.MarkdownWorkspaceRecoveryStore
@@ -1060,9 +1058,12 @@ private fun NativeChatDetailPane(
                             isWorkspaceBusy = markdownUiState.isBusy
                         ),
                         onCopyText = { text ->
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText("AI Message", text)
-                            clipboard.setPrimaryClip(clip)
+                            copyPlainTextToClipboard(
+                                context = context,
+                                label = "AI Message",
+                                text = text,
+                                sensitive = true,
+                            )
                             viewModel.showSnackbar("Copied to clipboard")
                         },
                         onOpenMarkdown = { response ->

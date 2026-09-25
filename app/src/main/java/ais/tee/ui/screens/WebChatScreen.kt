@@ -3,8 +3,6 @@ package ais.tee.ui.screens
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ActivityNotFoundException
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.ComponentCallbacks2
 import android.content.res.Configuration
@@ -55,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import ais.tee.share.copyPlainTextToClipboard
 import ais.tee.data.model.WebAiService
 import ais.tee.data.model.onboardingCapabilities
 import ais.tee.data.preferences.WebChatPreferencesStore
@@ -834,8 +833,12 @@ fun WebChatScreen(
             viewModel.showSnackbar("No Studio instructions are active.")
             return
         }
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("AI Profile Instructions", prompt))
+        copyPlainTextToClipboard(
+            context = context,
+            label = "AI Profile Instructions",
+            text = prompt,
+            sensitive = true,
+        )
         viewModel.showSnackbar(message)
     }
 
@@ -900,10 +903,12 @@ fun WebChatScreen(
         text: String,
         successMessage: String
     ) {
-        val copied = runCatching {
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("Shared text", text))
-        }.isSuccess
+        val copied = copyPlainTextToClipboard(
+            context = context,
+            label = "Shared text",
+            text = text,
+            sensitive = true,
+        )
         if (!copied) {
             viewModel.releasePendingWebShareTextClaim(service, shareId)
             viewModel.showSnackbar("Could not insert or copy shared text.")
@@ -980,10 +985,12 @@ fun WebChatScreen(
         text: String,
         successMessage: String
     ) {
-        val copied = runCatching {
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("Draft reply", text))
-        }.isSuccess
+        val copied = copyPlainTextToClipboard(
+            context = context,
+            label = "Draft reply",
+            text = text,
+            sensitive = true,
+        )
         if (!copied) {
             viewModel.releasePendingWebDraftClaim(service, draftId)
             viewModel.showSnackbar("Could not insert or copy draft reply.")
@@ -1552,8 +1559,12 @@ fun WebChatScreen(
             onRefresh = ::refreshProviderDiagnostics,
             onDismiss = { showProviderDiagnosticsDialog = false },
             onCopyReport = { report ->
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("Aistee provider diagnostics", report))
+                copyPlainTextToClipboard(
+                    context = context,
+                    label = "Aistee provider diagnostics",
+                    text = report,
+                    sensitive = false,
+                )
                 viewModel.showSnackbar("Copied privacy-safe provider diagnostics.")
             }
         )
@@ -1778,8 +1789,12 @@ private fun WebChatToolbar(
                             text = { Text("Copy address") },
                             leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
                             onClick = {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("URL", currentUrl))
+                                copyPlainTextToClipboard(
+                                    context = context,
+                                    label = "URL",
+                                    text = currentUrl,
+                                    sensitive = false,
+                                )
                                 onShowSnackbar("Copied address")
                                 menuExpanded = false
                             }
