@@ -21,6 +21,9 @@ import ais.tee.notifications.NativeChatNotificationPreferences
 import ais.tee.notifications.NativeChatNotificationPreferencesStore
 import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.notifications.NativeChatNotificationVisibility
+import ais.tee.security.QuickPrivacyModeController
+import ais.tee.security.QuickPrivacyModeStore
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -40,6 +43,7 @@ class NativeChatNotificationPrivacyTest {
     private val apiKeyStore = ApiKeyStore(context)
     private val originalApiKeys = apiKeyStore.load()
     private val originalVisibility = NativeChatNotificationVisibility.isAppVisible()
+    private val originalQuickPrivacy = QuickPrivacyModeStore.get(context).enabled.value
     private val disclosed = NativeChatNotificationPreferences(true, true, true)
     private val chatId = "privacy-test-conversation"
     private val unrelatedId = 9821
@@ -47,6 +51,7 @@ class NativeChatNotificationPrivacyTest {
 
     @Before
     fun setUp() {
+        runBlocking { QuickPrivacyModeController.setEnabled(context, false) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(
                 context.packageName, Manifest.permission.POST_NOTIFICATIONS,
@@ -73,6 +78,20 @@ class NativeChatNotificationPrivacyTest {
         preferences.save(originalPreferences)
         apiKeyStore.save(originalApiKeys)
         NativeChatNotificationVisibility.setAppVisible(originalVisibility)
+        runBlocking { QuickPrivacyModeController.setEnabled(context, originalQuickPrivacy) }
+    }
+
+    @Test
+    fun quickPrivacyRemovesPostedChatsOnlyAndPreservesStoredChoices() = runBlocking {
+        preferences.save(disclosed)
+        postConversation()
+        awaitChatPresence(true)
+
+        QuickPrivacyModeController.setEnabled(context, true)
+
+        awaitChatPresence(false)
+        assertTrue(manager.activeNotifications.any { it.id == unrelatedId })
+        assertEquals(disclosed, preferences.load())
     }
 
     @Test

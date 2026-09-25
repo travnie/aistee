@@ -31,6 +31,8 @@ import ais.tee.data.preferences.AisteeWidgetMode
 import ais.tee.data.preferences.AisteeWidgetPreferencesStore
 import ais.tee.data.preferences.NativeChatStore
 import ais.tee.navigation.AisteeQuickActionNavigation
+import ais.tee.security.QuickPrivacyModeStore
+import ais.tee.security.effectivePrivacySurfaceVisibility
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicReference
@@ -196,11 +198,17 @@ internal object NativeChatWidgetUpdater {
 class AisteeWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val appWidgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
-        val (archive, preferences) = withContext(Dispatchers.IO) {
+        val (archive, preferences, quickPrivacyEnabled) = withContext(Dispatchers.IO) {
             val loadedArchive = NativeChatStore(context.noBackupFilesDir).load() ?: NativeChatArchive()
             val widgetPreferences = AisteeWidgetPreferencesStore(context).load(appWidgetId)
-            loadedArchive to widgetPreferences
+            val quickPrivacy = QuickPrivacyModeStore.get(context).enabled.value
+            Triple(loadedArchive, widgetPreferences, quickPrivacy)
         }
+        val privacyVisibility = effectivePrivacySurfaceVisibility(
+            showConversationTitles = preferences.showConversationTitles,
+            showMessagePreviews = preferences.showMessagePreviews,
+            quickPrivacyEnabled = quickPrivacyEnabled,
+        )
 
         val pinnedConversation = if (preferences.mode == AisteeWidgetMode.PINNED_CHAT) {
             pinnedNativeConversationForWidget(archive, preferences.pinnedConversationId)
@@ -214,10 +222,10 @@ class AisteeWidget : GlanceAppWidget() {
                     val title = privacySafeWidgetConversationTitle(
                         title = conversation.title,
                         hiddenTitle = context.getString(R.string.widget_recent_chat_hidden, index + 1),
-                        showConversationTitles = preferences.showConversationTitles,
+                        showConversationTitles = privacyVisibility.showConversationTitles,
                     )
                     val latestMessage =
-                        if (preferences.showMessagePreviews) {
+                        if (privacyVisibility.showMessagePreviews) {
                             conversationsById[conversation.id]
                                 ?.let(::latestNativeMessageForConversationForWidget)
                         } else {
@@ -245,10 +253,10 @@ class AisteeWidget : GlanceAppWidget() {
                     val preview = privacySafeWidgetMessagePreview(
                         text = message.text,
                         hiddenText = hiddenMessage,
-                        showMessagePreviews = preferences.showMessagePreviews,
+                        showMessagePreviews = privacyVisibility.showMessagePreviews,
                     )
                     val label =
-                        if (preferences.showConversationTitles) {
+                        if (privacyVisibility.showConversationTitles) {
                             context.getString(
                                 R.string.widget_message_with_conversation,
                                 message.conversationTitle,
@@ -295,7 +303,7 @@ class AisteeWidget : GlanceAppWidget() {
                             label = privacySafeWidgetMessagePreview(
                                 text = message.text,
                                 hiddenText = hiddenMessage,
-                                showMessagePreviews = preferences.showMessagePreviews,
+                                showMessagePreviews = privacyVisibility.showMessagePreviews,
                             ),
                         )
                     }
@@ -309,7 +317,7 @@ class AisteeWidget : GlanceAppWidget() {
                 privacySafeWidgetConversationTitle(
                     title = conversation.title,
                     hiddenTitle = context.getString(R.string.widget_pinned_chat),
-                    showConversationTitles = preferences.showConversationTitles,
+                    showConversationTitles = privacyVisibility.showConversationTitles,
                 )
             } ?: context.getString(R.string.widget_pinned_chat)
         }
