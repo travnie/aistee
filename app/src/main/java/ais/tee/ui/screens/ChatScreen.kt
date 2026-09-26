@@ -1,6 +1,7 @@
 package ais.tee.ui.screens
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -59,6 +61,7 @@ import androidx.core.content.ContextCompat
 import ais.tee.share.copyPlainTextToClipboard
 import ais.tee.R
 import ais.tee.data.document.MarkdownDocumentFileAccess
+import ais.tee.data.document.MarkdownTable
 import ais.tee.data.document.MarkdownWorkspaceRecoveryStore
 import ais.tee.data.model.AiProvider
 import ais.tee.data.model.CHAT_ROLE_USER
@@ -116,6 +119,10 @@ internal fun chatMessageContentType(message: ModelChatMessage): String = when {
     message.isError -> "error"
     else -> "assistant"
 }
+
+/** Completed assistant answers render Markdown; streaming, error and user text stay plain. */
+internal fun shouldRenderChatMarkdown(message: ModelChatMessage): Boolean =
+    message.isCompletedAssistantResponse()
 
 internal fun chatBubbleMaxWidth(containerWidth: Dp): Dp =
     (containerWidth - 32.dp).coerceIn(340.dp, 640.dp)
@@ -176,6 +183,16 @@ fun ChatScreen(
         }
     }
 
+    fun createIncognitoConversation() {
+        viewModel.newIncognitoConversation()
+        val conversationId = viewModel.uiState.value.nativeChat.activeConversationId
+        if (conversationId.isNotBlank()) {
+            navigationScope.launch {
+                navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, conversationId)
+            }
+        }
+    }
+
     fun deleteConversation(conversationId: String) {
         val keepDetailVisible =
             navigator.currentDestination?.pane == ListDetailPaneScaffoldRole.Detail
@@ -198,7 +215,9 @@ fun ChatScreen(
                 NativeConversationsPane(
                     conversations = conversations,
                     activeConversationId = activeConversationId,
+                    incognitoConversationId = uiState.incognitoConversationId,
                     onNew = ::createConversation,
+                    onNewIncognito = ::createIncognitoConversation,
                     onSelect = ::showConversation,
                     onDelete = ::deleteConversation
                 )
@@ -276,6 +295,34 @@ private fun NativeChatDetailPane(
     var pendingMarkdownPromptReplacement by remember { mutableStateOf<String?>(null) }
     var isPreparingChatMarkdown by remember { mutableStateOf(false) }
     var showProjectLibrary by remember { mutableStateOf(false) }
+    val projectLibraryRequestId = uiState.projectLibraryRequestId
+    LaunchedEffect(projectLibraryRequestId) {
+        if (projectLibraryRequestId > 0L) {
+            showProjectLibrary = true
+            viewModel.consumeProjectLibraryRequest(projectLibraryRequestId)
+        }
+    }
+    var viewingTable by remember { mutableStateOf<MarkdownTable?>(null) }
+    var pendingCsvExport by remember { mutableStateOf<String?>(null) }
+
+    val csvExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        val csv = pendingCsvExport
+        pendingCsvExport = null
+        if (uri != null && csv != null) {
+            scope.launch {
+                val exported = runCatching {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri, "wt")?.use { output ->
+                            output.write(csv.encodeToByteArray())
+                        } != null
+                    }
+                }.getOrDefault(false)
+                viewModel.showSnackbar(if (exported) "Exported table as CSV." else "Could not export CSV.")
+            }
+        }
+    }
 
     val chatMarkdownImportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -372,8 +419,10 @@ private fun NativeChatDetailPane(
         }
     }
 
+    val isIncognito = uiState.isActiveConversationIncognito
     val canOpenChatAsMarkdown =
-        !uiState.isChatGenerating &&
+        !isIncognito &&
+            !uiState.isChatGenerating &&
             !isPreparingChatMarkdown &&
             uiState.chatMessages.any { it.sender == CHAT_ROLE_USER }
 
@@ -458,6 +507,38 @@ private fun NativeChatDetailPane(
         )
     }
 
+    viewingTable?.let { table ->
+        MarkdownTableScreen(
+            table = table,
+            title = "Table",
+            onDismiss = { viewingTable = null },
+            onCopyCsv = { csv ->
+                copyPlainTextToClipboard(
+                    context = context,
+                    label = "AI table CSV",
+                    text = csv,
+                    sensitive = true,
+                )
+                viewModel.showSnackbar("Copied table as CSV")
+            },
+            onExportCsv = { csv ->
+                pendingCsvExport = csv
+                try {
+                    csvExportLauncher.launch(MARKDOWN_TABLE_CSV_EXPORT_NAME)
+                } catch (_: ActivityNotFoundException) {
+                    pendingCsvExport = null
+                    viewModel.showSnackbar("No document picker is available.")
+                }
+            },
+            onSaveToLibrary = { csv ->
+                scope.launch {
+                    val saved = viewModel.saveTableCsvToProjectLibrary(csv)
+                    viewModel.showSnackbar(if (saved != null) "Saved table to Library." else "Could not save table to Library.")
+                }
+            },
+        )
+    }
+
     if (showNotificationSettings) {
         NativeChatNotificationSettingsDialog(
             initialPreferences = notificationPreferences,
@@ -479,6 +560,14 @@ private fun NativeChatDetailPane(
                         .statusBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
+                    if (isIncognito) {
+                        IncognitoChatBanner(
+                            onSaveAsNormal = viewModel::saveIncognitoAsNormalConversation,
+                            modifier = Modifier
+                                .padding(bottom = 6.dp)
+                                .clip(MaterialTheme.shapes.small)
+                        )
+                    }
                     // Top header row
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -520,6 +609,7 @@ private fun NativeChatDetailPane(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                if (isIncognito) IncognitoBadge()
                                 Text(
                                     text = uiState.activeNativeConversation?.title ?: "Native chat",
                                     style = MaterialTheme.typography.bodySmall,
@@ -724,6 +814,21 @@ private fun NativeChatDetailPane(
                                         },
                                         modifier = Modifier.testTag("btn_chat_notifications")
                                     )
+                                    if (!isIncognito) {
+                                        DropdownMenuItem(
+                                            text = { Text("Add to home screen") },
+                                            leadingIcon = {
+                                                Icon(Icons.Outlined.AddHome, contentDescription = null)
+                                            },
+                                            onClick = {
+                                                showChatActionsMenu = false
+                                                if (!viewModel.requestPinActiveNativeConversation()) {
+                                                    viewModel.showSnackbar("This launcher cannot pin chats to the home screen.")
+                                                }
+                                            },
+                                            modifier = Modifier.testTag("btn_pin_chat_home_screen")
+                                        )
+                                    }
                                     DropdownMenuItem(
                                         text = { Text("Clear conversation") },
                                         leadingIcon = {
@@ -1052,7 +1157,7 @@ private fun NativeChatDetailPane(
                     ChatMessageItem(
                         message = message,
                         maxBubbleWidth = maxBubbleWidth,
-                        canOpenMarkdown = canOpenResponseAsMarkdown(
+                        canOpenMarkdown = !isIncognito && canOpenResponseAsMarkdown(
                             message = message,
                             isPreparingChatMarkdown = isPreparingChatMarkdown,
                             isWorkspaceBusy = markdownUiState.isBusy
@@ -1076,7 +1181,10 @@ private fun NativeChatDetailPane(
                                 allowDiscardDirty = false
                             )
                         },
-                        onRetryPrompt = { prompt -> viewModel.sendChatMessage(prompt) }
+                        onRetryPrompt = { prompt -> viewModel.sendChatMessage(prompt) },
+                        onEditQueued = { viewModel.cancelQueuedNativeMessage(message.id, moveToDraft = true) },
+                        onCancelQueued = { viewModel.cancelQueuedNativeMessage(message.id, moveToDraft = false) },
+                        onViewTable = { table -> viewingTable = table }
                     )
                 }
 
@@ -1174,7 +1282,9 @@ private fun NativeChatDetailPane(
 private fun NativeConversationsPane(
     conversations: List<NativeChatConversation>,
     activeConversationId: String,
+    incognitoConversationId: String?,
     onNew: () -> Unit,
+    onNewIncognito: () -> Unit,
     onSelect: (String) -> Unit,
     onDelete: (String) -> Unit
 ) {
@@ -1209,6 +1319,16 @@ private fun NativeConversationsPane(
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("New conversation")
+            }
+            OutlinedButton(
+                onClick = onNewIncognito,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("btn_new_incognito_conversation")
+            ) {
+                Icon(Icons.Outlined.VisibilityOff, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("New incognito chat")
             }
 
             LazyColumn(
@@ -1250,6 +1370,9 @@ private fun NativeConversationsPane(
                                     )
                                 }
                                 Column(modifier = Modifier.weight(1f)) {
+                                    if (conversation.id == incognitoConversationId) {
+                                        IncognitoBadge()
+                                    }
                                     Text(
                                         conversation.title,
                                         maxLines = 1,
@@ -1306,9 +1429,16 @@ fun ChatMessageItem(
     canOpenMarkdown: Boolean,
     onCopyText: (String) -> Unit,
     onOpenMarkdown: (ModelChatMessage) -> Unit,
-    onRetryPrompt: (String) -> Unit
+    onRetryPrompt: (String) -> Unit,
+    onViewTable: (MarkdownTable) -> Unit = {},
+    onEditQueued: () -> Unit = {},
+    onCancelQueued: () -> Unit = {}
 ) {
     val isUser = message.sender == "user"
+    val tables = remember(message.id, message.text, message.isPartial, message.isError) {
+        markdownTablesForMessageActions(message)
+    }
+    var showTableMenu by remember { mutableStateOf(false) }
     val provider = message.provider ?: AiProvider.GEMINI
     val providerColor = getProviderColor(provider)
 
@@ -1408,18 +1538,30 @@ fun ChatMessageItem(
             modifier = Modifier.widthIn(max = maxBubbleWidth)
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text(
-                    text = message.text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (isUser) {
-                        MaterialTheme.colorScheme.onPrimary
-                    } else if (message.isError) {
-                        MaterialTheme.colorScheme.onErrorContainer
+                val textColor = if (isUser) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else if (message.isError) {
+                    MaterialTheme.colorScheme.onErrorContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
+                val markdownBlocks = if (shouldRenderChatMarkdown(message)) {
+                    rememberChatMarkdown(message.id, message.text)
+                } else {
+                    null
+                }
+                SelectionContainer {
+                    if (markdownBlocks != null) {
+                        ChatMarkdownContent(blocks = markdownBlocks, color = textColor)
                     } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    lineHeight = 21.sp
-                )
+                        Text(
+                            text = message.text,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = textColor,
+                            lineHeight = 21.sp
+                        )
+                    }
+                }
 
                 if (!isUser) {
                     formatChatResponseDiagnostics(message)?.let { diagnostics ->
@@ -1461,6 +1603,37 @@ fun ChatMessageItem(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
                     ) {
+                        if (tables.isNotEmpty()) {
+                            Box {
+                                IconButton(
+                                    onClick = {
+                                        if (tables.size == 1) onViewTable(tables.single()) else showTableMenu = true
+                                    },
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .testTag("btn_view_table_${message.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.TableChart,
+                                        contentDescription = markdownTableActionLabel(tables.first(), 0, tables.size)
+                                            .takeIf { tables.size == 1 } ?: "View tables",
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                                DropdownMenu(expanded = showTableMenu, onDismissRequest = { showTableMenu = false }) {
+                                    tables.forEachIndexed { index, table ->
+                                        DropdownMenuItem(
+                                            text = { Text(markdownTableActionLabel(table, index, tables.size)) },
+                                            onClick = {
+                                                showTableMenu = false
+                                                onViewTable(table)
+                                            },
+                                            modifier = Modifier.testTag("btn_view_table_${message.id}_$index")
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         IconButton(
                             onClick = { onOpenMarkdown(message) },
                             enabled = canOpenMarkdown,
@@ -1487,6 +1660,36 @@ fun ChatMessageItem(
                         }
                     }
                 }
+            }
+        }
+
+        if (isUser && message.isQueued) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .padding(top = 2.dp, end = 4.dp)
+                    .testTag("queued_message_${message.id}")
+            ) {
+                Icon(
+                    Icons.Outlined.CloudOff,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(
+                    text = "Will send when you're back online",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(
+                    onClick = onEditQueued,
+                    modifier = Modifier.testTag("btn_edit_queued_${message.id}")
+                ) { Text("Edit") }
+                TextButton(
+                    onClick = onCancelQueued,
+                    modifier = Modifier.testTag("btn_cancel_queued_${message.id}")
+                ) { Text("Cancel") }
             }
         }
     }
@@ -1869,4 +2072,58 @@ private fun ProjectLibraryDialog(
             TextButton(onClick = onDismiss) { Text("Close") }
         },
     )
+}
+
+@Composable
+private fun IncognitoBadge() {
+    Surface(
+        shape = MaterialTheme.shapes.extraSmall,
+        color = MaterialTheme.colorScheme.inverseSurface,
+        modifier = Modifier.testTag("badge_incognito")
+    ) {
+        Text(
+            text = "INCOGNITO",
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.inverseOnSurface
+        )
+    }
+}
+
+@Composable
+internal fun IncognitoChatBanner(onSaveAsNormal: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.inverseSurface,
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("banner_incognito_chat")
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
+        ) {
+            Icon(
+                Icons.Outlined.VisibilityOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.inverseOnSurface,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = "Incognito: not saved, no notifications or widgets. Leaving discards it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.inverseOnSurface,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 10.dp)
+            )
+            TextButton(
+                onClick = onSaveAsNormal,
+                modifier = Modifier.testTag("btn_save_incognito_as_normal")
+            ) {
+                Text("Save as normal chat", color = MaterialTheme.colorScheme.inversePrimary)
+            }
+        }
+    }
 }

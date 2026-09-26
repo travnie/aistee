@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -71,6 +72,20 @@
             android:excludeFromRecents="true"
             android:theme="@style/Theme.Aistee" />
         <activity
+            android:name=".share.SaveToLibraryActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:label="Save to Aistee Library"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+            </intent-filter>
+        </activity>
+        <activity
             android:name=".widget.AisteeWidgetConfigurationActivity"
             android:exported="true"
             android:theme="@style/Theme.Aistee">
@@ -82,6 +97,9 @@
             android:name=".notifications.NativeChatDirectReplyReceiver"
             android:exported="false" />
         <receiver
+            android:name=".notifications.PinnedChatShortcutReceiver"
+            android:exported="false" />
+        <receiver
             android:name=".widget.AisteeWidgetReceiver"
             android:exported="true">
             <intent-filter>
@@ -90,6 +108,17 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/aistee_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.AisteeQuickActionsWidgetReceiver"
+            android:exported="true"
+            android:label="@string/quick_actions_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/aistee_quick_actions_widget_info" />
         </receiver>
         <service
             android:name=".AisteeTileService"
@@ -109,6 +138,17 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+        <!-- WorkManager is initialized on demand from AisteeApplication (Configuration.Provider). -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
     </application>
 
 </manifest>

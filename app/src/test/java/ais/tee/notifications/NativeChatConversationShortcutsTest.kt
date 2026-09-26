@@ -1,7 +1,9 @@
 package ais.tee.notifications
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NativeChatConversationShortcutsTest {
@@ -16,5 +18,42 @@ class NativeChatConversationShortcutsTest {
             nativeChatConversationShortcutId("  conversation-123  "),
         )
         assertNull(nativeChatConversationShortcutId("   "))
+    }
+
+    @Test
+    fun shortcutIdResolvesOnlyToAKnownConversation() {
+        val conversations = listOf("chat-a", "chat-b")
+
+        assertEquals(
+            "chat-b",
+            nativeChatConversationIdForShortcut(nativeChatConversationShortcutId("chat-b"), conversations),
+        )
+        assertNull(nativeChatConversationIdForShortcut(nativeChatConversationShortcutId("deleted"), conversations))
+        assertNull(nativeChatConversationIdForShortcut("web_ai", conversations))
+        assertNull(nativeChatConversationIdForShortcut(null, conversations))
+    }
+
+    @Test
+    fun titleAndShareTargetOnlyWhenTitlesMayBeShown() {
+        val hidden = nativeChatShortcutPresentation("Trip plan", showConversationTitles = false)
+        assertEquals("AI chat", hidden.shortLabel)
+        assertFalse(hidden.isShareTarget)
+
+        val shown = nativeChatShortcutPresentation("  Trip   plan  ", showConversationTitles = true)
+        assertEquals("Trip plan", shown.shortLabel)
+        assertTrue(shown.isShareTarget)
+
+        val blank = nativeChatShortcutPresentation("   ", showConversationTitles = true)
+        assertEquals("AI chat", blank.shortLabel)
+        assertFalse(blank.isShareTarget)
+    }
+
+    @Test
+    fun onlyTitledNativeChatShortcutsAreRedacted() {
+        val chatShortcut = nativeChatConversationShortcutId("chat-a")!!
+
+        assertTrue(isTitledNativeChatShortcut(chatShortcut, "Trip plan"))
+        assertFalse(isTitledNativeChatShortcut(chatShortcut, "AI chat"))
+        assertFalse(isTitledNativeChatShortcut("web_ai", "Web AI"))
     }
 }

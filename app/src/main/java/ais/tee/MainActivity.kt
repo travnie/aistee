@@ -3,6 +3,7 @@ package ais.tee
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -35,6 +36,7 @@ import ais.tee.data.model.webChatSections
 import ais.tee.data.security.TextInspectionResult
 import ais.tee.data.security.TextInspector
 import ais.tee.navigation.AisteeQuickActionNavigation
+import ais.tee.navigation.QuickActionDestination
 import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.notifications.NativeChatNotificationVisibility
 import ais.tee.notifications.WebChatDraftReply
@@ -299,7 +301,12 @@ class MainActivity : ComponentActivity() {
                     legacyExtra = intent.getStringExtra(AisteeQuickActionNavigation.LEGACY_WIDGET_EXTRA_DESTINATION),
                     dataLastPathSegment = intent.data?.lastPathSegment,
                 )
-                AisteeQuickActionNavigation.destination(destinationId)?.let(viewModel::selectTab)
+                when (val destination = AisteeQuickActionNavigation.quickActionDestination(destinationId)) {
+                    is QuickActionDestination.Tab -> viewModel.selectTab(destination.tab)
+                    QuickActionDestination.NewNativeChat -> viewModel.openNewNativeConversation()
+                    QuickActionDestination.ProjectLibrary -> viewModel.openProjectLibrary()
+                    null -> Unit
+                }
                 consumeNavigationIntent(intent)
             }
         }
@@ -330,7 +337,16 @@ class MainActivity : ComponentActivity() {
             else -> null
         } ?: return
         retainedShareIntentHandled = true
-        viewModel.receiveIncomingShare(payload)
+        val directShareShortcutId = if (intent.action == Intent.ACTION_SEND) {
+            intent.getStringExtra(ShortcutManagerCompat.EXTRA_SHORTCUT_ID)
+        } else {
+            null
+        }
+        if (directShareShortcutId != null) {
+            viewModel.receiveNativeChatShare(directShareShortcutId, payload)
+        } else {
+            viewModel.receiveIncomingShare(payload)
+        }
     }
 
     private fun saveShareState(outState: Bundle) {
