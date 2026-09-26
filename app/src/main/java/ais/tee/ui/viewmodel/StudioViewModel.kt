@@ -710,6 +710,21 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         return asset
     }
 
+    suspend fun saveTableCsvToProjectLibrary(csv: String): ProjectLibraryAsset? {
+        val conversation = _uiState.value.activeNativeConversation ?: return null
+        val asset = withContext(Dispatchers.IO) {
+            projectLibraryStore.saveTextAsset(
+                projectId = conversation.projectId,
+                title = "${conversation.title} table",
+                mediaType = "text/csv",
+                extension = "csv",
+                text = csv,
+            )
+        } ?: return null
+        reloadProjectLibraryFromDisk()
+        return asset
+    }
+
     suspend fun loadProjectLibraryAsset(assetId: String): String? =
         withContext(Dispatchers.IO) { projectLibraryStore.loadTextAsset(assetId)?.text }
 
