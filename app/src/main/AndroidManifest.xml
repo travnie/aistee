@@ -138,6 +138,11 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+        <!-- Active skills run only here, away from account-backed chat WebViews (docs/skills-runtime.md). -->
+        <service
+            android:name=".data.skills.ActiveSkillService"
+            android:exported="false"
+            android:process=":skills" />
         <!-- WorkManager is initialized on demand from AisteeApplication (Configuration.Provider). -->
         <provider
             android:name="androidx.startup.InitializationProvider"
