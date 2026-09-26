@@ -213,7 +213,7 @@ Treat Token Arena as the overlap between Bench tooling and a small experimental 
 
 Inspected manifests, resources and bundled assets of Claude 1.260923, AI Edge Gallery 1.0.19, DeepSeek 2.5.3 and the Gemini 1.0 shell app. Only patterns are recorded here; nothing is copied.
 
-- **Claude, Direct Share:** a `share-target` in `shortcuts.xml` with a custom category lets recent conversations appear directly in the Android sharesheet. Aistee already publishes long-lived conversation shortcuts, so it only needs the share-target declaration and the category on those shortcuts.
+- **Claude, Direct Share:** a `share-target` in `shortcuts.xml` with a custom category lets recent conversations appear directly in the Android sharesheet. Aistee already publishes long-lived conversation shortcuts, so it only needs the share-target declaration and the category on those shortcuts. **Shipped:** native chats are published on open, send and notification; they join the sharesheet only while notification titles are on and Quick privacy is off (option b: a generic "AI chat" target would be indistinguishable), and titled shortcuts are removed when either setting hides titles. A share into a chat stages the text in its composer and never sends; unknown shortcut IDs fall back to the normal share flow.
 - **Claude, pin from app:** "Add to home" uses `requestPinShortcut` / `requestPinAppWidget` with confirmation receivers. Shortcuts for deleted chats are disabled with an explanatory message rather than left dangling.
 - **Claude, widgets:** Glance widget with a configuration activity, a preview layout, a separate three-row provider variant and `updatePeriodMillis=0` (push updates only).
 - **Claude, incognito chats:** chats that stay out of history, memory and search. For Aistee: a native chat that never reaches the archive, widgets, notifications or search.
@@ -226,7 +226,7 @@ Inspected manifests, resources and bundled assets of Claude 1.260923, AI Edge Ga
 - **AI Edge Gallery, distribution:** skills from URL, a curated featured list, MCP servers by URL with header auth, and a third-party disclaimer before adding either.
 - **DeepSeek, tables and selection:** a dedicated full-screen Markdown table preview with export, and an explicit "Select text" mode for messages. **Shipped (tables):** native chat responses offer "View table" per GFM table, with a pinned-header full-screen view, Copy as CSV (sensitive clip), SAF CSV export and Save to Library; every CSV path neutralizes spreadsheet formulas. "Select text" remains open.
 - **DeepSeek, attachment budget:** a pre-send warning that the model can read only a percentage of the attached files. For Aistee this belongs with the local tokenizer.
-- **DeepSeek, math:** native LaTeX rendering (jlatexmath). Aistee does not render LaTeX yet.
+- **DeepSeek, math:** native LaTeX rendering (jlatexmath). Aistee does not render LaTeX yet. **Shipped prerequisite:** completed native chat answers now render Markdown (headings, emphasis, code, lists, quotes, inline tables, http(s) links; raw HTML stays literal) through a small Compose renderer on the existing `org.jetbrains:markdown` parser, parsed off the main thread and cached per message. LaTeX (`$...$` / `$$...$$`, native chats only, plain-text fallback) is the next separate step.
 - **Gemini APK note:** the 3 MB shell only carries entry points; product logic lives in the Google app, so it yields little beyond share/widget structure.
 
 ### Follow-up: Grok Bot, Microsoft Copilot and ChatGPT APKs (26 September 2026)

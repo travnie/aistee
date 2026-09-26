@@ -3,6 +3,7 @@ package ais.tee
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -336,7 +337,16 @@ class MainActivity : ComponentActivity() {
             else -> null
         } ?: return
         retainedShareIntentHandled = true
-        viewModel.receiveIncomingShare(payload)
+        val directShareShortcutId = if (intent.action == Intent.ACTION_SEND) {
+            intent.getStringExtra(ShortcutManagerCompat.EXTRA_SHORTCUT_ID)
+        } else {
+            null
+        }
+        if (directShareShortcutId != null) {
+            viewModel.receiveNativeChatShare(directShareShortcutId, payload)
+        } else {
+            viewModel.receiveIncomingShare(payload)
+        }
     }
 
     private fun saveShareState(outState: Bundle) {
