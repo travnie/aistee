@@ -1045,6 +1045,11 @@ private fun NativeChatDetailPane(
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
+                    uiState.pendingActiveSkillPrompt
+                        ?.takeIf { it.conversationId == uiState.nativeChat.activeConversationId }
+                        ?.let { prompt ->
+                        ActiveSkillChatPromptChip(prompt = prompt, onAnswer = viewModel::answerActiveSkillPrompt)
+                    }
                     uiState.pendingChatContextWarning
                         ?.takeIf { it.conversationId == uiState.nativeChat.activeConversationId }
                         ?.let { pending ->
