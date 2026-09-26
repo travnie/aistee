@@ -56,10 +56,6 @@ class NativeActiveSkillChatToolsTest {
             "---\nname: $SKILL\ndescription: Echo.\nmetadata:\n  aistee-runtime: webview-v1\n---\nEcho.\n",
             scripts = mapOf(
                 "scripts/index.html" to "<!doctype html><script>$script</script>".toByteArray()
-    private fun addTrustedSkill() = runBlocking {
-                "scripts/index.html" to
-                    "<!doctype html><script>window.aistee_skill_run = (r) => JSON.stringify({ result: JSON.parse(r).input });</script>"
-                        .toByteArray()
             ),
         )
         store.setEnabled(SKILL, true)
@@ -101,11 +97,14 @@ class NativeActiveSkillChatToolsTest {
         addTrustedSkill("window.aistee_skill_run = () => JSON.stringify({ result: 1, card: { title: 'Trip plan', html: '<p>private</p>' } });")
         val tools = tools(ActiveSkillChatAnswer.Approved(), ActiveSkillChatAnswer.Approved())
         tools.definitions()
+
         val result = tools.execute(call("go"))
+
         assertEquals("1", result.output)
         assertEquals("Trip plan", tools.skillCards.single().title)
         assertEquals("Trip plan", (asked[1] as ActiveSkillChatStage.Result).cardTitle)
     }
+
     @Test
     fun declinedRunNeverReachesTheSandbox() = runBlocking {
         addTrustedSkill()

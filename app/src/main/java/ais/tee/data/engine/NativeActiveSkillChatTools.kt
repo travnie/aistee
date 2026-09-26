@@ -49,8 +49,6 @@ sealed interface ActiveSkillChatStage {
     data class Action(val action: ActiveSkillToolAction) : ActiveSkillChatStage
     /** What would go back to the model; [cardTitle] is shown under the reply either way. */
     data class Result(val output: String, val isError: Boolean, val cardTitle: String? = null) : ActiveSkillChatStage
-    /** What would go back to the model. */
-    data class Result(val output: String, val isError: Boolean) : ActiveSkillChatStage
 }
 
 sealed interface ActiveSkillChatAnswer {
@@ -82,6 +80,7 @@ internal class NativeActiveSkillChatTools(
 
     /** Cards from skills that ran in this send, shown under the reply and never sent to the model. */
     val skillCards: List<ActiveSkillCard> get() = synchronized(cards) { cards.toList() }
+
     fun handles(toolName: String): Boolean = toolName in skillsByTool
 
     suspend fun definitions(): List<NativeToolDefinition> {
@@ -139,13 +138,11 @@ internal class NativeActiveSkillChatTools(
         val card = (outcome as? ActiveSkillOutcome.Result)?.card
             ?.copy(skillName = skillName, bundleDigest = bundle.digest)
             ?.takeIf { addCard(it) }
-            // Cards are shown in a later step; only the JSON result goes back.
         if (output.length > MAX_NATIVE_TOOL_RESULT_CHARS) {
             note("Skill $skillName result was too large to share.")
             return error(call, "The skill result is too large to return.")
         }
         if (ask(skillName, ActiveSkillChatStage.Result(output, isError, card?.title)) !is ActiveSkillChatAnswer.Approved) {
-        if (ask(skillName, ActiveSkillChatStage.Result(output, isError)) !is ActiveSkillChatAnswer.Approved) {
             note("Skill $skillName result was not shared.")
             return error(call, "The user chose not to share the skill result.")
         }
@@ -205,6 +202,7 @@ internal class NativeActiveSkillChatTools(
     private fun addCard(card: ActiveSkillCard): Boolean = synchronized(cards) {
         (cards.size < ACTIVE_SKILL_MAX_CARDS_PER_MESSAGE).also { if (it) cards += card }
     }
+
     private fun note(text: String) {
         synchronized(notes) { notes += text }
     }

@@ -1896,8 +1896,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                                     activeProfileNotes = generated.message.activeProfileNotes + skillNotes,
                                     skillCards = skillCards,
                                 )
-                            if (skillNotes.isEmpty()) {
-                                generated.message.copy(activeProfileNotes = generated.message.activeProfileNotes + skillNotes)
                             },
                         )
                     },
