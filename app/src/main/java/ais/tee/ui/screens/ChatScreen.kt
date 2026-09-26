@@ -283,6 +283,13 @@ private fun NativeChatDetailPane(
     var pendingMarkdownPromptReplacement by remember { mutableStateOf<String?>(null) }
     var isPreparingChatMarkdown by remember { mutableStateOf(false) }
     var showProjectLibrary by remember { mutableStateOf(false) }
+    val projectLibraryRequestId = uiState.projectLibraryRequestId
+    LaunchedEffect(projectLibraryRequestId) {
+        if (projectLibraryRequestId > 0L) {
+            showProjectLibrary = true
+            viewModel.consumeProjectLibraryRequest(projectLibraryRequestId)
+        }
+    }
     var viewingTable by remember { mutableStateOf<MarkdownTable?>(null) }
     var pendingCsvExport by remember { mutableStateOf<String?>(null) }
 
