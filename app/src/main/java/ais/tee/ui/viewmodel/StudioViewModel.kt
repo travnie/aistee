@@ -5,6 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import ais.tee.data.engine.AiChatService
 import ais.tee.data.engine.InstructionRenderer
+import ais.tee.data.engine.ActiveSkillChatAnswer
+import ais.tee.data.engine.ActiveSkillChatStage
+import ais.tee.data.engine.NativeActiveSkillChatTools
 import ais.tee.data.engine.NativeBenchChatTools
 import ais.tee.data.engine.NativeChatSendRequest
 import ais.tee.data.engine.executeNativeChatSend
@@ -46,6 +49,7 @@ import ais.tee.notifications.NativeChatConversationShortcuts
 import ais.tee.notifications.nativeChatConversationIdForShortcut
 import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.widget.NativeChatWidgetUpdater
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -110,6 +114,15 @@ data class PendingChatContextWarning(
     override fun toString(): String = "PendingChatContextWarning(warning=$warning, prompt=<redacted>)"
 }
 
+/** A model-initiated skill call step waiting for the user in [conversationId]. */
+data class PendingActiveSkillPrompt(
+    val conversationId: String,
+    val skillName: String,
+    val stage: ActiveSkillChatStage,
+) {
+    override fun toString(): String = "PendingActiveSkillPrompt(skill=$skillName, stage=<redacted>)"
+}
+
 private data class NativeChatPromptContext(
     val systemPrompt: String?,
     val activeProfile: Profile?
@@ -155,6 +168,8 @@ data class StudioUiState(
     val incognitoConversationId: String? = null,
     /** Send held back because the chat context does not fit the model; cleared on send or dismiss. */
     val pendingChatContextWarning: PendingChatContextWarning? = null,
+    /** Model-initiated skill call waiting for Allow/Deny; cleared when answered or the reply stops. */
+    val pendingActiveSkillPrompt: PendingActiveSkillPrompt? = null,
 ) {
     val isActiveConversationIncognito: Boolean
         get() = incognitoConversationId != null && nativeChat.activeConversationId == incognitoConversationId
@@ -216,6 +231,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     )
     private val pendingGatewayCatalogRefreshes = mutableSetOf<AiProvider>()
     private var chatGenerationJob: Job? = null
+    private var activeSkillAnswer: CompletableDeferred<ActiveSkillChatAnswer>? = null
     private val streamingTextBatcher = StreamingTextBatcher()
     private var streamingUiFlushJob: Job? = null
     private var studioPersistenceJob: Job? = null
@@ -1229,6 +1245,28 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         showSnackbar("Current conversation cleared.")
     }
 
+    /** Waits for the user's answer in the chat; stopping the reply cancels the wait and clears the chip. */
+    private suspend fun askActiveSkillPrompt(
+        conversationId: String,
+        skillName: String,
+        stage: ActiveSkillChatStage,
+    ): ActiveSkillChatAnswer {
+        val deferred = CompletableDeferred<ActiveSkillChatAnswer>()
+        val prompt = PendingActiveSkillPrompt(conversationId, skillName, stage)
+        activeSkillAnswer = deferred
+        _uiState.update { it.copy(pendingActiveSkillPrompt = prompt) }
+        try {
+            return deferred.await()
+        } finally {
+            if (activeSkillAnswer === deferred) activeSkillAnswer = null
+            _uiState.update { if (it.pendingActiveSkillPrompt === prompt) it.copy(pendingActiveSkillPrompt = null) else it }
+        }
+    }
+
+    fun answerActiveSkillPrompt(answer: ActiveSkillChatAnswer) {
+        activeSkillAnswer?.complete(answer)
+    }
+
     fun cancelChatGeneration() {
         if (!_uiState.value.isChatGenerating) return
         val now = System.currentTimeMillis()
@@ -1612,7 +1650,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     context = getApplication(),
                     projectId = activeProjectId,
                 )
-                val toolDefinitions = benchTools.definitions()
+                val conversationId = _uiState.value.nativeChat.activeConversationId
+                // Skills run only for the foreground, single-provider reply and never in incognito.
+                val skillTools = if (targetProvider != AiProvider.ALL && !_uiState.value.isActiveConversationIncognito) {
+                    NativeActiveSkillChatTools(getApplication(), localSkillStore, ask = { skill, stage ->
+                        askActiveSkillPrompt(conversationId, skill, stage)
+                    })
+                } else {
+                    null
+                }
+                val toolDefinitions = benchTools.definitions() + skillTools?.definitions().orEmpty()
 
                 executeNativeChatSend(
                     request = NativeChatSendRequest(
@@ -1627,7 +1674,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         conversationHistory = currentMessages,
                         allowSingleProviderSimulationFallback = targetProvider != AiProvider.ALL,
                         tools = toolDefinitions,
-                        executeTool = benchTools::execute,
+                        executeTool = { call ->
+                            if (skillTools?.handles(call.name) == true) skillTools.execute(call) else benchTools.execute(call)
+                        },
                     ),
                     aiChatService = aiChatService,
                     onTextDelta = { provider, model, delta ->
@@ -1640,11 +1689,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         )
                     },
                     onResponse = { generated ->
+                        val skillNotes = skillTools?.transcriptNotes.orEmpty()
                         finishStreamingMessage(
                             generationId,
                             "stream_${userMessage.id}_${generated.provider.id}",
                             generated.provider,
-                            generated.message,
+                            if (skillNotes.isEmpty()) {
+                                generated.message
+                            } else {
+                                generated.message.copy(activeProfileNotes = generated.message.activeProfileNotes + skillNotes)
+                            },
                         )
                     },
                 )
