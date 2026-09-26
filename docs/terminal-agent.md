@@ -8,15 +8,22 @@ A model response must be a structured tool call with command, arguments, working
 
 This belongs to Aistee's **native/API** path: existing `shared` provider/model selection, `AiChatService` transport, and the built-in tool registry can supply a typed agent loop. Account-backed WebViews do not expose a supported third-party tool-call contract or their provider credentials. Do not extract cookies or silently pass Aistee API keys into a shell or another agent CLI. A CLI such as Claude Code, Codex, or Gemini CLI would be a separately configured runtime with its own authentication and model inventory; choosing a model in Aistee does not automatically configure that CLI.
 
-## Execution choices
+## Runtime direction: built into Aistee
 
-| Route | What it delivers | Constraint |
+[Xed-Editor](https://github.com/Xed-Editor/Xed-Editor) demonstrates the target shape on Android: an in-app terminal backed by an app-managed Ubuntu root filesystem and PRoot, plus optional language servers started as processes. Its terminal API exposes separate visible sessions and background commands. The first Aistee prototype should likewise display live output and accept input **inside Aistee**, starting with a small Android shell and a real process/PTY bridge. Add a packaged or installed Linux userland only when actual agent CLI dependencies or developer tools require it. Xed is an architecture reference, not an SDK that Aistee can call across apps or source code to copy without reviewing its GPL-3.0 licensing and dependencies.
+
+| Component | First proof | Later capability |
 | --- | --- | --- |
-| **External Termux adapter (first device experiment)** | Opt-in command dispatch to a user-installed Termux via its documented `RUN_COMMAND` Intent, with exit code and bounded result returned to Aistee. | Android permission plus Termux `allow-external-apps=true` are required. The documented result arrives on completion; it is not a live, embedded terminal stream. Termux runs with its own permissions, so choosing a working directory does not confine commands to it. |
-| **Embedded terminal runtime (target for the full UI)** | Live output and input, session lifecycle and cancellation inside Aistee, with an app-controlled process and PTY/terminal renderer; optional packages and Linux userland can be evaluated after the basic session works. | Requires an Android runtime spike covering executable delivery, process/PTY management, foreground lifecycle, storage access, architecture support, packaging size, and isolation of Aistee's secrets. Bundling PRoot alone is not a security sandbox. |
-| **Artemis on a development host** | Device UI smoke tests and diagnostics via CLI/MCP on an ADB-connected phone or emulator. | Artemis runs on the host and drives Android; it is not an on-phone terminal agent runtime. |
+| Terminal UI and session manager | In-app terminal pane with live output, input, resize, Stop, exit status and bounded scrollback; close processes when sessions end. | Multiple persistent tabs, keyboard shortcuts and background session recovery. |
+| Android execution | Spawn a command with an argument array, explicit working directory and per-session limits; validate start/stop on the user's device. | PTY-backed interactive tools, process groups and robust Android foreground lifecycle. |
+| Linux userland | Evaluate only after the shell proof: reproducible rootfs install/update, ABI compatibility, footprint, executable loading and extraction integrity. | Git, language runtimes and independently configured agent CLIs; PRoot maps paths but does not isolate Aistee secrets. |
+| Language servers | Defer until there is an editable code workspace; decide whether diagnostics/completion are useful to the agent/editor. | Start LSP processes via stdio or socket per project, with install/update controls, resource limits and cleanup. |
+| Optional external Termux | A separate opt-in compatibility bridge for users who already manage a Termux environment. | Noninteractive `RUN_COMMAND` dispatch and a completion result; it cannot replace the in-app live terminal. |
+| Artemis | Run device UI smoke tests from a development host via ADB. | Test agent commands and terminal lifecycle on real devices. |
 
-Termux's `RUN_COMMAND` Intent accepts an executable path, arguments, optional stdin/workdir/background flag and a one-shot `PendingIntent` for the result (version-dependent). Its returned stdout/stderr can be truncated; a foreground transcript is returned at session end. Start with a noninteractive, single-command prototype and show an explicit "Open in Termux" handoff for interactive sessions. Do not promise real-time in-app streaming or reliable cancellation through this Intent. Android background launch and battery behavior require device testing. If the real-time experience is central, prioritize the embedded runtime spike before expanding the Termux bridge.
+Xed's published configuration binds a wide range of host paths into its Ubuntu guest, including `/data`. Aistee must design its own narrower data boundary and test what the actual process UID can read; neither a PRoot mapping nor a chosen working directory is a security boundary. Xed's extension terminal API is internal to Xed; integration into Aistee calls for an Aistee-owned runtime.
+
+The optional Termux `RUN_COMMAND` Intent needs its Android permission and `allow-external-apps=true`. It returns a bounded completion result via `PendingIntent`, not an in-app live stream, and Android background launch behavior needs device testing.
 
 ## Authority and data boundary
 
@@ -28,15 +35,17 @@ Termux's `RUN_COMMAND` Intent accepts an executable path, arguments, optional st
 
 ## Small implementation slices
 
-1. **Android feasibility:** on a real device, verify Termux discovery, permission onboarding, one noninteractive `RUN_COMMAND` call, result/error delivery, truncation and behavior when Termux is absent or stopped. Keep this behind an opt-in developer/experimental setting. No model-driven commands in this slice.
+1. **In-app shell proof:** add an experimental terminal pane and session controller; start a harmless native command, stream output while it runs, accept input, resize and Stop on a real device. Validate process termination and measure which private Aistee paths the process can reach. No model-driven commands in this slice.
 2. **Agent session:** add a typed terminal tool to the shared registry and provider-specific native tool adapters where tool calls are already verified. Show provider/model and command approval receipts; implement a bounded loop, Stop, and a persisted result summary. Keep this distinct from the existing async provider Jobs and from active imported skills.
-3. **Embedded feasibility:** prove live PTY output, interactive input, cancellation, background/foreground handling and isolation on supported Android versions/ABIs. Add a bundled userland only if the basic process runner and app size justify it. Static inspection of the supplied Mobile Harness APK found an arm64 runtime archive and PRoot library, but does not establish a secure or portable implementation.
-4. **Artemis testing:** from a development host, script the user journey (open Terminal agent, choose model/workspace, approve or reject a command, observe output, stop), collect screenshots/logcat, and assert UI states. Run on a connected test device or emulator when available; avoid installing a host Python/ADB/scrcpy stack in every docs or ordinary build job.
+3. **Linux/PTY expansion:** prove interactive PTY behavior, lifecycle and resource limits on supported Android versions/ABIs. If required for usable CLI agents, prototype reproducible rootfs installation and PRoot, measure APK/storage cost, and review license/dependency obligations. Static inspection of the supplied Mobile Harness APK found an arm64 runtime archive and PRoot library, but does not establish secure or portable behavior.
+4. **Editor/LSP and optional Termux:** add language servers only alongside actual code editing and diagnostics. Evaluate Termux dispatch only as a user-selected fallback; its result callback does not provide the main terminal UI.
+5. **Artemis testing:** from a development host, script the user journey (open Terminal agent, choose model/workspace, approve or reject a command, observe live output, stop), collect screenshots/logcat, and assert UI states. Run on a connected test device or emulator when available; avoid installing a host Python/ADB/scrcpy stack in every docs or ordinary build job.
 
 ## Sources and verification
 
 - [Google Artemis](https://github.com/google/artemis): host-side CLI/MCP, ADB-connected device workflow, and optional Android accessibility helper.
-- [Termux RUN_COMMAND Intent](https://github.com/termux/termux-app/wiki/RUN_COMMAND-Intent): permission/onboarding, command and result extras, output limits, and privacy implications.
+- [Xed terminal architecture](https://xed-editor.github.io/Xed-Docs/docs/terminal/advanced.html), [terminal process API](https://xed-editor.github.io/Xed-Docs/docs/extensions/general/terminal.html) and [LSP process connections](https://xed-editor.github.io/Xed-Docs/docs/extensions/general/lsp-server.html): reference for a built-in terminal, PRoot and optional editor tooling.
+- [Termux RUN_COMMAND Intent](https://github.com/termux/termux-app/wiki/RUN_COMMAND-Intent): optional external-app bridge and its completion-only result.
 - Existing Aistee boundaries: [provider runtime](provider-runtime.md), [product ideas](product-ideas.md), and the built-in tool capability registry.
 
-This is a design proposal, not a shipped feature. Termux integration and embedded execution require Android device validation before product promises.
+This is a design proposal, not a shipped feature. The in-app process/PTY experiment requires Android device validation before product promises.
