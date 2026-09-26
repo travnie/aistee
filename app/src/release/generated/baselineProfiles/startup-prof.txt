@@ -19823,3 +19823,16 @@ SPLais/tee/security/AppLockStore$Companion;-><init>(Lkotlin/jvm/internal/Default
 SPLais/tee/security/AppLockStore$Companion;->get(Landroid/content/Context;)Lais/tee/security/AppLockStore;
 Lais/tee/security/AppLock;
 SPLais/tee/security/AppLock;->isLockRequired(Landroid/content/Context;)Z
+HSPLais/tee/data/engine/NetworkAvailability$callback$1;-><init>(Lais/tee/data/engine/NetworkAvailability;)V
+HSPLais/tee/data/engine/NetworkAvailability$callback$1;->onCapabilitiesChanged(Landroid/net/Network;Landroid/net/NetworkCapabilities;)V
+HSPLais/tee/data/engine/NetworkAvailability;-><clinit>()V
+HSPLais/tee/data/engine/NetworkAvailability;-><init>(Landroid/content/Context;)V
+HSPLais/tee/data/engine/NetworkAvailability;->access$getMutableOnline$p(Lais/tee/data/engine/NetworkAvailability;)Lkotlinx/coroutines/flow/MutableStateFlow;
+HSPLais/tee/data/engine/NetworkAvailability;->access$hasInternet(Lais/tee/data/engine/NetworkAvailability;Landroid/net/NetworkCapabilities;)Z
+HSPLais/tee/data/engine/NetworkAvailability;->currentlyOnline()Z
+HSPLais/tee/data/engine/NetworkAvailability;->hasInternet(Landroid/net/NetworkCapabilities;)Z
+HSPLais/tee/data/engine/NetworkAvailability;->start()V
+HSPLais/tee/data/model/ModelChatMessage;-><init>(ILjava/lang/String;Ljava/lang/String;Lais/tee/data/model/AiProvider;Ljava/lang/String;Ljava/lang/String;JZZZZZLjava/lang/Long;Lais/tee/data/model/ProviderUsage;Ljava/util/List;Lkotlinx/serialization/internal/SerializationConstructorMarker;)V
+HSPLais/tee/data/model/ModelChatMessage;-><init>(Ljava/lang/String;Ljava/lang/String;Lais/tee/data/model/AiProvider;Ljava/lang/String;Ljava/lang/String;JZZZZZLjava/lang/Long;Lais/tee/data/model/ProviderUsage;Ljava/util/List;Ljava/lang/String;)V
+HSPLais/tee/data/model/ModelChatMessage;-><init>(Ljava/lang/String;Ljava/lang/String;Lais/tee/data/model/AiProvider;Ljava/lang/String;Ljava/lang/String;JZZZZZLjava/lang/Long;Lais/tee/data/model/ProviderUsage;Ljava/util/List;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+HSPLais/tee/data/model/ModelChatMessage;->isQueued()Z
