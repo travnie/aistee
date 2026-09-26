@@ -2,56 +2,49 @@ package ais.tee
 
 import android.content.Context
 import android.content.Intent
-import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import android.os.SystemClock
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.notifications.nativeChatConversationShortcutId
+import ais.tee.ui.viewmodel.StudioUiState
 import ais.tee.ui.viewmodel.StudioViewModel
 import org.junit.After
-import org.junit.Rule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class NativeChatDirectShareTest {
-    @get:Rule
-    val composeRule = createAndroidComposeRule<MainActivity>()
-
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val createdConversationIds = mutableListOf<String>()
 
-    private val viewModel: StudioViewModel
-        get() = ViewModelProvider(composeRule.activity)[StudioViewModel::class.java]
-
     @After
     fun tearDown() {
-        composeRule.runOnIdle {
-            viewModel.dismissIncomingShare()
-            createdConversationIds.forEach(viewModel::deleteNativeConversation)
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            awaitState(scenario) { it.isNativeConversationStoreReady }
+            scenario.onActivity { activity ->
+                createdConversationIds.forEach(activity.studioViewModel()::deleteNativeConversation)
+            }
         }
     }
 
     @Test
     fun sendWithNativeChatShortcutStagesTextInThatConversationWithoutSending() {
-        val targetId = createConversation()
-        val otherId = createConversation()
-        composeRule.runOnIdle { assertEquals(otherId, viewModel.uiState.value.nativeChat.activeConversationId) }
+        val (targetId, otherId) = createConversations(2)
 
-        shareText("Shared note", nativeChatConversationShortcutId(targetId))
-
-        composeRule.waitUntil(10_000) {
-            val state = viewModel.uiState.value
-            state.nativeChat.activeConversationId == targetId &&
-                state.activeNativeConversation?.draft == "Shared note"
-        }
-        composeRule.runOnIdle {
-            val state = viewModel.uiState.value
+        ActivityScenario.launch<MainActivity>(shareIntent("Shared note", nativeChatConversationShortcutId(targetId))).use { scenario ->
+            val state = awaitState(scenario) {
+                it.nativeChat.activeConversationId == targetId && it.activeNativeConversation?.draft == "Shared note"
+            }
+            assertNotEquals(otherId, state.nativeChat.activeConversationId)
             assertFalse(state.isChatGenerating)
             assertEquals(null, state.incomingShare)
             assertFalse(state.activeNativeConversation!!.messages.any { it.sender == CHAT_ROLE_USER })
@@ -60,36 +53,53 @@ class NativeChatDirectShareTest {
 
     @Test
     fun unknownShortcutFallsBackToTheNormalShareFlow() {
-        val activeId = createConversation()
+        val (activeId) = createConversations(1)
 
-        shareText("Fallback note", "native-chat:unknown")
-
-        composeRule.waitUntil(10_000) { viewModel.uiState.value.incomingShare?.text == "Fallback note" }
-        composeRule.runOnIdle {
-            val state = viewModel.uiState.value
+        ActivityScenario.launch<MainActivity>(shareIntent("Fallback note", "native-chat:unknown")).use { scenario ->
+            val state = awaitState(scenario) { it.incomingShare?.text == "Fallback note" }
             assertEquals(activeId, state.nativeChat.activeConversationId)
             assertNotEquals("Fallback note", state.activeNativeConversation?.draft)
+            scenario.onActivity { it.studioViewModel().dismissIncomingShare() }
         }
     }
 
-    private fun createConversation(): String {
-        composeRule.waitUntil(10_000) { viewModel.uiState.value.isNativeConversationStoreReady }
-        var id = ""
-        composeRule.runOnIdle {
-            viewModel.newNativeConversation()
-            id = viewModel.uiState.value.nativeChat.activeConversationId
+    private fun createConversations(count: Int): List<String> =
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            awaitState(scenario) { it.isNativeConversationStoreReady }
+            List(count) {
+                var id = ""
+                scenario.onActivity { activity ->
+                    val viewModel = activity.studioViewModel()
+                    viewModel.newNativeConversation()
+                    id = viewModel.uiState.value.nativeChat.activeConversationId
+                }
+                createdConversationIds += id
+                id
+            }
         }
-        createdConversationIds += id
-        return id
-    }
 
-    private fun shareText(text: String, shortcutId: String?) {
-        val intent = Intent(Intent.ACTION_SEND)
+    private fun shareIntent(text: String, shortcutId: String?): Intent =
+        Intent(Intent.ACTION_SEND)
             .setClass(context, MainActivity::class.java)
             .setType("text/plain")
             .putExtra(Intent.EXTRA_TEXT, text)
             .putExtra(ShortcutManagerCompat.EXTRA_SHORTCUT_ID, shortcutId)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+
+    private fun awaitState(
+        scenario: ActivityScenario<MainActivity>,
+        condition: (StudioUiState) -> Boolean,
+    ): StudioUiState {
+        val deadline = SystemClock.uptimeMillis() + 10_000
+        while (true) {
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            var state: StudioUiState? = null
+            scenario.onActivity { state = it.studioViewModel().uiState.value }
+            if (condition(state!!)) return state!!
+            assertTrue("Timed out waiting for native chat state", SystemClock.uptimeMillis() < deadline)
+            SystemClock.sleep(50)
+        }
     }
+
+    private fun MainActivity.studioViewModel(): StudioViewModel =
+        ViewModelProvider(this)[StudioViewModel::class.java]
 }
