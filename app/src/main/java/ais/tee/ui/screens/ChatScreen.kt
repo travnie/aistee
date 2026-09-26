@@ -1,6 +1,7 @@
 package ais.tee.ui.screens
 
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -59,6 +60,7 @@ import androidx.core.content.ContextCompat
 import ais.tee.share.copyPlainTextToClipboard
 import ais.tee.R
 import ais.tee.data.document.MarkdownDocumentFileAccess
+import ais.tee.data.document.MarkdownTable
 import ais.tee.data.document.MarkdownWorkspaceRecoveryStore
 import ais.tee.data.model.AiProvider
 import ais.tee.data.model.CHAT_ROLE_USER
@@ -283,6 +285,27 @@ private fun NativeChatDetailPane(
             viewModel.consumeProjectLibraryRequest(projectLibraryRequestId)
         }
     }
+    var viewingTable by remember { mutableStateOf<MarkdownTable?>(null) }
+    var pendingCsvExport by remember { mutableStateOf<String?>(null) }
+
+    val csvExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        val csv = pendingCsvExport
+        pendingCsvExport = null
+        if (uri != null && csv != null) {
+            scope.launch {
+                val exported = runCatching {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri, "wt")?.use { output ->
+                            output.write(csv.encodeToByteArray())
+                        } != null
+                    }
+                }.getOrDefault(false)
+                viewModel.showSnackbar(if (exported) "Exported table as CSV." else "Could not export CSV.")
+            }
+        }
+    }
 
     val chatMarkdownImportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -462,6 +485,38 @@ private fun NativeChatDetailPane(
                 }
             },
             onDismiss = { showProjectLibrary = false },
+        )
+    }
+
+    viewingTable?.let { table ->
+        MarkdownTableScreen(
+            table = table,
+            title = "Table",
+            onDismiss = { viewingTable = null },
+            onCopyCsv = { csv ->
+                copyPlainTextToClipboard(
+                    context = context,
+                    label = "AI table CSV",
+                    text = csv,
+                    sensitive = true,
+                )
+                viewModel.showSnackbar("Copied table as CSV")
+            },
+            onExportCsv = { csv ->
+                pendingCsvExport = csv
+                try {
+                    csvExportLauncher.launch(MARKDOWN_TABLE_CSV_EXPORT_NAME)
+                } catch (_: ActivityNotFoundException) {
+                    pendingCsvExport = null
+                    viewModel.showSnackbar("No document picker is available.")
+                }
+            },
+            onSaveToLibrary = { csv ->
+                scope.launch {
+                    val saved = viewModel.saveTableCsvToProjectLibrary(csv)
+                    viewModel.showSnackbar(if (saved != null) "Saved table to Library." else "Could not save table to Library.")
+                }
+            },
         )
     }
 
@@ -1083,7 +1138,8 @@ private fun NativeChatDetailPane(
                                 allowDiscardDirty = false
                             )
                         },
-                        onRetryPrompt = { prompt -> viewModel.sendChatMessage(prompt) }
+                        onRetryPrompt = { prompt -> viewModel.sendChatMessage(prompt) },
+                        onViewTable = { table -> viewingTable = table }
                     )
                 }
 
@@ -1313,9 +1369,14 @@ fun ChatMessageItem(
     canOpenMarkdown: Boolean,
     onCopyText: (String) -> Unit,
     onOpenMarkdown: (ModelChatMessage) -> Unit,
-    onRetryPrompt: (String) -> Unit
+    onRetryPrompt: (String) -> Unit,
+    onViewTable: (MarkdownTable) -> Unit = {}
 ) {
     val isUser = message.sender == "user"
+    val tables = remember(message.id, message.text, message.isPartial, message.isError) {
+        markdownTablesForMessageActions(message)
+    }
+    var showTableMenu by remember { mutableStateOf(false) }
     val provider = message.provider ?: AiProvider.GEMINI
     val providerColor = getProviderColor(provider)
 
@@ -1468,6 +1529,37 @@ fun ChatMessageItem(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
                     ) {
+                        if (tables.isNotEmpty()) {
+                            Box {
+                                IconButton(
+                                    onClick = {
+                                        if (tables.size == 1) onViewTable(tables.single()) else showTableMenu = true
+                                    },
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .testTag("btn_view_table_${message.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.TableChart,
+                                        contentDescription = markdownTableActionLabel(tables.first(), 0, tables.size)
+                                            .takeIf { tables.size == 1 } ?: "View tables",
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                                DropdownMenu(expanded = showTableMenu, onDismissRequest = { showTableMenu = false }) {
+                                    tables.forEachIndexed { index, table ->
+                                        DropdownMenuItem(
+                                            text = { Text(markdownTableActionLabel(table, index, tables.size)) },
+                                            onClick = {
+                                                showTableMenu = false
+                                                onViewTable(table)
+                                            },
+                                            modifier = Modifier.testTag("btn_view_table_${message.id}_$index")
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         IconButton(
                             onClick = { onOpenMarkdown(message) },
                             enabled = canOpenMarkdown,
