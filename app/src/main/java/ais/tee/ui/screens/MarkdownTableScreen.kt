@@ -188,7 +188,7 @@ fun MarkdownTableScreen(
 }
 
 @Composable
-private fun MarkdownTableRow(
+internal fun MarkdownTableRow(
     cells: List<String>,
     widths: List<Dp>,
     alignments: List<MarkdownTableAlignment>,
