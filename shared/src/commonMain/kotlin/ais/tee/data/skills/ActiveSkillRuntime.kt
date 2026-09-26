@@ -95,7 +95,10 @@ fun activeSkillDeclaration(manifest: AgentSkillManifest): ActiveSkillDeclaration
 private fun String?.words(): List<String> =
     this?.split(Regex("\\s+"))?.filter(String::isNotEmpty).orEmpty()
 
-private val blockedHostSuffixes = listOf(".local", ".localhost", ".internal", ".invalid", ".test", ".home.arpa", ".onion")
+/** Special-use and private names (RFC 6761, 6762, 7686, 8375, 9476 and ICANN's `.internal`). */
+private val blockedHostSuffixes = listOf(
+    ".local", ".localhost", ".internal", ".invalid", ".test", ".example", ".arpa", ".onion", ".alt",
+)
 private val hostLabel = Regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
 
 /**

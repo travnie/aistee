@@ -157,6 +157,11 @@ internal class ActiveSkillWebViewRunner(
         }
     }
 
+    /**
+     * Script that calls `window.aistee_skill_run` once with [requestJson] and posts exactly one
+     * `{callId, output}` or `{callId, error}` message tagged with the one-use [callId]; a Promise
+     * result is awaited in the page, not by `evaluateJavascript`.
+     */
     private fun startScript(callId: String, requestJson: String): String {
         // requestJson comes from activeSkillRequestJson, so it is a valid JS object literal.
         return """(() => {

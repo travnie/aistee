@@ -76,6 +76,9 @@ class ActiveSkillRuntimeTest {
             "https://example.com/path",
             "https://example.com:0",
             "https://1.2.3.4",
+            "https://api.example",
+            "https://nas.home.arpa",
+            "https://x.alt",
         ).forEach { assertNull(normalizeActiveSkillNetworkOrigin(it), it) }
 
         val tooMany = activeSkillDeclaration(
