@@ -7,11 +7,16 @@ import ais.tee.data.engine.AiChatService
 import ais.tee.data.engine.InstructionRenderer
 import ais.tee.data.engine.NativeBenchChatTools
 import ais.tee.data.engine.NativeChatSendRequest
+import ais.tee.data.engine.OpenAiBackgroundJobWork
+import ais.tee.data.engine.cancelOpenAiBackgroundJob
+import ais.tee.data.engine.refreshOpenAiBackgroundJob
+import ais.tee.data.engine.persistOpenAiBackgroundSnapshot
 import ais.tee.data.engine.executeNativeChatSend
 import ais.tee.data.engine.ProfileMerger
 import ais.tee.data.engine.ValidationResult
 import ais.tee.data.engine.YamlParser
 import ais.tee.data.model.*
+import ais.tee.data.preferences.AsyncProviderJobStore
 import ais.tee.data.preferences.NativeChatStore
 import ais.tee.data.preferences.NativeChatWriter
 import ais.tee.data.preferences.ProjectLibraryStore
@@ -117,6 +122,7 @@ private data class NativeChatPromptContext(
 
 private const val STREAMING_UI_FLUSH_INTERVAL_MS = 50L
 private const val NATIVE_CHAT_DRAFT_PERSIST_DELAY_MS = 300L
+private const val MAX_BACKGROUND_JOB_PROMPT_CHARS = 128 * 1024
 
 data class StudioUiState(
     val baseProfile: Profile = PresetProfiles.DefaultBaseProfile,
@@ -151,6 +157,8 @@ data class StudioUiState(
     val refreshingGatewayCatalogs: Set<AiProvider> = emptySet(),
     val projectLibrary: ProjectLibraryArchive = ProjectLibraryArchive(),
     val isProjectLibraryReady: Boolean = false,
+    val asyncProviderJobs: AsyncProviderJobArchive = AsyncProviderJobArchive(),
+    val isAsyncProviderJobStoreReady: Boolean = false,
     /** In-memory only conversation; never persisted, notified, exported or saved to the Library. */
     val incognitoConversationId: String? = null,
     /** Send held back because the chat context does not fit the model; cleared on send or dismiss. */
@@ -200,6 +208,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private var nativePersistenceBase: NativeChatArchive? = null
     private val nativeChatStore = NativeChatStore(application.noBackupFilesDir)
     private val projectLibraryStore = ProjectLibraryStore(application.noBackupFilesDir)
+    private val asyncProviderJobStore = AsyncProviderJobStore(application.noBackupFilesDir)
     private val nativeChatWriter = NativeChatWriter.getInstance(nativeChatStore) { archive ->
         NativeChatWidgetUpdater.onArchiveSaved(application.applicationContext, archive)
     }
@@ -252,6 +261,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         initPlaygroundWelcome()
         initProjectLibrary()
+        initAsyncProviderJobs()
         networkAvailability.start()
         initNativeChatPersistence()
         startStudioPersistence(useFallbackPersistence)
@@ -269,6 +279,41 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private suspend fun reloadProjectLibraryFromDisk() {
         val archive = withContext(Dispatchers.IO) { projectLibraryStore.load() }
         _uiState.update { it.copy(projectLibrary = archive, isProjectLibraryReady = true) }
+    }
+
+    private fun initAsyncProviderJobs() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val archive = asyncProviderJobStore.load()
+            _uiState.update {
+                it.copy(asyncProviderJobs = archive, isAsyncProviderJobStoreReady = true)
+            }
+            archive.jobs
+                .filter { job ->
+                    !job.state.isTerminal ||
+                        (job.state == AsyncProviderJobState.SUCCEEDED && job.resultAssetId == null)
+                }
+                .forEach { job ->
+                    if (job.provider == AiProvider.CHATGPT &&
+                        job.kind == AsyncProviderJobKind.BACKGROUND_RESPONSE
+                    ) {
+                        OpenAiBackgroundJobWork.enqueue(getApplication(), job.id)
+                    }
+                }
+        }
+    }
+
+    private suspend fun reloadAsyncProviderJobsFromDisk() {
+        val archive = withContext(Dispatchers.IO) { asyncProviderJobStore.load() }
+        _uiState.update {
+            it.copy(asyncProviderJobs = archive, isAsyncProviderJobStoreReady = true)
+        }
+    }
+
+    fun refreshAsyncProviderJobsFromDisk() {
+        viewModelScope.launch {
+            reloadAsyncProviderJobsFromDisk()
+            reloadProjectLibraryFromDisk()
+        }
     }
 
     private fun initPlaygroundWelcome() {
@@ -928,6 +973,155 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     suspend fun loadProjectLibraryAsset(assetId: String): String? =
         withContext(Dispatchers.IO) { projectLibraryStore.loadTextAsset(assetId)?.text }
+
+    fun startOpenAiBackgroundJob(
+        prompt: String,
+        model: String,
+        projectId: String,
+    ) {
+        val trimmedPrompt = prompt.trim()
+        val resolvedModel = model.trim()
+        val state = _uiState.value
+        when {
+            trimmedPrompt.isEmpty() -> {
+                showSnackbar("Enter a prompt for the background job.")
+                return
+            }
+            trimmedPrompt.length > MAX_BACKGROUND_JOB_PROMPT_CHARS -> {
+                showSnackbar("Background prompt is too large.")
+                return
+            }
+            resolvedModel.isEmpty() -> {
+                showSnackbar("Choose an OpenAI model.")
+                return
+            }
+            state.apiKeyConfig.openAiKey.isBlank() -> {
+                showSnackbar("Add an OpenAI API key before starting a background job.")
+                return
+            }
+            state.projectLibrary.projects.none { it.id == projectId } -> {
+                showSnackbar("Choose a valid Project Library destination.")
+                return
+            }
+        }
+
+        viewModelScope.launch {
+            try {
+                val snapshot = withContext(Dispatchers.IO) {
+                    aiChatService.createOpenAiBackgroundResponse(
+                        prompt = trimmedPrompt,
+                        model = resolvedModel,
+                        apiKey = state.apiKeyConfig.openAiKey,
+                    )
+                }
+                val now = System.currentTimeMillis()
+                val job = AsyncProviderJob(
+                    id = UUID.randomUUID().toString(),
+                    provider = AiProvider.CHATGPT,
+                    kind = AsyncProviderJobKind.BACKGROUND_RESPONSE,
+                    remoteId = snapshot.remoteId,
+                    model = snapshot.model.ifBlank { resolvedModel },
+                    projectId = projectId,
+                    state = snapshot.state,
+                    createdAtEpochMs = now,
+                    updatedAtEpochMs = now,
+                    errorMessage = snapshot.errorMessage,
+                )
+                val stored = withContext(Dispatchers.IO) {
+                    asyncProviderJobStore.upsert(job)
+                }
+                if (stored == null) {
+                    val remoteCancelled = try {
+                        withContext(Dispatchers.IO) {
+                            aiChatService.cancelOpenAiBackgroundResponse(
+                                responseId = snapshot.remoteId,
+                                apiKey = state.apiKeyConfig.openAiKey,
+                            )
+                        }
+                        true
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        false
+                    }
+                    showSnackbar(
+                        if (remoteCancelled) {
+                            "Could not save the background job. The remote response was cancelled."
+                        } else {
+                            "Could not save the background job. The remote response may still run."
+                        }
+                    )
+                    return@launch
+                }
+                val current = withContext(Dispatchers.IO) {
+                    persistOpenAiBackgroundSnapshot(
+                        context = getApplication(),
+                        job = stored,
+                        snapshot = snapshot,
+                    ).job
+                }
+                reloadAsyncProviderJobsFromDisk()
+                reloadProjectLibraryFromDisk()
+                if (
+                    !current.state.isTerminal ||
+                    (current.state == AsyncProviderJobState.SUCCEEDED && current.resultAssetId == null)
+                ) {
+                    OpenAiBackgroundJobWork.enqueue(getApplication(), current.id)
+                }
+                showSnackbar("OpenAI background job started.")
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                showSnackbar(error.localizedMessage ?: "Could not start OpenAI background job.")
+            }
+        }
+    }
+
+    fun refreshAsyncProviderJob(jobId: String) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    refreshOpenAiBackgroundJob(getApplication(), jobId, aiChatService)
+                }
+                reloadAsyncProviderJobsFromDisk()
+                reloadProjectLibraryFromDisk()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                showSnackbar(error.localizedMessage ?: "Could not refresh background job.")
+            }
+        }
+    }
+
+    fun cancelAsyncProviderJob(jobId: String) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    cancelOpenAiBackgroundJob(getApplication(), jobId, aiChatService)
+                }
+                reloadAsyncProviderJobsFromDisk()
+                reloadProjectLibraryFromDisk()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                showSnackbar(error.localizedMessage ?: "Could not cancel background job.")
+            }
+        }
+    }
+
+    fun deleteAsyncProviderJob(jobId: String) {
+        viewModelScope.launch {
+            OpenAiBackgroundJobWork.cancel(getApplication(), jobId)
+            val deleted = withContext(Dispatchers.IO) {
+                asyncProviderJobStore.delete(jobId)
+            }
+            if (deleted) {
+                reloadAsyncProviderJobsFromDisk()
+            } else {
+                showSnackbar("Could not remove local background job record.")
+            }
+        }
+    }
 
     suspend fun deleteProjectLibraryAsset(assetId: String): Boolean {
         val deleted = withContext(Dispatchers.IO) {
