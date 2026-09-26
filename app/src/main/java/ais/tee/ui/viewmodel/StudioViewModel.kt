@@ -37,6 +37,7 @@ import androidx.work.WorkManager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import ais.tee.notifications.NativeChatConversationShortcuts
+import ais.tee.notifications.nativeChatConversationIdForShortcut
 import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.widget.NativeChatWidgetUpdater
 import kotlinx.coroutines.Dispatchers
@@ -202,6 +203,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val pendingNativeConversationId = AtomicReference<String?>(null)
     private val networkAvailability = NetworkAvailability(application)
     private var queuedSendObserver: Job? = null
+    private val pendingNativeChatShare = AtomicReference<PendingNativeChatShare?>(null)
     val uiState: StateFlow<StudioUiState> = _uiState.asStateFlow()
 
     init {
@@ -324,6 +326,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
             applyPendingNativeConversationTarget()
+            applyPendingNativeChatShare()
         }
     }
 
@@ -340,6 +343,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         applyPendingNativeConversationTarget()
+        applyPendingNativeChatShare()
     }
 
     fun selectTab(tab: NavigationTab) {
@@ -399,6 +403,59 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 .map { infos -> infos.filter { it.state.isFinished }.map { it.id }.toSet() }
                 .distinctUntilChanged()
                 .collect { refreshNativeChatFromPersistence() }
+        }
+    }
+
+    /**
+     * Stages Direct Share text in the chosen native conversation's composer (never sends it). A
+     * shortcut that no longer matches a conversation, or a share without text, falls back to the
+     * normal share flow.
+     */
+    fun receiveNativeChatShare(shortcutId: String, payload: IncomingSharePayload) {
+        pendingNativeChatShare.set(PendingNativeChatShare(shortcutId, payload))
+        applyPendingNativeChatShare()
+    }
+
+    private fun applyPendingNativeChatShare() {
+        val state = _uiState.value
+        if (!state.isNativeConversationStoreReady) return
+        val pending = pendingNativeChatShare.getAndSet(null) ?: return
+        val text = pending.payload.text
+        val conversationId = nativeChatConversationIdForShortcut(
+            shortcutId = pending.shortcutId,
+            conversationIds = state.nativeChat.conversations.map { it.id },
+        )
+        if (conversationId == null || text == null) {
+            receiveIncomingShare(pending.payload)
+            return
+        }
+        openNativeConversation(conversationId)
+        _uiState.update { current ->
+            current.copy(
+                nativeChat = current.nativeChat.copy(
+                    conversations = current.nativeChat.conversations.map { conversation ->
+                        if (conversation.id == conversationId) {
+                            conversation.copy(draft = stageSharedTextInDraft(conversation.draft, text))
+                        } else {
+                            conversation
+                        }
+                    }
+                )
+            )
+        }
+        persistNativeChat()
+        if (pending.payload.uriStrings.isNotEmpty()) {
+            showSnackbar("Added the shared text. Native chats do not take attachments yet.")
+        }
+    }
+
+    private fun publishNativeConversationShortcut(conversationId: String) {
+        val conversation = _uiState.value.nativeChat.conversations.firstOrNull { it.id == conversationId } ?: return
+        if (conversation.messages.none { it.sender == CHAT_ROLE_USER }) return
+        val title = conversation.title
+        val application = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            NativeChatConversationShortcuts.publish(application, conversationId, title)
         }
     }
 
@@ -875,6 +932,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             current.copy(nativeChat = current.nativeChat.copy(activeConversationId = conversationId))
         }
         persistNativeChat()
+        publishNativeConversationShortcut(conversationId)
     }
 
     fun deleteNativeConversation(conversationId: String) {
@@ -1296,6 +1354,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     )
                 }
                 persistNativeChat()
+                _uiState.value.nativeChat.activeConversationId.let(::publishNativeConversationShortcut)
                 val currentMessages = _uiState.value.chatMessages
                 val activeProjectId = _uiState.value.activeNativeConversation?.projectId
                     ?: DEFAULT_PROJECT_ID
@@ -1688,3 +1747,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
 private fun stageSharedTextInDraftForEdit(draft: String, text: String): String =
     if (draft.isBlank()) text else text + "\n\n" + draft.trimStart()
+
+private data class PendingNativeChatShare(
+    val shortcutId: String,
+    val payload: IncomingSharePayload,
+)
+
+internal fun stageSharedTextInDraft(draft: String, sharedText: String): String =
+    if (draft.isBlank()) sharedText else draft.trimEnd() + "\n\n" + sharedText

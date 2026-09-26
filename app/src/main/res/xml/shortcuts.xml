@@ -11,6 +11,10 @@
                 android:required="true" />
         </intent>
     </capability>
+    <share-target android:targetClass="ais.tee.MainActivity">
+        <data android:mimeType="text/*" />
+        <category android:name="ais.tee.category.NATIVE_CHAT_SHARE_TARGET" />
+    </share-target>
     <shortcut
         android:shortcutId="web_ai"
         android:enabled="true"
