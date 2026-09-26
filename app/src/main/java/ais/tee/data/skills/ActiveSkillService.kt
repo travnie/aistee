@@ -17,6 +17,8 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 internal const val MSG_RUN_SKILL = 1
 internal const val MSG_SKILL_RESULT = 2
@@ -87,7 +89,11 @@ class ActiveSkillService : Service() {
         if (bundle.digest != activeSkillBundleDigest(files)) {
             return ActiveSkillHostMessage.Failed("The skill files changed. Review and trust the skill again.")
         }
-        val request = data.getString(KEY_REQUEST) ?: return ActiveSkillHostMessage.Failed("The request is missing.")
+        // Re-serialized from a parsed object, so only a JSON object literal reaches the start script.
+        val request = data.getString(KEY_REQUEST)
+            ?.let { runCatching { Json.parseToJsonElement(it) as? JsonObject }.getOrNull() }
+            ?.toString()
+            ?: return ActiveSkillHostMessage.Failed("The request is not a JSON object.")
         val timeoutMs = data.getLong(KEY_TIMEOUT_MS, ACTIVE_SKILL_TIMEOUT_MS).coerceIn(1L, ACTIVE_SKILL_TIMEOUT_MS)
         return ActiveSkillWebViewRunner(this, timeoutMs).run(bundle, request)
     }
