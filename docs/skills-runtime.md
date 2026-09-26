@@ -21,10 +21,11 @@ Reference: the AI Edge Gallery pattern recorded in `product-ideas.md` (hidden We
 
 - One hidden `WebView` per call, created on demand and destroyed after the result or a timeout (default 10 s). No reuse across skills or calls.
 - Content is served through `WebViewAssetLoader` at the reserved `https://appassets.androidplatform.net/skills/<skill-digest>/`, never `file://`. URL paths do **not** make separate origins. The path handler serves only the current skill digest, with DOM storage disabled and no reuse of the WebView between calls. Do not claim per-skill origin or cookie isolation from a path.
+- Cookies: all skills share the `appassets` origin, and disabling DOM storage does not disable cookies. A document-start script makes `document.cookie` read empty and ignore writes, asset responses never carry `Set-Cookie`, and the host expires any cookie stored for the skill URL before and after each call, so no state survives between calls or skills.
 - Settings: JavaScript on (required), DOM storage off; `addJavascriptInterface` **never** used; no file or content access; no geolocation, camera, microphone or notifications; no popups or new windows; Safe Browsing on; mixed content blocked.
 - Network is **off in v1**, including redirects, service workers, WebSockets and navigation; the asset handler serves only the current bundle and denies all other resources. Do not rely on `shouldInterceptRequest` alone for every network channel: prove the block with device tests before execution can be enabled.
 - Future network skills require a separately reviewed process/data-directory boundary (for example a dedicated WebView process with its own `setDataDirectorySuffix` before WebView initialization), explicit origin consent and verified cookie isolation from account-backed WebViews. `aistee-network` metadata remains inert in v1 and never grants access by itself.
-- Navigation away from the virtual origin is cancelled. Renderer crash or OOM ends the call with an error result; it must not affect chat WebViews (separate renderer priority, never counted in the chat WebView LRU).
+- Navigation away from the virtual origin is cancelled. Renderer crash or OOM ends the call with an error result. The skill WebView is never counted in the chat WebView LRU, but WebViews in one app process can share a renderer, so a skill crash may also end chat renderers; those recover through their own render-process-gone handling. Guaranteed isolation needs a separate Android process with its own WebView data directory, which is a later, separately reviewed step.
 
 ## Entry point: JSON in / JSON out
 
@@ -60,7 +61,7 @@ Both the user and the model:
 ## Flag, rollout and tests
 
 - `activeSkillsEnabled` is off by default and not in backup. With the flag off, active skills import and preview exactly like v1 and never execute.
-- Required tests before enabling: sandbox settings snapshot (no `addJavascriptInterface`, no DOM/file access), network denial across fetch/redirect/service-worker/WebSocket paths, same-origin path isolation between two bundles, asynchronous Promise success and timeout, rejection of wrong-origin/frame/call-ID messages, oversized-output handling, digest change clears trust, undeclared tool denied, per-call consent and WebView disposal.
+- Required tests before enabling: sandbox settings snapshot (no `addJavascriptInterface`, no DOM/file access), network denial across fetch/redirect/service-worker/WebSocket paths and main-frame/subframe navigation, no cookie state across calls or skills, same-origin path isolation between two bundles, asynchronous Promise success and timeout, rejection of wrong-origin/frame/call-ID messages, oversized-output handling, digest change clears trust, undeclared tool denied, per-call consent and WebView disposal.
 
 ## Review decisions
 
