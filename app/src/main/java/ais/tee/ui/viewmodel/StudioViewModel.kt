@@ -1394,6 +1394,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (provider == AiProvider.ALL) return null
         val window = knownChatContextWindowTokens(provider, state.selectedChatModel) ?: return null
         val messages = state.chatMessages
+        val model = state.selectedChatModel
         return withContext(Dispatchers.Default) {
             // Same bounded, provider-scoped turns the request replays, minus the new prompt.
             val history = buildBoundedProviderTextTurns(
@@ -1401,6 +1402,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 conversationHistory = messages,
                 provider = provider,
                 systemInstruction = systemPrompt,
+                // Replay state from another model is not sent, as in the provider adapters.
+                replayStateModelName = model,
             ).dropLast(1).map { turn ->
                 // Claude replays opaque blocks (thinking, tool use) instead of the visible text.
                 listOfNotNull(turn.text, turn.providerReplayState).maxBy { it.length }
@@ -1417,11 +1420,19 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /** Sets the pending warning and returns true when [prompt] must not be sent yet. */
-    private suspend fun holdForContextWarning(prompt: String, systemPrompt: String?): Boolean {
-        val state = _uiState.value
+    /**
+     * Returns true when [prompt] must not be sent yet. The check uses [origin], the state at the
+     * tap; the warning is only shown while that chat and model are still selected.
+     */
+    private suspend fun holdForContextWarning(
+        prompt: String,
+        systemPrompt: String?,
+        origin: StudioUiState = _uiState.value,
+    ): Boolean {
+        val state = origin
         val conversationId = state.nativeChat.activeConversationId
         val warning = nativeChatContextWarning(state, prompt, systemPrompt) ?: return false
+        if (!isSameChatTarget(state, _uiState.value)) return true
         _uiState.update {
             it.copy(
                 pendingChatContextWarning = PendingChatContextWarning(
@@ -1435,6 +1446,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         return true
     }
+
+    private fun isSameChatTarget(a: StudioUiState, b: StudioUiState): Boolean =
+        a.nativeChat.activeConversationId == b.nativeChat.activeConversationId &&
+            a.selectedChatProvider == b.selectedChatProvider &&
+            a.selectedChatModel == b.selectedChatModel
 
     private suspend fun prepareNativeChatPromptContext(state: StudioUiState): NativeChatPromptContext? {
         val profileSystemPrompt = if (state.includeSystemProfileInChat) {
@@ -1518,10 +1534,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             if (!offlineContextCheckInFlight.compareAndSet(false, true)) return false
             viewModelScope.launch {
                 try {
-                    val promptContext = prepareNativeChatPromptContext(_uiState.value) ?: return@launch
-                    if (holdForContextWarning(trimmed, promptContext.systemPrompt)) return@launch
-                    val current = _uiState.value.activeNativeConversation
-                    if (current?.id == activeConversation.id) queueNativeChatSend(current, trimmed)
+                    val promptContext = prepareNativeChatPromptContext(initialState) ?: return@launch
+                    if (holdForContextWarning(trimmed, promptContext.systemPrompt, initialState)) return@launch
+                    // Dropped if the user moved to another chat or model while it was counted.
+                    if (!isSameChatTarget(initialState, _uiState.value)) return@launch
+                    val current = _uiState.value.activeNativeConversation ?: return@launch
+                    if (queueNativeChatSend(current, trimmed)) {
+                        _uiState.update { it.copy(pendingChatContextWarning = null) }
+                    }
                 } finally {
                     offlineContextCheckInFlight.set(false)
                 }
