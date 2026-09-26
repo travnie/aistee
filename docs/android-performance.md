@@ -5,6 +5,7 @@ Aistee keeps Android performance tests in the `:benchmark` module.
 - `BaselineProfileGenerator` captures startup plus the account-backed Web provider-switch journey.
 - `StartupBenchmark` measures cold and warm startup.
 - `ProviderSwitchBenchmark` measures frame timing for a warmed account-backed Web provider switch, with both provider WebViews prewarmed before each sample.
+- `NativeChatBenchmark` measures native list-detail round trips and long-conversation scrolling. The long-chat fixture is imported as canonical local Aistee Markdown, so benchmark setup never calls provider APIs or consumes stored API keys.
 - GitHub CI runs Macrobenchmark in dry-run mode only to verify that release/profileable journeys stay executable.
 - Treat performance numbers from CI emulators as non-authoritative; compare real metrics on a physical device using the benchmark release variant.
 
