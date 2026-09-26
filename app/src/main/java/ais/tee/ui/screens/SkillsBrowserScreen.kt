@@ -25,7 +25,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import ais.tee.share.copyPlainTextToClipboard
 import ais.tee.data.document.MarkdownDocumentFileAccess
 import ais.tee.data.repository.SkillsAndDocsRepository
+import ais.tee.data.preferences.ActiveSkillsPreferencesStore
 import ais.tee.data.skills.LocalSkillAlreadyExistsException
+import ais.tee.data.skills.readSkillArchive
 import ais.tee.data.skills.LocalSkillLibraryStore
 import ais.tee.ui.theme.*
 import ais.tee.ui.viewmodel.ExternalMarkdownOpenResult
@@ -36,12 +38,15 @@ import ais.tee.ui.viewmodel.StudioViewModel
 import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val SKILL_IMPORT_MIME_TYPES = arrayOf(
     "text/markdown",
     "text/plain",
-    "application/octet-stream"
+    "application/octet-stream",
+    "application/zip"
 )
 
 private fun skillPreviewReadErrorMessage(detail: String?): String =
@@ -72,6 +77,8 @@ fun SkillsBrowserScreen(
     var skillImportSaving by remember { mutableStateOf(false) }
     var localSkillCount by remember { mutableIntStateOf(0) }
     var localSkillsRefreshToken by remember { mutableIntStateOf(0) }
+    val activeSkillsPreferences = remember(context) { ActiveSkillsPreferencesStore(context) }
+    var activeSkillsEnabled by remember { mutableStateOf(activeSkillsPreferences.isEnabled()) }
 
     fun openLocalSkillEditor(
         name: String,
@@ -107,12 +114,28 @@ fun SkillsBrowserScreen(
                 skillImportLoading = true
                 try {
                     val previewResult = runCatching {
-                        val opened = MarkdownDocumentFileAccess.import(context, uri)
-                        buildSkillImportPreview(
-                            displayName = opened.displayName,
-                            source = opened.document.text,
-                            validateFilename = opened.hasProviderDisplayName
-                        )
+                        if (isZipDocument(context, uri)) {
+                            if (!activeSkillsEnabled) {
+                                throw IOException("Turn on active skills to import skill archives (.zip).")
+                            }
+                            val archive = withContext(Dispatchers.IO) {
+                                context.contentResolver.openInputStream(uri)?.use(::readSkillArchive)
+                                    ?: throw IOException("Could not open the selected file.")
+                            }
+                            buildSkillImportPreview(
+                                displayName = "SKILL.md",
+                                source = archive.source,
+                                validateFilename = false,
+                                archive = archive
+                            )
+                        } else {
+                            val opened = MarkdownDocumentFileAccess.import(context, uri)
+                            buildSkillImportPreview(
+                                displayName = opened.displayName,
+                                source = opened.document.text,
+                                validateFilename = opened.hasProviderDisplayName
+                            )
+                        }
                     }
                     previewResult.fold(
                         onSuccess = { skillImportPreview = it },
@@ -231,7 +254,12 @@ fun SkillsBrowserScreen(
                     item {
                         LocalSkillPreviewCard(
                             loading = skillImportLoading,
-                            onPreview = ::launchSkillPreview
+                            onPreview = ::launchSkillPreview,
+                            activeSkillsEnabled = activeSkillsEnabled,
+                            onActiveSkillsEnabledChange = { enabled ->
+                                activeSkillsPreferences.setEnabled(enabled)
+                                activeSkillsEnabled = enabled
+                            }
                         )
                     }
                     item {
@@ -549,7 +577,7 @@ fun SkillsBrowserScreen(
                 scope.launch {
                     skillImportSaving = true
                     try {
-                        val saved = localSkillStore.add(preview.source)
+                        val saved = localSkillStore.add(preview.source, scripts = preview.archive?.scripts)
                         localSkillsRefreshToken += 1
                         skillImportPreview = null
                         viewModel.showSnackbar("Saved '${saved.name}' to local skills.")
@@ -575,7 +603,11 @@ fun SkillsBrowserScreen(
                 scope.launch {
                     skillImportSaving = true
                     try {
-                        val saved = localSkillStore.add(preview.source, replaceExisting = true)
+                        val saved = localSkillStore.add(
+                            preview.source,
+                            replaceExisting = true,
+                            scripts = preview.archive?.scripts
+                        )
                         localSkillsRefreshToken += 1
                         pendingSkillReplacement = null
                         viewModel.showSnackbar("Replaced '${saved.name}' in local skills.")
@@ -599,7 +631,9 @@ fun SkillsBrowserScreen(
 @Composable
 private fun LocalSkillPreviewCard(
     loading: Boolean,
-    onPreview: () -> Unit
+    onPreview: () -> Unit,
+    activeSkillsEnabled: Boolean,
+    onActiveSkillsEnabledChange: (Boolean) -> Unit
 ) {
     Card(
         shape = MaterialTheme.shapes.medium,
@@ -642,11 +676,38 @@ private fun LocalSkillPreviewCard(
                     Icon(Icons.Default.FolderOpen, contentDescription = null, Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(8.dp))
-                Text(if (loading) "Reading…" else "Choose SKILL.md")
+                Text(if (loading) "Reading…" else if (activeSkillsEnabled) "Choose SKILL.md or .zip" else "Choose SKILL.md")
+            }
+            HorizontalDivider()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Active skills (experimental)", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        text = "Off by default. Allows importing skill folders (.zip) with scripts/. Scripts still never run until a later step lets you trust a skill.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = activeSkillsEnabled,
+                    onCheckedChange = onActiveSkillsEnabledChange,
+                    modifier = Modifier.testTag("active_skills_switch")
+                )
             }
         }
     }
 }
+
+/** Zip archives start with the local file header signature `PK\u0003\u0004`. */
+private suspend fun isZipDocument(context: android.content.Context, uri: android.net.Uri): Boolean =
+    withContext(Dispatchers.IO) {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            val header = ByteArray(4)
+            input.read(header) == 4 &&
+                header[0] == 0x50.toByte() && header[1] == 0x4B.toByte() &&
+                header[2] == 0x03.toByte() && header[3] == 0x04.toByte()
+        } ?: false
+    }
 
 @Composable
 private fun SkillImportPreviewDialog(
@@ -757,6 +818,17 @@ private fun SkillImportPreviewDialog(
                     }
                 }
 
+                preview.archive?.let { archive ->
+                    item { HorizontalDivider() }
+                    item {
+                        SkillArchivePreviewSection(
+                            archive = archive,
+                            runtimeIssues = preview.activeRuntimeIssues,
+                            declaredTools = preview.activeRuntime?.tools?.map { it.id }.orEmpty(),
+                            bundleDigest = preview.bundleDigest
+                        )
+                    }
+                }
                 item {
                     Text(
                         text = "A single-file picker cannot verify the parent skill-directory name. That constraint is checked when a directory is available.",
@@ -852,4 +924,54 @@ private fun SkillReplacementConfirmationDialog(
             }
         }
     )
+}
+
+@Composable
+private fun SkillArchivePreviewSection(
+    archive: ais.tee.data.skills.SkillArchive,
+    runtimeIssues: List<String>,
+    declaredTools: List<String>,
+    bundleDigest: String?
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.testTag("skill_archive_preview")
+    ) {
+        Text("Script files", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        if (archive.scripts.isEmpty()) {
+            Text("None. Only the instructions will be imported.", style = MaterialTheme.typography.bodySmall)
+        }
+        archive.scriptFiles.forEach { file ->
+            Text(
+                text = "${file.path} · ${file.size} B · ${file.sha256.take(12)}",
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+        if (archive.ignoredEntries.isNotEmpty()) {
+            Text(
+                text = "Ignored ${archive.ignoredEntries.size} file(s) outside scripts/.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (declaredTools.isNotEmpty()) {
+            Text("Requested native tools: ${declaredTools.joinToString()}", style = MaterialTheme.typography.bodySmall)
+        }
+        runtimeIssues.forEach { issue ->
+            Text("• $issue", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+        bundleDigest?.let {
+            Text(
+                text = "Bundle digest ${it.take(16)}…",
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+        Text(
+            text = "Importing stores these files only. Nothing runs until you separately trust this exact bundle.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
 }

@@ -91,9 +91,14 @@ internal class LocalSkillLibraryStore(
             ?.takeIf { it.manifest.name == name }
     }
 
+    /**
+     * Saves [source]. [scripts] (paths under `scripts/`) replaces the skill's stored script files
+     * when given, as from an archive import; null keeps whatever is stored.
+     */
     suspend fun add(
         source: String,
-        replaceExisting: Boolean = false
+        replaceExisting: Boolean = false,
+        scripts: Map<String, ByteArray>? = null
     ): LocalSkillSummary {
         val parsed = parseLocalSkillSource(source)
 
@@ -115,6 +120,7 @@ internal class LocalSkillLibraryStore(
             }
             withContext(Dispatchers.IO) {
                 skillDirectory.mkdirs()
+                scripts?.let { replaceScripts(skillDirectory, it) }
                 writeAtomically(File(skillDirectory, SKILL_FILE_NAME), parsed.bytes)
             }
             parsed.manifest.toSummary(enabled)
@@ -206,6 +212,7 @@ internal class LocalSkillLibraryStore(
                     renameMarkerValue(renamedSources, committed = false).encodeToByteArray()
                 )
                 try {
+                    copyScripts(existingDirectory, targetDirectory)
                     writeAtomically(File(targetDirectory, SKILL_FILE_NAME), parsed.bytes)
                     if (enabled) {
                         writeAtomically(File(targetDirectory, ENABLED_FILE_NAME), ByteArray(0))
@@ -227,6 +234,29 @@ internal class LocalSkillLibraryStore(
                 skill = parsed.manifest.toSummary(enabled),
                 sourceDigest = parsed.sourceDigest
             )
+        }
+    }
+
+    /**
+     * Every file of the stored skill for the active runtime: `SKILL.md` plus `scripts/…`. The
+     * bundle digest covers both, so editing instructions or declared tools also clears trust.
+     */
+    suspend fun readBundleFiles(name: String): Map<String, ByteArray>? = mutex.withLock {
+        recoverPendingRenames()
+        val directory = storageDirectory(name)
+        readStoredDocument(directory)?.takeIf { it.manifest.name == name } ?: return@withLock null
+        withContext(Dispatchers.IO) {
+            val files = linkedMapOf(SKILL_FILE_NAME to File(directory, SKILL_FILE_NAME).readBytes())
+            val scriptsRoot = File(directory, SCRIPTS_DIRECTORY_NAME)
+            var total = files.values.sumOf { it.size.toLong() }
+            scriptsRoot.walkTopDown().filter { it.isFile }.sortedBy { it.path }.forEach { file ->
+                val relative = SCRIPTS_DIRECTORY_NAME + "/" + file.relativeTo(scriptsRoot).invariantSeparatorsPath
+                if (activeSkillBundlePath(relative.removePrefix("$SCRIPTS_DIRECTORY_NAME/")) != relative) return@forEach
+                total += file.length()
+                if (total > ACTIVE_SKILL_MAX_BUNDLE_BYTES) throw IOException("Skill files exceed the size limit.")
+                files[relative] = file.readBytes()
+            }
+            files
         }
     }
 
@@ -534,6 +564,26 @@ internal class LocalSkillLibraryStore(
         }
     }
 
+    /** Writes the new script set beside the old one, then swaps it in. */
+    private fun replaceScripts(skillDirectory: File, scripts: Map<String, ByteArray>) {
+        val incoming = File(skillDirectory, "$SCRIPTS_DIRECTORY_NAME.incoming")
+        incoming.deleteRecursively()
+        scripts.forEach { (path, bytes) ->
+            val relative = path.removePrefix("$SCRIPTS_DIRECTORY_NAME/")
+            require(activeSkillBundlePath(relative) == path) { "Invalid script path" }
+            writeAtomically(File(incoming, relative), bytes)
+        }
+        val current = File(skillDirectory, SCRIPTS_DIRECTORY_NAME)
+        if (current.exists() && !deleteDirectory(current)) throw IOException("Could not replace skill scripts.")
+        if (scripts.isNotEmpty() && !incoming.renameTo(current)) throw IOException("Could not store skill scripts.")
+        incoming.deleteRecursively()
+    }
+
+    private fun copyScripts(from: File, to: File) {
+        val source = File(from, SCRIPTS_DIRECTORY_NAME)
+        if (source.isDirectory) source.copyRecursively(File(to, SCRIPTS_DIRECTORY_NAME), overwrite = true)
+    }
+
     private fun storageDirectories(): List<File> =
         rootDirectory.listFiles()
             ?.filter { it.isDirectory && isStorageKey(it.name) }
@@ -582,6 +632,7 @@ internal class LocalSkillLibraryStore(
         const val MAX_LOCAL_SKILLS = 32
         const val LIBRARY_DIRECTORY_NAME = "local-skills-v1"
         private const val SKILL_FILE_NAME = "SKILL.md"
+        private const val SCRIPTS_DIRECTORY_NAME = "scripts"
         private const val ENABLED_FILE_NAME = ".enabled"
         private const val RENAME_FROM_FILE_NAME = ".rename-from"
         private const val RENAME_PENDING_HEADER = "pending"

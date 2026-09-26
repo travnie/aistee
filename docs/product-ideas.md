@@ -61,6 +61,7 @@ The current project-plan numbering is intentionally preserved here so finished i
 - Add sample prompts/examples to the skill browsing and discovery flow.
 - Add AI-assisted create/edit and document-to-skill conveniences while keeping the Markdown source directly editable and authoritative.
 - Introduce richer capability/permission UI only if active skill behavior is added later; file/network/secret access must remain explicit and least-privileged.
+- Active skills: design proposal in [`skills-runtime.md`](skills-runtime.md) (sandboxed WebView, JSON in / JSON out, closed native tool allowlist with per-call consent). Code waits for review and ships behind a disabled-by-default flag.
 
 ## Projects and libraries
 
@@ -226,7 +227,7 @@ Inspected manifests, resources and bundled assets of Claude 1.260923, AI Edge Ga
 - **AI Edge Gallery, active skills:** skills may ship `scripts/index.html` exposing `window.ai_edge_gallery_get_result(data)`; a hidden WebView runs it as JSON in / JSON out (`run_js`). Native actions go through a closed `run_intent` allowlist of named operations (current date/time, create calendar event, send email, schedule notification). A result may return `{webview: {url}}` to render an inline card. This is the reference shape for Skills++ once scripts stop being inert: sandboxed WebView with no native bridge, plus named, consented native tools.
 - **AI Edge Gallery, distribution:** skills from URL, a curated featured list, MCP servers by URL with header auth, and a third-party disclaimer before adding either.
 - **DeepSeek, tables and selection:** a dedicated full-screen Markdown table preview with export, and an explicit "Select text" mode for messages. **Shipped (tables):** native chat responses offer "View table" per GFM table, with a pinned-header full-screen view, Copy as CSV (sensitive clip), SAF CSV export and Save to Library; every CSV path neutralizes spreadsheet formulas. "Select text" remains open.
-- **DeepSeek, attachment budget:** a pre-send warning that the model can read only a percentage of the attached files. For Aistee this belongs with the local tokenizer.
+- **DeepSeek, attachment budget:** a pre-send warning that the model can read only a percentage of the attached files. For Aistee this belongs with the local tokenizer. **Shipped for native chat context:** before a native/API send, the profile and skills instruction plus earlier turns are counted with the local o200k counter against the model's published window (4096-token output reserve); if they do not fit, an inline warning offers Send anyway or New chat. Models without a known window get no warning. Attachments follow once native chat has them.
 - **DeepSeek, math:** native LaTeX rendering (jlatexmath). Aistee does not render LaTeX yet. **Shipped prerequisite:** completed native chat answers now render Markdown (headings, emphasis, code, lists, quotes, inline tables, http(s) links; raw HTML stays literal) through a small Compose renderer on the existing `org.jetbrains:markdown` parser, parsed off the main thread and cached per message. LaTeX (`$...$` / `$$...$$`, native chats only, plain-text fallback) is the next separate step.
 - **Gemini APK note:** the 3 MB shell only carries entry points; product logic lives in the Google app, so it yields little beyond share/widget structure.
 

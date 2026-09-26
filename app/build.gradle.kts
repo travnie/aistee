@@ -108,6 +108,7 @@ dependencies {
     implementation(libs.zxing.core)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.webkit)
 
     testImplementation(libs.junit)
     testImplementation(libs.rhino)

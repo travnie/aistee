@@ -564,6 +564,39 @@ class LocalSkillLibraryStoreTest {
         assertTrue(loaded.all { it.description.startsWith("Bulk entry") })
     }
 
+    @Test
+    fun archiveScriptsTravelWithTheSkillAndCountTowardItsBundle() = runBlocking {
+        val source = skillSource(RELEASE_SKILL, FIRST_VERSION)
+        val scripts = mapOf(
+            "scripts/index.html" to "<script></script>".toByteArray(),
+            "scripts/lib/app.js" to "1".toByteArray(),
+        )
+        store.add(source, scripts = scripts)
+
+        val files = requireNotNull(store.readBundleFiles(RELEASE_SKILL))
+        assertEquals(setOf(SKILL_FILE_NAME, "scripts/index.html", "scripts/lib/app.js"), files.keys)
+        assertEquals(source, files.getValue(SKILL_FILE_NAME).decodeToString())
+
+        // A later plain SKILL.md edit keeps the scripts, but the bundle digest changes with it.
+        val before = activeSkillBundleDigest(files)
+        val opened = requireNotNull(store.read(RELEASE_SKILL))
+        store.replace(RELEASE_SKILL, opened.sourceDigest, skillSource(RELEASE_SKILL, SECOND_VERSION))
+        val edited = requireNotNull(store.readBundleFiles(RELEASE_SKILL))
+        assertEquals(files.keys, edited.keys)
+        assertNotEquals(before, activeSkillBundleDigest(edited))
+
+        // Rename carries the scripts; re-importing with an empty set removes them.
+        val reopened = requireNotNull(store.read(RELEASE_SKILL))
+        store.rename(RELEASE_SKILL, reopened.sourceDigest, skillSource(RENAMED_SKILL, SECOND_VERSION))
+        assertNull(store.readBundleFiles(RELEASE_SKILL))
+        assertEquals(files.keys, requireNotNull(store.readBundleFiles(RENAMED_SKILL)).keys)
+        store.add(skillSource(RENAMED_SKILL, SECOND_VERSION), replaceExisting = true, scripts = emptyMap())
+        assertEquals(setOf(SKILL_FILE_NAME), requireNotNull(store.readBundleFiles(RENAMED_SKILL)).keys)
+
+        store.remove(RENAMED_SKILL)
+        assertTrue(root.listFiles().orEmpty().isEmpty())
+    }
+
     private fun storageDirectoryFor(name: String) =
         root.resolve("skill-${sha256Hex(name.encodeToByteArray())}")
 
