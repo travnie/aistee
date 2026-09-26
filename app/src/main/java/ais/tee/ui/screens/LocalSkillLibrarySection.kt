@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderCopy
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -29,6 +30,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -241,9 +243,11 @@ internal fun LocalSkillLibrarySection(
     onCountChanged: (Int) -> Unit,
     onViewSource: (String, String) -> Unit,
     onEditSource: (String, String) -> Unit,
-    onMessage: (String) -> Unit
+    onMessage: (String) -> Unit,
+    activeSkillsEnabled: Boolean = false
 ) {
     val context = LocalContext.current
+    var runningSkill by rememberSaveable { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var skills by remember { mutableStateOf<List<LocalSkillSummary>>(emptyList()) }
     var busySkill by remember { mutableStateOf<String?>(null) }
@@ -327,8 +331,13 @@ internal fun LocalSkillLibrarySection(
                 onMessage("No document picker is available for export.")
             }
         },
-        onRemove = { skill -> pendingRemoveSkill = skill.name }
+        onRemove = { skill -> pendingRemoveSkill = skill.name },
+        onRun = if (activeSkillsEnabled) { skill: LocalSkillSummary -> runningSkill = skill.name } else null
     )
+
+    runningSkill?.let { name ->
+        ActiveSkillRunFlow(skillName = name, store = store, onClose = { runningSkill = null })
+    }
 
     pendingEnableSkillName
         ?.let { name -> skills.firstOrNull { it.name == name } }
@@ -370,7 +379,8 @@ private fun LocalSkillLibraryContent(
     onView: (LocalSkillSummary) -> Unit,
     onEdit: (LocalSkillSummary) -> Unit,
     onExport: (LocalSkillSummary) -> Unit,
-    onRemove: (LocalSkillSummary) -> Unit
+    onRemove: (LocalSkillSummary) -> Unit,
+    onRun: ((LocalSkillSummary) -> Unit)? = null
 ) {
     val filtered = skills.filter { skill ->
         skill.name.contains(searchQuery, ignoreCase = true) ||
@@ -398,7 +408,8 @@ private fun LocalSkillLibraryContent(
                 onView = { onView(skill) },
                 onEdit = { onEdit(skill) },
                 onExport = { onExport(skill) },
-                onRemove = { onRemove(skill) }
+                onRemove = { onRemove(skill) },
+                onRun = onRun?.takeIf { skill.hasActiveRuntime }?.let { run -> { run(skill) } }
             )
         }
     }
@@ -444,7 +455,8 @@ private fun LocalSkillCard(
     onView: () -> Unit,
     onEdit: () -> Unit,
     onExport: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onRun: (() -> Unit)? = null
 ) {
     Card(
         shape = MaterialTheme.shapes.medium,
@@ -511,6 +523,17 @@ private fun LocalSkillCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                onRun?.let { run ->
+                    Button(
+                        enabled = actionsEnabled,
+                        onClick = run,
+                        modifier = Modifier.testTag("btn_run_skill_${skill.name}")
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Run")
+                    }
+                }
                 OutlinedButton(enabled = actionsEnabled, onClick = onExport) {
                     Icon(Icons.Default.Download, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
