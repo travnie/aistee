@@ -3,6 +3,7 @@ package ais.tee.security
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.glance.appwidget.updateAll
+import ais.tee.notifications.NativeChatConversationShortcuts
 import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.widget.AisteeWidget
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -75,6 +76,7 @@ internal object QuickPrivacyModeController {
         // Publication and cancellation share the notification privacy lock, so an in-flight
         // unredacted notification cannot survive after Quick privacy becomes active.
         NativeChatNotificationPublisher.cancelPostedConversations(appContext)
+        if (enabled) NativeChatConversationShortcuts.removeTitled(appContext)
         AisteeWidget().updateAll(appContext)
     }
 }
