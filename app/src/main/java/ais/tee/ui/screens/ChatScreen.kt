@@ -1045,7 +1045,9 @@ private fun NativeChatDetailPane(
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    uiState.pendingChatContextWarning?.let { pending ->
+                    uiState.pendingChatContextWarning
+                        ?.takeIf { it.conversationId == uiState.nativeChat.activeConversationId }
+                        ?.let { pending ->
                         ChatContextWarningBanner(
                             message = pending.warning.message,
                             onSendAnyway = { viewModel.sendPendingChatDespiteContextWarning() },
