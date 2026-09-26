@@ -80,6 +80,9 @@ internal class AppLockStore private constructor(
     }
 }
 
+/** Activities that never display Aistee content, such as write-only share targets. */
+interface AppLockExempt
+
 /**
  * Covers every Aistee activity with [AppLockActivity] until the user passes the device
  * biometric/credential check. Without a secure lock screen there is nothing to check against,
@@ -102,11 +105,13 @@ internal object AppLock : Application.ActivityLifecycleCallbacks {
     override fun onActivityStarted(activity: Activity) {
         session.onActivityStarted(SystemClock.elapsedRealtime())
         // Hide content until unlocked so it never flashes behind the lock screen.
-        if (activity !is AppLockActivity && isLockRequired(activity)) activity.window.decorView.alpha = 0f
+        if (activity !is AppLockActivity && activity !is AppLockExempt && isLockRequired(activity)) {
+            activity.window.decorView.alpha = 0f
+        }
     }
 
     override fun onActivityResumed(activity: Activity) {
-        if (activity is AppLockActivity) return
+        if (activity is AppLockActivity || activity is AppLockExempt) return
         if (!isLockRequired(activity)) {
             activity.window.decorView.alpha = 1f
             return
