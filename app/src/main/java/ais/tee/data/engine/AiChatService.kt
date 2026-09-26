@@ -3,6 +3,7 @@ package ais.tee.data.engine
 import ais.tee.data.model.AiProvider
 import ais.tee.data.model.ApiKeyConfig
 import ais.tee.data.model.ApiProcessingMode
+import ais.tee.data.model.AsyncProviderJobState
 import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ClaudeReasoningCapabilities
@@ -90,6 +91,7 @@ private const val JSON_MAX_TOKENS_KEY = "max_tokens"
 private const val JSON_STOP_REASON_KEY = "stop_reason"
 private const val JSON_STORE_KEY = "store"
 private const val JSON_STREAM_KEY = "stream"
+private const val JSON_BACKGROUND_KEY = "background"
 private const val JSON_SERVICE_TIER_KEY = "service_tier"
 private const val JSON_INSTRUCTIONS_KEY = "instructions"
 private const val JSON_THINKING_KEY = "thinking"
@@ -149,6 +151,14 @@ private const val CLAUDE_METADATA_TIMEOUT_SECONDS = 2L
 private const val CLAUDE_ALIAS_CACHE_TTL_MILLIS = 5 * 60 * 1000L
 private const val CLAUDE_METADATA_FAILURE_TTL_MILLIS = 30 * 1000L
 private const val OPENAI_FLEX_TIMEOUT_MINUTES = 15L
+
+internal data class OpenAiBackgroundResponseSnapshot(
+    val remoteId: String,
+    val state: AsyncProviderJobState,
+    val model: String,
+    val outputText: String?,
+    val errorMessage: String?,
+)
 
 internal fun buildClaudeMetadataHttpClient(baseClient: OkHttpClient): OkHttpClient =
     baseClient.newBuilder()
@@ -248,6 +258,147 @@ class AiChatService {
             httpErrorContext = "${provider.shortName} model catalog"
         )
         gatewayModelOptions(provider, parseGatewayModelCatalog(provider, responseBody))
+    }
+
+    internal suspend fun createOpenAiBackgroundResponse(
+        prompt: String,
+        model: String,
+        apiKey: String,
+        systemInstruction: String? = null,
+    ): OpenAiBackgroundResponseSnapshot = withContext(Dispatchers.IO) {
+        require(prompt.isNotBlank()) { "Background prompt cannot be blank" }
+        require(apiKey.isNotBlank()) { "OpenAI API key is required" }
+        val payload = buildOpenAiBackgroundRequestPayload(
+            prompt = prompt,
+            model = model,
+            systemInstruction = systemInstruction,
+        )
+        val request = Request.Builder()
+            .url("https://api.openai.com/v1/responses")
+            .addHeader(HEADER_AUTHORIZATION, bearerToken(apiKey.trim()))
+            .addHeader(HEADER_CONTENT_TYPE, JSON_MEDIA_TYPE)
+            .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
+            .build()
+        parseOpenAiBackgroundResponse(
+            executeCancellableJson(request, "Empty response from OpenAI background request")
+        )
+    }
+
+    internal suspend fun retrieveOpenAiBackgroundResponse(
+        responseId: String,
+        apiKey: String,
+    ): OpenAiBackgroundResponseSnapshot = withContext(Dispatchers.IO) {
+        require(responseId.isNotBlank()) { "OpenAI response ID is required" }
+        require(apiKey.isNotBlank()) { "OpenAI API key is required" }
+        val url = "https://api.openai.com/v1/responses".toHttpUrl()
+            .newBuilder()
+            .addPathSegment(responseId.trim())
+            .build()
+        val request = Request.Builder()
+            .url(url)
+            .addHeader(HEADER_AUTHORIZATION, bearerToken(apiKey.trim()))
+            .get()
+            .build()
+        parseOpenAiBackgroundResponse(
+            executeCancellableJson(request, "Empty OpenAI background status response")
+        )
+    }
+
+    internal suspend fun cancelOpenAiBackgroundResponse(
+        responseId: String,
+        apiKey: String,
+    ): OpenAiBackgroundResponseSnapshot = withContext(Dispatchers.IO) {
+        require(responseId.isNotBlank()) { "OpenAI response ID is required" }
+        require(apiKey.isNotBlank()) { "OpenAI API key is required" }
+        val url = "https://api.openai.com/v1/responses".toHttpUrl()
+            .newBuilder()
+            .addPathSegment(responseId.trim())
+            .addPathSegment("cancel")
+            .build()
+        val request = Request.Builder()
+            .url(url)
+            .addHeader(HEADER_AUTHORIZATION, bearerToken(apiKey.trim()))
+            .addHeader(HEADER_CONTENT_TYPE, JSON_MEDIA_TYPE)
+            .post("{}".toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
+            .build()
+        parseOpenAiBackgroundResponse(
+            executeCancellableJson(request, "Empty OpenAI background cancellation response")
+        )
+    }
+
+    internal fun buildOpenAiBackgroundRequestPayload(
+        prompt: String,
+        model: String,
+        systemInstruction: String? = null,
+    ): JsonObject {
+        val input = buildOpenAiResponseInput(
+            prompt = prompt,
+            conversationHistory = emptyList(),
+            systemInstruction = systemInstruction,
+            modelName = model,
+        )
+        val basePayload = buildOpenAiRequestPayload(
+            model = model,
+            stream = false,
+            systemInstruction = systemInstruction,
+            input = input,
+        )
+        return JsonObject(basePayload + (JSON_BACKGROUND_KEY to JsonPrimitive(true)))
+    }
+
+    internal fun parseOpenAiBackgroundResponse(rawJson: String): OpenAiBackgroundResponseSnapshot {
+        val parsed = json.parseToJsonElement(rawJson).jsonObject
+        val remoteId = parsed[JSON_MODEL_ID_KEY]?.jsonPrimitive?.contentOrNull
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?: throw IOException("OpenAI background response is missing id")
+        val status = parsed[JSON_STATUS_KEY]?.jsonPrimitive?.contentOrNull
+            ?.trim()
+            ?.lowercase()
+            ?: throw IOException("OpenAI background response is missing status")
+        val state = when (status) {
+            "queued" -> AsyncProviderJobState.QUEUED
+            "in_progress" -> AsyncProviderJobState.RUNNING
+            "completed" -> AsyncProviderJobState.SUCCEEDED
+            "failed" -> AsyncProviderJobState.FAILED
+            "cancelled", "canceled" -> AsyncProviderJobState.CANCELLED
+            "incomplete" -> AsyncProviderJobState.INCOMPLETE
+            "expired" -> AsyncProviderJobState.EXPIRED
+            else -> AsyncProviderJobState.FAILED
+        }
+        val model = parsed[JSON_MODEL_KEY]?.jsonPrimitive?.contentOrNull
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            .orEmpty()
+        val providerError = (parsed[STREAM_ERROR_KEY] as? JsonObject)
+            ?.get(STREAM_MESSAGE_KEY)
+            ?.jsonPrimitive
+            ?.contentOrNull
+        val incompleteReason = (parsed[OPENAI_INCOMPLETE_DETAILS_KEY] as? JsonObject)
+            ?.get(OPENAI_INCOMPLETE_REASON_KEY)
+            ?.jsonPrimitive
+            ?.contentOrNull
+        val unknownStatus = if (
+            status !in setOf(
+                "queued", "in_progress", "completed", "failed",
+                "cancelled", "canceled", "incomplete", "expired"
+            )
+        ) {
+            "Unknown OpenAI background status: $status"
+        } else {
+            null
+        }
+        return OpenAiBackgroundResponseSnapshot(
+            remoteId = remoteId,
+            state = state,
+            model = model,
+            outputText = if (state == AsyncProviderJobState.SUCCEEDED) {
+                extractOpenAiResponseText(parsed)
+            } else {
+                null
+            },
+            errorMessage = providerError ?: incompleteReason ?: unknownStatus,
+        )
     }
 
     internal fun parseGatewayModelCatalog(
