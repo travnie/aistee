@@ -19,13 +19,13 @@ Reference: the AI Edge Gallery pattern recorded in `product-ideas.md` (hidden We
 
 ## Execution sandbox
 
-- One hidden `WebView` per call, created on demand and destroyed after the result or a timeout (default 10 s). No reuse across skills or calls.
+- Run active skills in a dedicated Android process with its own WebView data directory suffix set before any WebView is initialized there. Account-backed chat WebViews stay in the app process. One hidden skill `WebView` per call is created on demand and destroyed after the result or a timeout (default 10 s). No reuse across skills or calls.
 - Content is served through `WebViewAssetLoader` at the reserved `https://appassets.androidplatform.net/skills/<skill-digest>/`, never `file://`. URL paths do **not** make separate origins. The path handler serves only the current skill digest, with DOM storage disabled and no reuse of the WebView between calls. Do not claim per-skill origin or cookie isolation from a path.
-- Cookies: all skills share the `appassets` origin, and disabling DOM storage does not disable cookies. A document-start script makes `document.cookie` read empty and ignore writes, asset responses never carry `Set-Cookie`, and the host expires any cookie stored for the skill URL before and after each call, so no state survives between calls or skills.
+- Cookies: all skills share the `appassets` origin, and disabling DOM storage does not disable cookies. In the dedicated skills process, clear existing cookies in its separate data directory and set `CookieManager.setAcceptCookie(false)` before loading any skill or result card; fail closed if this cannot be verified. Asset responses carry no `Set-Cookie`. Document-start JavaScript overrides and per-URL expiry alone are insufficient to enforce this boundary. Do not alter cookie settings in the app process.
 - Settings: JavaScript on (required), DOM storage off; `addJavascriptInterface` **never** used; no file or content access; no geolocation, camera, microphone or notifications; no popups or new windows; Safe Browsing on; mixed content blocked.
 - Network is **off in v1**, including redirects, service workers, WebSockets and navigation; the asset handler serves only the current bundle and denies all other resources. Do not rely on `shouldInterceptRequest` alone for every network channel: prove the block with device tests before execution can be enabled.
-- Future network skills require a separately reviewed process/data-directory boundary (for example a dedicated WebView process with its own `setDataDirectorySuffix` before WebView initialization), explicit origin consent and verified cookie isolation from account-backed WebViews. `aistee-network` metadata remains inert in v1 and never grants access by itself.
-- Navigation away from the virtual origin is cancelled. Renderer crash or OOM ends the call with an error result. The skill WebView is never counted in the chat WebView LRU, but WebViews in one app process can share a renderer, so a skill crash may also end chat renderers; those recover through their own render-process-gone handling. Guaranteed isolation needs a separate Android process with its own WebView data directory, which is a later, separately reviewed step.
+- Future network skills require a separate review of outbound network enforcement, explicit origin consent and cookie behavior within the dedicated skills process. `aistee-network` metadata remains inert in v1 and never grants access by itself.
+- Block main-frame and subframe navigation away from the bundle. Renderer crash or OOM ends the call with an error result. The dedicated skills process limits impact on chat WebViews; renderer priority is only a memory-management hint and does not provide isolation. System-wide memory pressure can still affect the app.
 
 ## Entry point: JSON in / JSON out
 
@@ -61,11 +61,11 @@ Both the user and the model:
 ## Flag, rollout and tests
 
 - `activeSkillsEnabled` is off by default and not in backup. With the flag off, active skills import and preview exactly like v1 and never execute.
-- Required tests before enabling: sandbox settings snapshot (no `addJavascriptInterface`, no DOM/file access), network denial across fetch/redirect/service-worker/WebSocket paths and main-frame/subframe navigation, no cookie state across calls or skills, same-origin path isolation between two bundles, asynchronous Promise success and timeout, rejection of wrong-origin/frame/call-ID messages, oversized-output handling, digest change clears trust, undeclared tool denied, per-call consent and WebView disposal.
+- Required tests before enabling: dedicated process and separate data directory initialized before WebView; cookies disabled and absent across calls, skill bundles and account-backed chat; sandbox settings snapshot (no `addJavascriptInterface`, no DOM/file access); network denial across fetch/redirect/service-worker/WebSocket paths and main-frame/subframe navigation; same-origin path isolation between two bundles; asynchronous Promise success and timeout; rejection of wrong-origin/frame/call-ID messages; oversized-output handling; digest change clears trust; undeclared tool denied; per-call consent and WebView disposal.
 
 ## Review decisions
 
-1. Network in v1: disabled until an isolated data profile and complete network boundary are demonstrated on device.
+1. Network in v1: disabled; any future support needs a separately reviewed outbound network boundary and origin consent.
 2. Consent granularity: per call in v1; revisit "allow for this chat" later.
 3. Invocation: both user and model for offline skills only. Future network skills need separate consent review.
 4. Async completion: one-shot origin-checked WebView message; `evaluateJavascript` starts the call but does not await the Promise.
