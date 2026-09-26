@@ -497,7 +497,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Asks the launcher to pin the active native chat; returns false when pinning is unsupported. */
     fun requestPinActiveNativeConversation(): Boolean {
-        val conversation = _uiState.value.activeNativeConversation ?: return false
+        val state = _uiState.value
+        // Incognito chats never reach launcher shortcuts, pinned or not.
+        if (state.isActiveConversationIncognito) return false
+        val conversation = state.activeNativeConversation ?: return false
         return NativeChatConversationShortcuts.requestPin(getApplication(), conversation.id, conversation.title)
     }
 

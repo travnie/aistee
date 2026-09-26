@@ -55,6 +55,7 @@ class IncognitoNativeChatTest {
             assertFalse(manager.activeNotifications.any { it.tag?.contains(incognitoId) == true })
             val shortcutId = nativeChatConversationShortcutId(incognitoId)
             assertFalse(ShortcutManagerCompat.getDynamicShortcuts(context).any { it.id == shortcutId })
+            assertFalse(viewModel.requestPinActiveNativeConversation())
 
             viewModel.newNativeConversation()
             assertFalse(viewModel.uiState.value.nativeChat.conversations.any { it.id == incognitoId })

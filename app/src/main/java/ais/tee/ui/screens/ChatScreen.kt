@@ -814,19 +814,21 @@ private fun NativeChatDetailPane(
                                         },
                                         modifier = Modifier.testTag("btn_chat_notifications")
                                     )
-                                    DropdownMenuItem(
-                                        text = { Text("Add to home screen") },
-                                        leadingIcon = {
-                                            Icon(Icons.Outlined.AddHome, contentDescription = null)
-                                        },
-                                        onClick = {
-                                            showChatActionsMenu = false
-                                            if (!viewModel.requestPinActiveNativeConversation()) {
-                                                viewModel.showSnackbar("This launcher cannot pin chats to the home screen.")
-                                            }
-                                        },
-                                        modifier = Modifier.testTag("btn_pin_chat_home_screen")
-                                    )
+                                    if (!isIncognito) {
+                                        DropdownMenuItem(
+                                            text = { Text("Add to home screen") },
+                                            leadingIcon = {
+                                                Icon(Icons.Outlined.AddHome, contentDescription = null)
+                                            },
+                                            onClick = {
+                                                showChatActionsMenu = false
+                                                if (!viewModel.requestPinActiveNativeConversation()) {
+                                                    viewModel.showSnackbar("This launcher cannot pin chats to the home screen.")
+                                                }
+                                            },
+                                            modifier = Modifier.testTag("btn_pin_chat_home_screen")
+                                        )
+                                    }
                                     DropdownMenuItem(
                                         text = { Text("Clear conversation") },
                                         leadingIcon = {
