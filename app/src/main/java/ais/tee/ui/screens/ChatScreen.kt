@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -118,6 +119,10 @@ internal fun chatMessageContentType(message: ModelChatMessage): String = when {
     message.isError -> "error"
     else -> "assistant"
 }
+
+/** Completed assistant answers render Markdown; streaming, error and user text stay plain. */
+internal fun shouldRenderChatMarkdown(message: ModelChatMessage): Boolean =
+    message.isCompletedAssistantResponse()
 
 internal fun chatBubbleMaxWidth(containerWidth: Dp): Dp =
     (containerWidth - 32.dp).coerceIn(340.dp, 640.dp)
@@ -1469,18 +1474,30 @@ fun ChatMessageItem(
             modifier = Modifier.widthIn(max = maxBubbleWidth)
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text(
-                    text = message.text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (isUser) {
-                        MaterialTheme.colorScheme.onPrimary
-                    } else if (message.isError) {
-                        MaterialTheme.colorScheme.onErrorContainer
+                val textColor = if (isUser) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else if (message.isError) {
+                    MaterialTheme.colorScheme.onErrorContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
+                val markdownBlocks = if (shouldRenderChatMarkdown(message)) {
+                    rememberChatMarkdown(message.id, message.text)
+                } else {
+                    null
+                }
+                SelectionContainer {
+                    if (markdownBlocks != null) {
+                        ChatMarkdownContent(blocks = markdownBlocks, color = textColor)
                     } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    lineHeight = 21.sp
-                )
+                        Text(
+                            text = message.text,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = textColor,
+                            lineHeight = 21.sp
+                        )
+                    }
+                }
 
                 if (!isUser) {
                     formatChatResponseDiagnostics(message)?.let { diagnostics ->
