@@ -1382,8 +1382,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         if (trimmed.isBlank() || initialState.isChatGenerating) return false
         val activeConversation = initialState.activeNativeConversation
+        // Incognito turns are never queued: the background job would persist the text.
         if (
             activeConversation != null &&
+            !initialState.isActiveConversationIncognito &&
             shouldQueueNativeChatSend(
                 isOnline = networkAvailability.isOnline.value,
                 canSendInBackground = canNativeChatDirectReply(activeConversation, initialState.apiKeyConfig),
