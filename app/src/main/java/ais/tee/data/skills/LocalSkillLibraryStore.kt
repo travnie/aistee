@@ -14,7 +14,9 @@ import kotlinx.coroutines.withContext
 internal data class LocalSkillSummary(
     val name: String,
     val description: String,
-    val enabled: Boolean
+    val enabled: Boolean,
+    /** Declares an `aistee-runtime`; it can only run once active skills are on and it is trusted. */
+    val hasActiveRuntime: Boolean = false
 )
 
 internal data class LocalSkillDocument(
@@ -625,7 +627,12 @@ internal class LocalSkillLibraryStore(
     }
 
     private fun AgentSkillManifest.toSummary(enabled: Boolean): LocalSkillSummary =
-        LocalSkillSummary(name = name, description = description, enabled = enabled)
+        LocalSkillSummary(
+            name = name,
+            description = description,
+            enabled = enabled,
+            hasActiveRuntime = activeSkillDeclaration(this).declaration != null
+        )
 
     companion object {
         private val PROCESS_MUTEX = Mutex()

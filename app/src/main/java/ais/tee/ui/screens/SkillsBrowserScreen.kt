@@ -272,7 +272,8 @@ fun SkillsBrowserScreen(
                             onEditSource = { name, source ->
                                 openLocalSkillEditor(name, source, allowDiscardDirty = false)
                             },
-                            onMessage = viewModel::showSnackbar
+                            onMessage = viewModel::showSnackbar,
+                            activeSkillsEnabled = activeSkillsEnabled
                         )
                     }
 
