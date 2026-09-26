@@ -72,10 +72,13 @@ internal class NativeChatNotificationPreferencesStore(context: Context) {
         ) {
             NativeChatNotificationPublisher.cancelPostedConversations(appContext)
         }
+        if (previous.showConversationTitles && !value.showConversationTitles) {
+            NativeChatConversationShortcuts.removeTitled(appContext)
+        }
     }
 }
 
-private fun effectiveNativeChatNotificationPreferences(
+internal fun effectiveNativeChatNotificationPreferences(
     context: Context,
 ): NativeChatNotificationPreferences {
     val stored = NativeChatNotificationPreferencesStore(context).load()
@@ -249,7 +252,7 @@ internal object NativeChatNotificationPublisher {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val latestMessage = content.messages.last()
-        val shortcutId = NativeChatConversationShortcuts.publish(appContext, content.conversationId)
+        val shortcutId = NativeChatConversationShortcuts.publish(appContext, content.conversationId, content.title)
         val builder = NotificationCompat.Builder(appContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_quick_settings)
             .setSubText(content.title)
@@ -317,7 +320,7 @@ internal object NativeChatNotificationPublisher {
             launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val shortcutId = NativeChatConversationShortcuts.publish(appContext, content.conversationId)
+        val shortcutId = NativeChatConversationShortcuts.publish(appContext, content.conversationId, content.title)
         val builder = NotificationCompat.Builder(appContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_quick_settings)
             .setSubText(content.title)
