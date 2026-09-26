@@ -152,9 +152,11 @@ internal suspend fun cancelOpenAiBackgroundJob(
     }
 
     val snapshot = service.cancelOpenAiBackgroundResponse(job.remoteId, apiKey)
-    val updated = persistOpenAiBackgroundSnapshot(appContext, job, snapshot).job
-    OpenAiBackgroundJobWork.cancel(appContext, job.id)
-    return updated
+    val persisted = persistOpenAiBackgroundSnapshot(appContext, job, snapshot)
+    if (!persisted.shouldRetry) {
+        OpenAiBackgroundJobWork.cancel(appContext, job.id)
+    }
+    return persisted.job
 }
 
 internal fun persistOpenAiBackgroundSnapshot(
@@ -163,45 +165,51 @@ internal fun persistOpenAiBackgroundSnapshot(
     snapshot: OpenAiBackgroundResponseSnapshot,
 ): AsyncJobRefreshResult {
     val store = AsyncProviderJobStore(context.noBackupFilesDir)
-    var resultAssetId = job.resultAssetId
-    var localError = snapshot.errorMessage
-    val resolvedModel = snapshot.model.ifBlank { job.model }
+    val updated = store.update(job.id) { persistedJob ->
+        if (
+            persistedJob.state.isTerminal &&
+            (persistedJob.state != AsyncProviderJobState.SUCCEEDED ||
+                persistedJob.resultAssetId != null ||
+                snapshot.state != AsyncProviderJobState.SUCCEEDED)
+        ) {
+            return@update persistedJob
+        }
 
-    if (
-        snapshot.state == AsyncProviderJobState.SUCCEEDED &&
-        resultAssetId == null
-    ) {
-        val output = snapshot.outputText?.trim()
-        if (output.isNullOrEmpty()) {
-            localError = localError ?: "OpenAI completed the background job without text output."
-        } else {
-            val markdown = buildString {
-                append("# OpenAI background result\n\n")
-                append("- Model: `")
-                append(resolvedModel)
-                append("`\n")
-                append("- Saved by Aistee from a completed background Response.\n\n")
-                append("---\n\n")
-                append(output)
-                append('\n')
-            }
-            resultAssetId = ProjectLibraryStore(context.noBackupFilesDir)
-                .saveTextAsset(
-                    projectId = job.projectId,
-                    title = "OpenAI background result · $resolvedModel",
-                    mediaType = "text/markdown",
-                    extension = "md",
-                    text = markdown,
-                )
-                ?.id
-            if (resultAssetId == null) {
-                localError = "Completed, but the result could not be saved to Project Library."
+        var resultAssetId = persistedJob.resultAssetId
+        var localError = snapshot.errorMessage
+        val resolvedModel = snapshot.model.ifBlank { persistedJob.model }
+
+        if (snapshot.state == AsyncProviderJobState.SUCCEEDED && resultAssetId == null) {
+            val output = snapshot.outputText?.trim()
+            if (output.isNullOrEmpty()) {
+                localError = localError ?: "OpenAI completed the background job without text output."
+            } else {
+                val markdown = buildString {
+                    append("# OpenAI background result\n\n")
+                    append("- Model: `")
+                    append(resolvedModel)
+                    append("`\n")
+                    append("- Saved by Aistee from a completed background Response.\n\n")
+                    append("---\n\n")
+                    append(output)
+                    append('\n')
+                }
+                resultAssetId = ProjectLibraryStore(context.noBackupFilesDir)
+                    .saveTextAsset(
+                        projectId = persistedJob.projectId,
+                        title = "OpenAI background result · $resolvedModel",
+                        mediaType = "text/markdown",
+                        extension = "md",
+                        text = markdown,
+                    )
+                    ?.id
+                if (resultAssetId == null) {
+                    localError = "Completed, but the result could not be saved to Project Library."
+                }
             }
         }
-    }
 
-    val updated = store.update(job.id) {
-        it.copy(
+        persistedJob.copy(
             model = resolvedModel,
             state = snapshot.state,
             updatedAtEpochMs = System.currentTimeMillis(),

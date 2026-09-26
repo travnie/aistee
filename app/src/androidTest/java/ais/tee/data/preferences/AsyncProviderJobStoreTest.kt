@@ -55,6 +55,32 @@ class AsyncProviderJobStoreTest {
     }
 
     @Test
+    fun restoresJobsFromInterruptedAtomicFileBackup() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val root = File(context.cacheDir, "async-job-test-${UUID.randomUUID()}")
+        try {
+            val store = AsyncProviderJobStore(root)
+            val job = AsyncProviderJob(
+                id = "recover-me",
+                provider = AiProvider.CHATGPT,
+                kind = AsyncProviderJobKind.BACKGROUND_RESPONSE,
+                remoteId = "resp_recover",
+                model = "gpt-5.6",
+                state = AsyncProviderJobState.RUNNING,
+                createdAtEpochMs = 1,
+            )
+            assertEquals(job, store.upsert(job))
+            val base = File(root, AsyncProviderJobStore.FILE_NAME)
+            val backup = File(root, "${AsyncProviderJobStore.FILE_NAME}.bak")
+            assertTrue(base.renameTo(backup))
+            assertEquals(job, store.load().jobs.single())
+            assertTrue(base.isFile)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsInvalidJob() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val root = File(context.cacheDir, "async-job-test-${UUID.randomUUID()}")

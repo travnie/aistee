@@ -58,15 +58,11 @@ internal class AsyncProviderJobStore(private val noBackupRoot: File) {
     }
 
     private fun loadUnlocked(): AsyncProviderJobArchive {
-        val decoded = if (atomicFile.baseFile.isFile) {
-            runCatching {
-                json.decodeFromString<AsyncProviderJobArchive>(
-                    atomicFile.readFully().decodeToString(throwOnInvalidSequence = true)
-                )
-            }.getOrNull()
-        } else {
-            null
-        }
+        val decoded = runCatching {
+            json.decodeFromString<AsyncProviderJobArchive>(
+                atomicFile.readFully().decodeToString(throwOnInvalidSequence = true)
+            )
+        }.getOrNull()
         return decoded
             ?.normalizedAsyncProviderJobs()
             ?: AsyncProviderJobArchive(version = ASYNC_PROVIDER_JOB_ARCHIVE_VERSION)

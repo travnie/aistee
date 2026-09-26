@@ -1031,7 +1031,26 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     asyncProviderJobStore.upsert(job)
                 }
                 if (stored == null) {
-                    showSnackbar("Background job started remotely, but Aistee could not save its local tracking state.")
+                    val remoteCancelled = try {
+                        withContext(Dispatchers.IO) {
+                            aiChatService.cancelOpenAiBackgroundResponse(
+                                responseId = snapshot.remoteId,
+                                apiKey = state.apiKeyConfig.openAiKey,
+                            )
+                        }
+                        true
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        false
+                    }
+                    showSnackbar(
+                        if (remoteCancelled) {
+                            "Could not save the background job. The remote response was cancelled."
+                        } else {
+                            "Could not save the background job. The remote response may still run."
+                        }
+                    )
                     return@launch
                 }
                 val current = withContext(Dispatchers.IO) {
