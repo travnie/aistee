@@ -182,7 +182,7 @@ Treat Token Arena as the overlap between Bench tooling and a small experimental 
 - Notifications and widgets default to privacy-safe previews, with configurable redaction. Never surface hidden/system instructions, API keys, auth state or file contents on the lock screen simply because the foreground chat can see them.
 - **Shipped:** route clipboard writes through one Android helper; private chat/draft/share, Studio/system/profile and skill content uses Android's sensitive clipboard hint, while ordinary URLs and explicitly privacy-safe diagnostics stay unmarked. API keys are never copied automatically.
 - **Shipped:** optional local privacy controls include device-local Screen privacy, App lock and Quick privacy. Quick privacy temporarily redacts conversation titles and message previews in Aistee home-screen widgets and native-chat notifications without overwriting each surface's saved preview choices.
-- **Shipped:** Studio tools � Privacy holds all three controls. Screen privacy applies `FLAG_SECURE` to every Aistee activity through application-level lifecycle callbacks. App lock covers every activity with a biometric/device-credential check on a fresh process or after a minute away; short trips such as file pickers keep the unlock, and it stays inactive without a secure lock screen. Quick privacy is a reversible redaction override for widgets and native-chat notifications.
+- **Shipped:** Studio tools > Privacy holds all three controls. Screen privacy applies `FLAG_SECURE` to every Aistee activity through application-level lifecycle callbacks. App lock covers every activity with a biometric/device-credential check on a fresh process or after a minute away; short trips such as file pickers keep the unlock, and it stays inactive without a secure lock screen. Quick privacy is a reversible redaction override for widgets and native-chat notifications.
 - Exports are explicit data-release boundaries: preview what will leave the app, exclude secrets/internal diagnostics by construction, avoid hidden metadata, and never silently include unrelated conversation/project context.
 - Keep TLS validation strict and never add trust-all certificate handling for provider compatibility. Release logging must not include request/response bodies or authorization headers.
 - Add security regression tests alongside feature tests: provider host/navigation boundaries, intent/deep-link validation, backup exclusions, secret/log redaction, tool capability gating, imported-skill non-execution, notification reply target isolation and export sanitization.
@@ -208,3 +208,23 @@ Treat Token Arena as the overlap between Bench tooling and a small experimental 
 - Grok: editable files, agent instructions and export-oriented artifact workflows.
 - DeepSeek: useful attachment validation/error UX, but attachment-only storage is not the target architecture for Aistee.
 - Meta AI: artifact/library/preset concepts reinforce keeping generated assets reusable outside one chat.
+
+### September 2026 APK pass
+
+Inspected manifests, resources and bundled assets of Claude 1.260923, AI Edge Gallery 1.0.19, DeepSeek 2.5.3 and the Gemini 1.0 shell app. Only patterns are recorded here; nothing is copied.
+
+- **Claude, Direct Share:** a `share-target` in `shortcuts.xml` with a custom category lets recent conversations appear directly in the Android sharesheet. Aistee already publishes long-lived conversation shortcuts, so it only needs the share-target declaration and the category on those shortcuts.
+- **Claude, pin from app:** "Add to home" uses `requestPinShortcut` / `requestPinAppWidget` with confirmation receivers. Shortcuts for deleted chats are disabled with an explanatory message rather than left dangling.
+- **Claude, widgets:** Glance widget with a configuration activity, a preview layout, a separate three-row provider variant and `updatePeriodMillis=0` (push updates only).
+- **Claude, incognito chats:** chats that stay out of history, memory and search. For Aistee: a native chat that never reaches the archive, widgets, notifications or search.
+- **Claude, offline handling:** queued sends ("will send when you reconnect") and resumable streaming through a dedicated SSE service ("the rest of the reply will appear when you reconnect").
+- **Claude, security posture:** app lock, cleartext-free network config, a backup allowlist of two preference files and managed-config `app_restrictions`. This matches Aistee's current direction.
+- **Claude, system assistant:** `VoiceInteractionService` plus an `ACTION_ASSIST` overlay activity with its own task affinity. Useful reference if Aistee ever offers a quick-composer overlay; heavy for now.
+- **Gemini, action-specific share targets:** a second share target ("Remember this") is a separate activity with its own task affinity. For Aistee: "Ask in Aistee" and "Save to Project Library" as two sharesheet entries, the latter saving without opening a chat.
+- **Gemini, toolbar widget:** a Glance widget that is only a row of quick actions (file, gallery, screen share, video). An Aistee variant (new chat, paste clipboard, attach file, Prompt vault) needs no conversation history, so it is honest for Web providers too.
+- **AI Edge Gallery, active skills:** skills may ship `scripts/index.html` exposing `window.ai_edge_gallery_get_result(data)`; a hidden WebView runs it as JSON in / JSON out (`run_js`). Native actions go through a closed `run_intent` allowlist of named operations (current date/time, create calendar event, send email, schedule notification). A result may return `{webview: {url}}` to render an inline card. This is the reference shape for Skills++ once scripts stop being inert: sandboxed WebView with no native bridge, plus named, consented native tools.
+- **AI Edge Gallery, distribution:** skills from URL, a curated featured list, MCP servers by URL with header auth, and a third-party disclaimer before adding either.
+- **DeepSeek, tables and selection:** a dedicated full-screen Markdown table preview with export, and an explicit "Select text" mode for messages.
+- **DeepSeek, attachment budget:** a pre-send warning that the model can read only a percentage of the attached files. For Aistee this belongs with the local tokenizer.
+- **DeepSeek, math:** native LaTeX rendering (jlatexmath). Aistee does not render LaTeX yet.
+- **Gemini APK note:** the 3 MB shell only carries entry points; product logic lives in the Google app, so it yields little beyond share/widget structure.
