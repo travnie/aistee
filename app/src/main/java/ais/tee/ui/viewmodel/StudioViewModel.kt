@@ -1690,14 +1690,18 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     },
                     onResponse = { generated ->
                         val skillNotes = skillTools?.transcriptNotes.orEmpty()
+                        val skillCards = skillTools?.skillCards.orEmpty()
                         finishStreamingMessage(
                             generationId,
                             "stream_${userMessage.id}_${generated.provider.id}",
                             generated.provider,
-                            if (skillNotes.isEmpty()) {
+                            if (skillNotes.isEmpty() && skillCards.isEmpty()) {
                                 generated.message
                             } else {
-                                generated.message.copy(activeProfileNotes = generated.message.activeProfileNotes + skillNotes)
+                                generated.message.copy(
+                                    activeProfileNotes = generated.message.activeProfileNotes + skillNotes,
+                                    skillCards = skillCards,
+                                )
                             },
                         )
                     },

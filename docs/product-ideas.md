@@ -61,7 +61,7 @@ The current project-plan numbering is intentionally preserved here so finished i
 - Add sample prompts/examples to the skill browsing and discovery flow.
 - Add AI-assisted create/edit and document-to-skill conveniences while keeping the Markdown source directly editable and authoritative.
 - Introduce richer capability/permission UI only if active skill behavior is added later; file/network/secret access must remain explicit and least-privileged.
-- Active skills: design proposal in [`skills-runtime.md`](skills-runtime.md) (sandboxed WebView, JSON in / JSON out, closed native tool allowlist with per-call consent). Code waits for review and ships behind a disabled-by-default flag.
+- **Shipped behind a disabled-by-default switch:** active skills per [`skills-runtime.md`](skills-runtime.md). Skill folders import as zips with `scripts/`. Trust is bound to the bundle digest. Skills run from the library or as model tools in single-provider native chats, with per-call consent for the run, each native action and the result. Result cards open full screen in the sandboxed `:skills` process. Network skills remain out of scope.
 
 ## Projects and libraries
 
