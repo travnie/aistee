@@ -55,11 +55,23 @@ private const val INPUT_REPLY_ID = "reply_id"
 private const val INPUT_CONVERSATION_ID = "conversation_id"
 private const val INPUT_REPLY_TEXT = "reply_text"
 private const val INPUT_REPLY_EPOCH = "reply_epoch"
-private const val MAX_REPLY_TEXT_CHARS = 4_000
+private const val INPUT_QUEUED_SEND = "queued_send"
+internal const val MAX_REPLY_TEXT_CHARS = 4_000
+internal const val NATIVE_CHAT_QUEUED_SEND_TAG = "native-chat-queued-send"
+private const val DIRECT_REPLY_USER_MESSAGE_PREFIX = "direct_reply_user_"
+
+internal fun nativeChatQueuedSendTag(replyId: String): String = "$NATIVE_CHAT_QUEUED_SEND_TAG:$replyId"
+
+internal fun nativeChatReplyUserMessageId(replyId: String): String = DIRECT_REPLY_USER_MESSAGE_PREFIX + replyId
+
+internal fun nativeChatReplyIdFromUserMessageId(messageId: String): String? =
+    messageId.takeIf { it.startsWith(DIRECT_REPLY_USER_MESSAGE_PREFIX) }
+        ?.removePrefix(DIRECT_REPLY_USER_MESSAGE_PREFIX)
+        ?.takeIf { it.isNotBlank() }
 
 // WorkManager caps serialized Data at 10 KiB, not at a character count.
 internal fun buildNativeChatReplyInput(
-    replyId: String, conversationId: String, text: String, replyEpoch: Long = 0L,
+    replyId: String, conversationId: String, text: String, replyEpoch: Long = 0L, queuedSend: Boolean = false,
 ): Data? =
     try {
         Data.Builder()
@@ -67,6 +79,7 @@ internal fun buildNativeChatReplyInput(
             .putString(INPUT_CONVERSATION_ID, conversationId)
             .putString(INPUT_REPLY_TEXT, text)
             .putLong(INPUT_REPLY_EPOCH, replyEpoch)
+            .putBoolean(INPUT_QUEUED_SEND, queuedSend)
             .build()
     } catch (_: IllegalStateException) {
         null
@@ -108,7 +121,7 @@ internal fun prepareNativeChatDirectReply(
     if (text.isEmpty() || text.length > MAX_REPLY_TEXT_CHARS) return null
     val conversation = archive.conversations.firstOrNull { it.id == conversationId } ?: return null
     if (conversation.replyEpoch != expectedReplyEpoch) return null
-    val messageId = "direct_reply_user_$replyId"
+    val messageId = nativeChatReplyUserMessageId(replyId)
     val existing = conversation.messages.firstOrNull { it.id == messageId }
     val userMessage = existing ?: ModelChatMessage(
         id = messageId,
@@ -149,6 +162,7 @@ internal fun mergeNativeChatDirectReplyResponses(
     val withoutPriorCopies = conversation.messages.filterNot { it.id in responseIds }.toMutableList()
     val refreshedUserIndex = withoutPriorCopies.indexOfFirst { it.id == userMessageId }
     if (refreshedUserIndex < 0) return null
+    withoutPriorCopies[refreshedUserIndex] = withoutPriorCopies[refreshedUserIndex].copy(isQueued = false)
     withoutPriorCopies.addAll(refreshedUserIndex + 1, responses)
     val updated = conversation.copy(
         updatedAtEpochMs = now,
@@ -197,13 +211,44 @@ internal object NativeChatDirectReply {
             .build()
     }
 
-    fun enqueue(context: Context, conversationId: String, rawText: String, replyEpoch: Long): Boolean {
+    fun enqueue(context: Context, conversationId: String, rawText: String, replyEpoch: Long): Boolean =
+        enqueue(context, conversationId, UUID.randomUUID().toString(), rawText, replyEpoch, queuedSend = false)
+
+    /**
+     * Sends an in-app turn that was written while offline. The user message already exists in the
+     * archive; the job only runs with a network and drops the turn if the message was cancelled.
+     */
+    fun enqueueQueuedSend(
+        context: Context,
+        conversationId: String,
+        replyId: String,
+        rawText: String,
+        replyEpoch: Long,
+    ): Boolean = enqueue(context, conversationId, replyId, rawText, replyEpoch, queuedSend = true)
+
+    fun cancelQueuedSend(context: Context, replyId: String) {
+        WorkManager.getInstance(context.applicationContext).cancelAllWorkByTag(nativeChatQueuedSendTag(replyId))
+    }
+
+    private fun enqueue(
+        context: Context,
+        conversationId: String,
+        replyId: String,
+        rawText: String,
+        replyEpoch: Long,
+        queuedSend: Boolean,
+    ): Boolean {
         val text = rawText.trim()
         if (conversationId.isBlank() || text.isEmpty() || text.length > MAX_REPLY_TEXT_CHARS) return false
-        val replyId = UUID.randomUUID().toString()
-        val input = buildNativeChatReplyInput(replyId, conversationId, text, replyEpoch) ?: return false
+        val input = buildNativeChatReplyInput(replyId, conversationId, text, replyEpoch, queuedSend) ?: return false
         val request = OneTimeWorkRequestBuilder<NativeChatDirectReplyWorker>()
             .setInputData(input)
+            .apply {
+                if (queuedSend) {
+                    addTag(NATIVE_CHAT_QUEUED_SEND_TAG)
+                    addTag(nativeChatQueuedSendTag(replyId))
+                }
+            }
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -250,8 +295,11 @@ class NativeChatDirectReplyWorker(
         val replyText = inputData.getString(INPUT_REPLY_TEXT).orEmpty()
         if (conversationId.isEmpty() || replyId.isEmpty()) return Result.success()
 
+        val queuedSend = inputData.getBoolean(INPUT_QUEUED_SEND, false)
         return try {
-            processDirectReply(applicationContext, conversationId, replyId, replyText, inputData.getLong(INPUT_REPLY_EPOCH, 0L))
+            processDirectReply(
+                applicationContext, conversationId, replyId, replyText, inputData.getLong(INPUT_REPLY_EPOCH, 0L), queuedSend,
+            )
             Result.success()
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -259,6 +307,7 @@ class NativeChatDirectReplyWorker(
             if (runAttemptCount < 2) {
                 Result.retry()
             } else {
+                if (queuedSend) releaseQueuedMessage(applicationContext, conversationId, replyId)
                 publishFailureForStoredConversation(applicationContext, conversationId)
                 Result.success()
             }
@@ -277,6 +326,7 @@ private suspend fun processDirectReply(
     replyId: String,
     replyText: String,
     replyEpoch: Long,
+    queuedSend: Boolean,
 ): Boolean {
     val store = NativeChatStore(context.noBackupFilesDir)
     val writer = NativeChatWriter.getInstance(store) { archive ->
@@ -288,17 +338,25 @@ private suspend fun processDirectReply(
         val conversation = archive.conversations.firstOrNull { it.id == conversationId }
             ?: return@updateAndPersist null
         if (!canNativeChatDirectReply(conversation, apiKeys)) return@updateAndPersist null
+        // A queued in-app send that the user cancelled or edited must not come back.
+        if (queuedSend && conversation.messages.none { it.id == nativeChatReplyUserMessageId(replyId) }) {
+            return@updateAndPersist null
+        }
         prepareNativeChatDirectReply(
             archive, conversationId, replyId, replyText, System.currentTimeMillis(), replyEpoch,
         )?.also { prepared = it }?.archive
     }
     if (preparedArchive == null) {
-        publishFailureForStoredConversation(context, conversationId)
+        if (queuedSend) {
+            releaseQueuedMessage(context, conversationId, replyId)
+        } else {
+            publishFailureForStoredConversation(context, conversationId)
+        }
         return false // Permanent rejection: deleted conversation, invalid input, or missing key.
     }
     val reply = requireNotNull(prepared)
     val originalConversation = reply.conversation
-    NativeChatNotificationPublisher.publishReplyInProgress(context, originalConversation)
+    if (!queuedSend) NativeChatNotificationPublisher.publishReplyInProgress(context, originalConversation)
 
     val promptContext = loadDirectReplyPromptContext(context, reply.conversation)
     val providers = when (reply.conversation.selectedProvider) {
@@ -393,5 +451,31 @@ private fun publishFailureForStoredConversation(context: Context, conversationId
     val archive = NativeChatWriter.currentArchive() ?: store.load() ?: return
     archive.conversations.firstOrNull { it.id == conversationId }?.let {
         NativeChatNotificationPublisher.publishReplyFailed(context, it)
+    }
+}
+
+/** Clears the queued marker so a turn that could not be sent shows as an ordinary unanswered message. */
+private suspend fun releaseQueuedMessage(context: Context, conversationId: String, replyId: String) {
+    val writer = NativeChatWriter.getInstance(NativeChatStore(context.noBackupFilesDir)) { archive ->
+        NativeChatWidgetUpdater.onArchiveSaved(context.applicationContext, archive)
+    }
+    val messageId = nativeChatReplyUserMessageId(replyId)
+    runCatching {
+        writer.updateAndPersist { archive ->
+            val conversation = archive.conversations.firstOrNull { it.id == conversationId }
+                ?.takeIf { conversation -> conversation.messages.any { it.id == messageId && it.isQueued } }
+                ?: return@updateAndPersist null
+            archive.copy(
+                conversations = archive.conversations.map { candidate ->
+                    if (candidate.id != conversation.id) {
+                        candidate
+                    } else {
+                        candidate.copy(
+                            messages = candidate.messages.map { if (it.id == messageId) it.copy(isQueued = false) else it }
+                        )
+                    }
+                }
+            )
+        }
     }
 }
