@@ -97,6 +97,9 @@
             android:name=".notifications.NativeChatDirectReplyReceiver"
             android:exported="false" />
         <receiver
+            android:name=".notifications.PinnedChatShortcutReceiver"
+            android:exported="false" />
+        <receiver
             android:name=".widget.AisteeWidgetReceiver"
             android:exported="true">
             <intent-filter>

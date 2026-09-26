@@ -47,4 +47,13 @@ class NativeChatConversationShortcutsTest {
         assertEquals("AI chat", blank.shortLabel)
         assertFalse(blank.isShareTarget)
     }
+
+    @Test
+    fun onlyTitledNativeChatShortcutsAreRedacted() {
+        val chatShortcut = nativeChatConversationShortcutId("chat-a")!!
+
+        assertTrue(isTitledNativeChatShortcut(chatShortcut, "Trip plan"))
+        assertFalse(isTitledNativeChatShortcut(chatShortcut, "AI chat"))
+        assertFalse(isTitledNativeChatShortcut("web_ai", "Web AI"))
+    }
 }
