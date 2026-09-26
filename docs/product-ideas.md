@@ -226,7 +226,7 @@ Inspected manifests, resources and bundled assets of Claude 1.260923, AI Edge Ga
 - **AI Edge Gallery, distribution:** skills from URL, a curated featured list, MCP servers by URL with header auth, and a third-party disclaimer before adding either.
 - **DeepSeek, tables and selection:** a dedicated full-screen Markdown table preview with export, and an explicit "Select text" mode for messages. **Shipped (tables):** native chat responses offer "View table" per GFM table, with a pinned-header full-screen view, Copy as CSV (sensitive clip), SAF CSV export and Save to Library; every CSV path neutralizes spreadsheet formulas. "Select text" remains open.
 - **DeepSeek, attachment budget:** a pre-send warning that the model can read only a percentage of the attached files. For Aistee this belongs with the local tokenizer.
-- **DeepSeek, math:** native LaTeX rendering (jlatexmath). Aistee does not render LaTeX yet.
+- **DeepSeek, math:** native LaTeX rendering (jlatexmath). Aistee does not render LaTeX yet. **Shipped prerequisite:** completed native chat answers now render Markdown (headings, emphasis, code, lists, quotes, inline tables, http(s) links; raw HTML stays literal) through a small Compose renderer on the existing `org.jetbrains:markdown` parser, parsed off the main thread and cached per message. LaTeX (`$...$` / `$$...$$`, native chats only, plain-text fallback) is the next separate step.
 - **Gemini APK note:** the 3 MB shell only carries entry points; product logic lives in the Google app, so it yields little beyond share/widget structure.
 
 ### Follow-up: Grok Bot, Microsoft Copilot and ChatGPT APKs (26 September 2026)

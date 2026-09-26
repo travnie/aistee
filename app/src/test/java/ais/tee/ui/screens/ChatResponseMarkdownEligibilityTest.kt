@@ -50,4 +50,12 @@ class ChatResponseMarkdownEligibilityTest {
         assertFalse(shouldShowJumpToLatest(totalItemCount = 10, lastVisibleItemIndex = 8))
         assertFalse(shouldShowJumpToLatest(totalItemCount = 0, lastVisibleItemIndex = -1))
     }
+
+    @Test
+    fun onlyCompletedAssistantAnswersRenderMarkdown() {
+        assertTrue(shouldRenderChatMarkdown(completeResponse))
+        assertFalse(shouldRenderChatMarkdown(completeResponse.copy(isPartial = true)))
+        assertFalse(shouldRenderChatMarkdown(completeResponse.copy(isError = true)))
+        assertFalse(shouldRenderChatMarkdown(completeResponse.copy(sender = "user")))
+    }
 }
