@@ -28,6 +28,7 @@ import ais.tee.data.skills.activeSkillUserInput
 import ais.tee.data.skills.isActiveSkillTrusted
 import ais.tee.data.skills.validateActiveSkillToolRequest
 import ais.tee.security.QuickPrivacyModeStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
@@ -107,14 +108,21 @@ internal class NativeActiveSkillChatTools(
             return error(call, "The user declined to run this skill.")
         }
         note("Skill $skillName ran with input: ${input.take(MAX_TRANSCRIPT_INPUT_CHARS)}")
-        val outcome = runner.run(
-            invoker = ActiveSkillInvoker.MODEL,
-            manifest = manifest,
-            bundle = bundle,
-            input = activeSkillUserInput(input),
-            isIncognitoChat = false,
-            isQuickPrivacyOn = quickPrivacyOn(),
-        )
+        val outcome = try {
+            runner.run(
+                invoker = ActiveSkillInvoker.MODEL,
+                manifest = manifest,
+                bundle = bundle,
+                input = activeSkillUserInput(input),
+                isIncognitoChat = false,
+                isQuickPrivacyOn = quickPrivacyOn(),
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Shown to the user like any other skill failure; details stay out of the chat.
+            ActiveSkillOutcome.Error("The skill could not run.")
+        }
         val (output, isError) = when (outcome) {
             is ActiveSkillOutcome.Error -> outcome.message to true
             // Cards are shown in a later step; only the JSON result goes back.
