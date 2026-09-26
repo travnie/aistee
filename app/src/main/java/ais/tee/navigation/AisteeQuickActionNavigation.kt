@@ -6,6 +6,13 @@ import android.net.Uri
 import ais.tee.MainActivity
 import ais.tee.ui.viewmodel.NavigationTab
 
+/** Where a quick action (launcher shortcut, widget button) leads. */
+internal sealed interface QuickActionDestination {
+    data class Tab(val tab: NavigationTab) : QuickActionDestination
+    data object NewNativeChat : QuickActionDestination
+    data object ProjectLibrary : QuickActionDestination
+}
+
 internal object AisteeQuickActionNavigation {
     const val ACTION_OPEN_DESTINATION = "ais.tee.action.OPEN_DESTINATION"
     const val EXTRA_DESTINATION = "ais.tee.extra.DESTINATION"
@@ -23,6 +30,8 @@ internal object AisteeQuickActionNavigation {
     const val DESTINATION_WEB_AI = "web_ai"
     const val DESTINATION_COMPARE = "compare"
     const val DESTINATION_STUDIO = "studio"
+    const val DESTINATION_NEW_NATIVE_CHAT = "new_native_chat"
+    const val DESTINATION_LIBRARY = "library"
 
     fun launchIntent(context: Context, destination: String): Intent =
         Intent(context, MainActivity::class.java).apply {
@@ -101,5 +110,11 @@ internal object AisteeQuickActionNavigation {
         DESTINATION_COMPARE -> NavigationTab.COMPARE_HUB
         DESTINATION_STUDIO -> NavigationTab.STUDIO
         else -> null
+    }
+
+    fun quickActionDestination(value: String?): QuickActionDestination? = when (value) {
+        DESTINATION_NEW_NATIVE_CHAT -> QuickActionDestination.NewNativeChat
+        DESTINATION_LIBRARY -> QuickActionDestination.ProjectLibrary
+        else -> destination(value)?.let(QuickActionDestination::Tab)
     }
 }
