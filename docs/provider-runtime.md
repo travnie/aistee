@@ -86,7 +86,11 @@ OpenRouter and other OpenAI-compatible gateways may return the model actually us
 
 Native/API chat keeps processing controls intentionally small and capability-driven. OpenAI Responses chats can persist a per-conversation **Auto**, **Standard**, **Flex** or **Fast** processing mode; the request adapter maps explicit choices to `service_tier` while Auto leaves the provider/project default untouched. Flex uses a longer buffered timeout because queued low-cost work may take materially longer than an interactive request. Switching to a provider without a verified equivalent resets the conversation to Auto instead of leaking an unsupported option across transports.
 
-Batch and background execution are separate job-shaped workflows, not fake chat toggles. Add them behind provider-specific adapters with durable status/cancel/result handling and Project Library integration rather than blocking the interactive chat coroutine until an asynchronous provider job finishes.
+Batch and background execution are separate job-shaped workflows, not fake chat toggles. **OpenAI Background Responses are now the first shipped async slice:** Studio Tools → Jobs creates a standalone Responses request with `background=true` and `store=false`, persists only local job metadata, polls through constrained WorkManager work, supports provider cancellation, and saves completed text to the selected Project Library as Markdown. The WorkManager payload carries only Aistee's local job ID; prompts and API keys are never serialized into WorkManager `Data`.
+
+OpenAI background execution still requires temporary provider-side response storage for asynchronous execution and polling even with `store=false`; the UI states that boundary explicitly. Automatic polling is bounded and can be resumed manually from Jobs if Android scheduling or network conditions outlive the retry window.
+
+Gemini Batch and Anthropic Message Batches should reuse the same durable job model and Project Library result boundary rather than adding provider-specific pseudo-chat state.
 
 ## Usage and comparison metadata
 
@@ -130,6 +134,7 @@ Costs are recorded only when the response reports them. Aistee does not estimate
 - Google Gemini thought signatures: https://ai.google.dev/gemini-api/docs/generate-content/thought-signatures
 - Google Gemini 3 guidance: https://ai.google.dev/gemini-api/docs/generate-content/gemini-3
 - OpenAI Responses API: https://developers.openai.com/api/reference/resources/responses/methods/create
+- OpenAI Background mode: https://developers.openai.com/api/docs/guides/background
 - OpenAI model guidance: https://developers.openai.com/api/docs/guides/latest-model
 - Anthropic prompting/thinking guidance: https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/prompt-templates-and-variables
 - Anthropic Models API: https://platform.claude.com/docs/en/api/models/retrieve
