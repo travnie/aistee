@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">Aistee</string>
+    <string name="quick_actions_widget_label">Aistee quick actions</string>
+    <string name="quick_actions_widget_description">New chat, Web AI, Compare and Library in one row. Shows no chat content.</string>
     <string name="widget_description">Quick access to Aistee and recent local chats.</string>
     <string name="widget_recent_chats">Recent chats</string>
     <string name="widget_messages">Messages</string>
