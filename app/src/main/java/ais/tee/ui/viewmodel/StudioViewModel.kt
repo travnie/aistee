@@ -59,6 +59,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -221,6 +222,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private var nativeChatDraftPersistenceJob: Job? = null
     private var studioPersistenceOwnerId: Long? = null
     private val activeChatGenerationId = AtomicLong(0)
+    private val offlineContextCheckInFlight = AtomicBoolean(false)
     private val incomingShareId = AtomicLong(0)
     private val pendingWebShareId = AtomicLong(0)
     private val nativeChatNavigationRequestId = AtomicLong(0)
@@ -1399,7 +1401,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 conversationHistory = messages,
                 provider = provider,
                 systemInstruction = systemPrompt,
-            ).dropLast(1).map { it.text }
+            ).dropLast(1).map { turn ->
+                // Claude replays opaque blocks (thinking, tool use) instead of the visible text.
+                listOfNotNull(turn.text, turn.providerReplayState).maxBy { it.length }
+            }
             chatContextWarning(
                 planChatContextBudget(
                     counter = LocalTokenCounter,
@@ -1504,12 +1509,22 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 text = trimmed,
             )
         ) {
-            if (ignoreContextBudget) return queueNativeChatSend(activeConversation, trimmed)
+            if (ignoreContextBudget) {
+                val queued = queueNativeChatSend(activeConversation, trimmed)
+                if (queued) _uiState.update { it.copy(pendingChatContextWarning = null) }
+                return queued
+            }
+            // One preflight at a time, so a second tap cannot queue the same message twice.
+            if (!offlineContextCheckInFlight.compareAndSet(false, true)) return false
             viewModelScope.launch {
-                val promptContext = prepareNativeChatPromptContext(_uiState.value) ?: return@launch
-                if (holdForContextWarning(trimmed, promptContext.systemPrompt)) return@launch
-                val current = _uiState.value.activeNativeConversation
-                if (current?.id == activeConversation.id) queueNativeChatSend(current, trimmed)
+                try {
+                    val promptContext = prepareNativeChatPromptContext(_uiState.value) ?: return@launch
+                    if (holdForContextWarning(trimmed, promptContext.systemPrompt)) return@launch
+                    val current = _uiState.value.activeNativeConversation
+                    if (current?.id == activeConversation.id) queueNativeChatSend(current, trimmed)
+                } finally {
+                    offlineContextCheckInFlight.set(false)
+                }
             }
             return true
         }

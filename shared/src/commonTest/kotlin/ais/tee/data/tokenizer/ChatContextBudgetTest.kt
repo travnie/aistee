@@ -54,4 +54,16 @@ class ChatContextBudgetTest {
         assertTrue(budget.allowances.isEmpty())
         assertNull(chatContextWarning(budget))
     }
+
+    @Test
+    fun promptAloneOverTheWindowWarnsEvenWithoutContext() {
+        val budget = planChatContextBudget(counter, 100, "p".repeat(90), null, emptyList(), reservedOutputTokens = 20)
+        val warning = chatContextWarning(budget)!!
+
+        assertTrue(warning.promptExceedsWindow)
+        assertEquals(
+            "This message alone is larger than the model can read (counted with test, not the provider's own count).",
+            warning.message,
+        )
+    }
 }

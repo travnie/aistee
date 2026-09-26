@@ -54,13 +54,28 @@ fun planChatContextBudget(
 data class ChatContextWarning(
     val readablePercent: Int,
     val encodingLabel: String,
+    /** The new message plus the output reserve alone does not fit the window. */
+    val promptExceedsWindow: Boolean = false,
 ) {
     val message: String
-        get() = "The model can read about $readablePercent% of this chat's context " +
-            "(counted with $encodingLabel, not the provider's own count)."
+        get() = if (promptExceedsWindow) {
+            "This message alone is larger than the model can read " +
+                "(counted with $encodingLabel, not the provider's own count)."
+        } else {
+            "The model can read about $readablePercent% of this chat's context " +
+                "(counted with $encodingLabel, not the provider's own count)."
+        }
 }
 
-fun chatContextWarning(budget: AttachmentTokenBudget): ChatContextWarning? =
-    if (budget.fitsCompletely) null else ChatContextWarning(budget.readablePercent, budget.encodingLabel)
+fun chatContextWarning(budget: AttachmentTokenBudget): ChatContextWarning? {
+    val promptExceedsWindow =
+        budget.promptTokens.toLong() + budget.reservedOutputTokens > budget.contextTokens
+    if (budget.fitsCompletely && !promptExceedsWindow) return null
+    return ChatContextWarning(
+        readablePercent = if (promptExceedsWindow) 0 else budget.readablePercent,
+        encodingLabel = budget.encodingLabel,
+        promptExceedsWindow = promptExceedsWindow,
+    )
+}
 
 private fun Long.toSaturatedInt(): Int = coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
