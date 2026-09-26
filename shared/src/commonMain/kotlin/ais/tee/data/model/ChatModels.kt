@@ -354,6 +354,8 @@ data class ModelChatMessage(
     val isSimulated: Boolean = false,
     val isPartial: Boolean = false,
     val isImported: Boolean = false,
+    /** A user turn written while offline and waiting for the background send. */
+    val isQueued: Boolean = false,
     val latencyMs: Long? = null,
     val usage: ProviderUsage? = null,
     val activeProfileNotes: List<String> = emptyList(),
@@ -363,5 +365,5 @@ data class ModelChatMessage(
     override fun toString(): String =
         "ModelChatMessage(id=<redacted>, sender=$sender, provider=${provider?.id ?: "none"}, " +
             "text=<redacted>, activeProfileNotes=<redacted>, providerReplayState=<redacted>, " +
-            "isError=$isError, isSimulated=$isSimulated, isPartial=$isPartial, isImported=$isImported)"
+            "isError=$isError, isSimulated=$isSimulated, isPartial=$isPartial, isImported=$isImported, isQueued=$isQueued)"
 }
