@@ -1167,6 +1167,8 @@ private fun NativeChatDetailPane(
                             )
                         },
                         onRetryPrompt = { prompt -> viewModel.sendChatMessage(prompt) },
+                        onEditQueued = { viewModel.cancelQueuedNativeMessage(message.id, moveToDraft = true) },
+                        onCancelQueued = { viewModel.cancelQueuedNativeMessage(message.id, moveToDraft = false) },
                         onViewTable = { table -> viewingTable = table }
                     )
                 }
@@ -1413,7 +1415,9 @@ fun ChatMessageItem(
     onCopyText: (String) -> Unit,
     onOpenMarkdown: (ModelChatMessage) -> Unit,
     onRetryPrompt: (String) -> Unit,
-    onViewTable: (MarkdownTable) -> Unit = {}
+    onViewTable: (MarkdownTable) -> Unit = {},
+    onEditQueued: () -> Unit = {},
+    onCancelQueued: () -> Unit = {}
 ) {
     val isUser = message.sender == "user"
     val tables = remember(message.id, message.text, message.isPartial, message.isError) {
@@ -1641,6 +1645,36 @@ fun ChatMessageItem(
                         }
                     }
                 }
+            }
+        }
+
+        if (isUser && message.isQueued) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .padding(top = 2.dp, end = 4.dp)
+                    .testTag("queued_message_${message.id}")
+            ) {
+                Icon(
+                    Icons.Outlined.CloudOff,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(
+                    text = "Will send when you're back online",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(
+                    onClick = onEditQueued,
+                    modifier = Modifier.testTag("btn_edit_queued_${message.id}")
+                ) { Text("Edit") }
+                TextButton(
+                    onClick = onCancelQueued,
+                    modifier = Modifier.testTag("btn_cancel_queued_${message.id}")
+                ) { Text("Cancel") }
             }
         }
     }

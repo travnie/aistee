@@ -27,6 +27,15 @@ import ais.tee.share.PendingWebShare
 import ais.tee.share.claimText
 import ais.tee.share.completeTextClaim
 import ais.tee.share.releaseTextClaim
+import ais.tee.data.engine.NetworkAvailability
+import ais.tee.notifications.NATIVE_CHAT_QUEUED_SEND_TAG
+import ais.tee.notifications.NativeChatDirectReply
+import ais.tee.notifications.canNativeChatDirectReply
+import ais.tee.notifications.nativeChatReplyIdFromUserMessageId
+import ais.tee.notifications.nativeChatReplyUserMessageId
+import androidx.work.WorkManager
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import ais.tee.navigation.QuickActionDestination
 import ais.tee.notifications.NativeChatConversationShortcuts
 import ais.tee.notifications.nativeChatConversationIdForShortcut
@@ -198,6 +207,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val pendingWebShareId = AtomicLong(0)
     private val nativeChatNavigationRequestId = AtomicLong(0)
     private val pendingNativeConversationId = AtomicReference<String?>(null)
+    private val networkAvailability = NetworkAvailability(application)
+    private var queuedSendObserver: Job? = null
     private val pendingQuickAction = AtomicReference<QuickActionDestination?>(null)
     private val projectLibraryRequestIds = AtomicLong(0)
     private val pendingNativeChatShare = AtomicReference<PendingNativeChatShare?>(null)
@@ -221,6 +232,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         initPlaygroundWelcome()
         initProjectLibrary()
+        networkAvailability.start()
         initNativeChatPersistence()
         startStudioPersistence(useFallbackPersistence)
     }
@@ -356,6 +368,54 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         applyPendingNativeConversationTarget()
     }
 
+    private fun queueNativeChatSend(conversation: NativeChatConversation, text: String): Boolean {
+        val replyId = UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
+        updateActiveNativeConversation { it.withQueuedMessage(replyId, text, now) }
+        val queued = NativeChatDirectReply.enqueueQueuedSend(
+            context = getApplication(),
+            conversationId = conversation.id,
+            replyId = replyId,
+            rawText = text,
+            replyEpoch = conversation.replyEpoch,
+        )
+        if (!queued) {
+            updateActiveNativeConversation { current ->
+                current.withoutQueuedMessage(nativeChatReplyUserMessageId(replyId))?.first
+                    ?.copy(draft = text)
+                    ?: current
+            }
+            showSnackbar("You're offline and this message could not be queued.")
+            return false
+        }
+        observeQueuedSends()
+        return true
+    }
+
+    /** Cancels a still-queued turn; with [moveToDraft] its text returns to the composer for editing. */
+    fun cancelQueuedNativeMessage(messageId: String, moveToDraft: Boolean) {
+        if (!_uiState.value.isNativeConversationStoreReady) return
+        val replyId = nativeChatReplyIdFromUserMessageId(messageId) ?: return
+        NativeChatDirectReply.cancelQueuedSend(getApplication(), replyId)
+        var removed = false
+        updateActiveNativeConversation { conversation ->
+            val (updated, message) = conversation.withoutQueuedMessage(messageId) ?: return@updateActiveNativeConversation conversation
+            removed = true
+            if (moveToDraft) updated.copy(draft = stageSharedTextInDraftForEdit(updated.draft, message.text)) else updated
+        }
+        if (!removed) showSnackbar("This message is already being sent.")
+    }
+
+    private fun observeQueuedSends() {
+        if (queuedSendObserver?.isActive == true) return
+        queuedSendObserver = viewModelScope.launch {
+            WorkManager.getInstance(getApplication()).getWorkInfosByTagFlow(NATIVE_CHAT_QUEUED_SEND_TAG)
+                .map { infos -> infos.filter { it.state.isFinished }.map { it.id }.toSet() }
+                .distinctUntilChanged()
+                .collect { refreshNativeChatFromPersistence() }
+        }
+    }
+
     /** Widget/shortcut action: open Compare on a fresh native chat once the chat store is ready. */
     fun openNewNativeConversation() {
         selectTab(NavigationTab.COMPARE_HUB)
@@ -451,6 +511,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         applyPendingQuickAction()
         val state = _uiState.value
         if (!state.isNativeConversationStoreReady) return
+        if (state.nativeChat.conversations.any { conversation -> conversation.messages.any { it.isQueued } }) {
+            observeQueuedSends()
+        }
         val requestedId = pendingNativeConversationId.getAndSet(null) ?: return
         val conversationId = resolveNativeConversationTarget(state.nativeChat, requestedId)
         if (conversationId == null) {
@@ -961,6 +1024,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun deleteNativeConversation(conversationId: String) {
         val state = _uiState.value
         if (!state.isNativeConversationStoreReady) return
+        state.nativeChat.conversations.firstOrNull { it.id == conversationId }?.messages
+            ?.filter { it.isQueued }
+            ?.mapNotNull { nativeChatReplyIdFromUserMessageId(it.id) }
+            ?.forEach { replyId -> NativeChatDirectReply.cancelQueuedSend(getApplication(), replyId) }
         if (state.nativeChat.activeConversationId == conversationId) cancelChatGeneration()
         _uiState.update { stateBeforeDelete ->
             val current = if (stateBeforeDelete.incognitoConversationId == conversationId) {
@@ -1314,6 +1381,17 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             return false
         }
         if (trimmed.isBlank() || initialState.isChatGenerating) return false
+        val activeConversation = initialState.activeNativeConversation
+        if (
+            activeConversation != null &&
+            shouldQueueNativeChatSend(
+                isOnline = networkAvailability.isOnline.value,
+                canSendInBackground = canNativeChatDirectReply(activeConversation, initialState.apiKeyConfig),
+                text = trimmed,
+            )
+        ) {
+            return queueNativeChatSend(activeConversation, trimmed)
+        }
 
         val plan = resolveNativeChatSendPlan(initialState) ?: return false
         val targetProvider = plan.targetProvider
@@ -1747,6 +1825,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             studioStateWriter?.enqueue(latestSnapshot, ownerId)
         }
         persistNativeChat()
+        networkAvailability.stop()
         super.onCleared()
     }
 
@@ -1786,6 +1865,9 @@ private fun StudioUiState.withoutIncognitoConversation(): StudioUiState {
     val incognitoId = incognitoConversationId ?: return this
     return copy(nativeChat = nativeChat.withoutIncognito(incognitoId), incognitoConversationId = null)
 }
+
+private fun stageSharedTextInDraftForEdit(draft: String, text: String): String =
+    if (draft.isBlank()) text else text + "\n\n" + draft.trimStart()
 
 private data class PendingNativeChatShare(
     val shortcutId: String,
