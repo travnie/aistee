@@ -26,7 +26,13 @@ fun activeSkillRequestJson(input: JsonElement, locale: String, nowIso8601: Strin
 
 /** Shown only to the user, full screen in the skills sandbox; never sent to a model or exported. */
 @Serializable
-data class ActiveSkillCard(val title: String, val html: String) {
+data class ActiveSkillCard(
+    val title: String,
+    val html: String,
+    /** The skill version that made the card; opening it needs that exact version still trusted. */
+    val skillName: String = "",
+    val bundleDigest: String = "",
+) {
     override fun toString(): String = "ActiveSkillCard(title=<redacted>, html=<${html.length} chars>)"
 }
 

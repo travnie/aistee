@@ -54,6 +54,12 @@ class ActiveSkillCardActivity : ComponentActivity() {
         }
     }
 
+    /** `noHistory` alone keeps the card when the screen just turns off; the app lock never covers it. */
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) finish()
+    }
+
     override fun onDestroy() {
         webView?.apply {
             webViewClient = WebViewClient()
@@ -67,24 +73,7 @@ class ActiveSkillCardActivity : ComponentActivity() {
     private fun show(title: String, html: String) {
         val basePath = "/cards/${UUID.randomUUID()}/"
         val assetLoader = WebViewAssetLoader.Builder()
-            .addPathHandler(basePath) { path ->
-                if (path != "index.html") {
-                    activeSkillDenied(404)
-                } else {
-                    WebResourceResponse(
-                        "text/html",
-                        "utf-8",
-                        200,
-                        "OK",
-                        mapOf(
-                            "Cache-Control" to "no-store",
-                            "X-Content-Type-Options" to "nosniff",
-                            "Content-Security-Policy" to ACTIVE_SKILL_CONTENT_SECURITY_POLICY,
-                        ),
-                        ByteArrayInputStream(html.toByteArray(Charsets.UTF_8)),
-                    )
-                }
-            }
+            .addPathHandler(basePath) { path -> activeSkillCardResponse(path, html) }
             .build()
         val view = WebView(this).also { webView = it }
         configureActiveSkillWebView(view)
@@ -132,10 +121,19 @@ class ActiveSkillCardActivity : ComponentActivity() {
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_HTML = "html"
 
-        /** Opens [card] only while active skills are on. Call from the app process. */
+        /**
+         * Opens [card] only while active skills are on and the skill version that made it is still
+         * trusted, so revoking trust also stops its cards' scripts. Call from the app process.
+         */
         internal fun open(context: Context, card: ActiveSkillCard) {
-            if (!ActiveSkillsPreferencesStore(context).isEnabled()) {
+            val preferences = ActiveSkillsPreferencesStore(context)
+            if (!preferences.isEnabled()) {
                 Toast.makeText(context, "Turn on active skills to open skill cards.", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val trust = preferences.trustFor(card.skillName)
+            if (trust == null || card.bundleDigest.isEmpty() || trust.bundleDigest != card.bundleDigest) {
+                Toast.makeText(context, "Trust this skill version again to open its card.", Toast.LENGTH_SHORT).show()
                 return
             }
             context.startActivity(
@@ -147,3 +145,22 @@ class ActiveSkillCardActivity : ComponentActivity() {
         }
     }
 }
+
+/** Serves only the card page, with the sandbox CSP; any other path is not found. */
+internal fun activeSkillCardResponse(path: String, html: String): WebResourceResponse =
+    if (path != "index.html") {
+        activeSkillDenied(404)
+    } else {
+        WebResourceResponse(
+            "text/html",
+            "utf-8",
+            200,
+            "OK",
+            mapOf(
+                "Cache-Control" to "no-store",
+                "X-Content-Type-Options" to "nosniff",
+                "Content-Security-Policy" to ACTIVE_SKILL_CONTENT_SECURITY_POLICY,
+            ),
+            ByteArrayInputStream(html.toByteArray(Charsets.UTF_8)),
+        )
+    }

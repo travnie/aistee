@@ -55,8 +55,8 @@ Both the user and the model:
 
 ## Result cards
 
-- Under the reply, a card is only its title and an **Open** button; no WebView lives in the chat list. Open shows the card full screen in an activity in the `:skills` process, with the same WebView settings, CSP and cookie check as a skill run. The card is `noHistory` and excluded from recents because the app lock does not run in that process.
-- Cards are stored with the reply (at most four), never sent to the model, and left out of Markdown export. Opening one needs the active skills switch on.
+- Under the reply, a card is only its title and an **Open** button; no WebView lives in the chat list. Open shows the card full screen in an activity in the `:skills` process, with the same WebView settings, CSP and cookie check as a skill run. The app lock does not run in that process, so the card closes whenever it stops (including screen off) and is excluded from recents.
+- Cards are stored with the reply (at most four), never sent to the model, and left out of Markdown export. Opening one needs the active skills switch on and the exact skill version that made it still trusted.
 - Cards cannot request tools, network or navigation; links do nothing in v1.
 
 ## Flag, rollout and tests

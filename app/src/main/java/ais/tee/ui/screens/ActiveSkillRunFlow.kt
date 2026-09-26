@@ -99,7 +99,7 @@ internal fun ActiveSkillRunFlow(
             is ActiveSkillOutcome.Result -> RunStep.Finished(
                 title = "Result",
                 body = prettyJson.encodeToString(JsonElement.serializer(), outcome.result),
-                card = outcome.card,
+                card = outcome.card?.copy(skillName = skill.manifest.name, bundleDigest = skill.bundle.digest),
             )
             is ActiveSkillOutcome.Error -> RunStep.Finished("Skill failed", outcome.message)
             is ActiveSkillOutcome.ToolRequests -> {
