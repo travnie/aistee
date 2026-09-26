@@ -183,6 +183,16 @@ fun ChatScreen(
         }
     }
 
+    fun createIncognitoConversation() {
+        viewModel.newIncognitoConversation()
+        val conversationId = viewModel.uiState.value.nativeChat.activeConversationId
+        if (conversationId.isNotBlank()) {
+            navigationScope.launch {
+                navigator.navigateTo(ListDetailPaneScaffoldRole.Detail, conversationId)
+            }
+        }
+    }
+
     fun deleteConversation(conversationId: String) {
         val keepDetailVisible =
             navigator.currentDestination?.pane == ListDetailPaneScaffoldRole.Detail
@@ -205,7 +215,9 @@ fun ChatScreen(
                 NativeConversationsPane(
                     conversations = conversations,
                     activeConversationId = activeConversationId,
+                    incognitoConversationId = uiState.incognitoConversationId,
                     onNew = ::createConversation,
+                    onNewIncognito = ::createIncognitoConversation,
                     onSelect = ::showConversation,
                     onDelete = ::deleteConversation
                 )
@@ -407,8 +419,10 @@ private fun NativeChatDetailPane(
         }
     }
 
+    val isIncognito = uiState.isActiveConversationIncognito
     val canOpenChatAsMarkdown =
-        !uiState.isChatGenerating &&
+        !isIncognito &&
+            !uiState.isChatGenerating &&
             !isPreparingChatMarkdown &&
             uiState.chatMessages.any { it.sender == CHAT_ROLE_USER }
 
@@ -546,6 +560,14 @@ private fun NativeChatDetailPane(
                         .statusBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
+                    if (isIncognito) {
+                        IncognitoChatBanner(
+                            onSaveAsNormal = viewModel::saveIncognitoAsNormalConversation,
+                            modifier = Modifier
+                                .padding(bottom = 6.dp)
+                                .clip(MaterialTheme.shapes.small)
+                        )
+                    }
                     // Top header row
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -587,6 +609,7 @@ private fun NativeChatDetailPane(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                if (isIncognito) IncognitoBadge()
                                 Text(
                                     text = uiState.activeNativeConversation?.title ?: "Native chat",
                                     style = MaterialTheme.typography.bodySmall,
@@ -1119,7 +1142,7 @@ private fun NativeChatDetailPane(
                     ChatMessageItem(
                         message = message,
                         maxBubbleWidth = maxBubbleWidth,
-                        canOpenMarkdown = canOpenResponseAsMarkdown(
+                        canOpenMarkdown = !isIncognito && canOpenResponseAsMarkdown(
                             message = message,
                             isPreparingChatMarkdown = isPreparingChatMarkdown,
                             isWorkspaceBusy = markdownUiState.isBusy
@@ -1244,7 +1267,9 @@ private fun NativeChatDetailPane(
 private fun NativeConversationsPane(
     conversations: List<NativeChatConversation>,
     activeConversationId: String,
+    incognitoConversationId: String?,
     onNew: () -> Unit,
+    onNewIncognito: () -> Unit,
     onSelect: (String) -> Unit,
     onDelete: (String) -> Unit
 ) {
@@ -1279,6 +1304,16 @@ private fun NativeConversationsPane(
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("New conversation")
+            }
+            OutlinedButton(
+                onClick = onNewIncognito,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("btn_new_incognito_conversation")
+            ) {
+                Icon(Icons.Outlined.VisibilityOff, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("New incognito chat")
             }
 
             LazyColumn(
@@ -1320,6 +1355,9 @@ private fun NativeConversationsPane(
                                     )
                                 }
                                 Column(modifier = Modifier.weight(1f)) {
+                                    if (conversation.id == incognitoConversationId) {
+                                        IncognitoBadge()
+                                    }
                                     Text(
                                         conversation.title,
                                         maxLines = 1,
@@ -2019,4 +2057,58 @@ private fun ProjectLibraryDialog(
             TextButton(onClick = onDismiss) { Text("Close") }
         },
     )
+}
+
+@Composable
+private fun IncognitoBadge() {
+    Surface(
+        shape = MaterialTheme.shapes.extraSmall,
+        color = MaterialTheme.colorScheme.inverseSurface,
+        modifier = Modifier.testTag("badge_incognito")
+    ) {
+        Text(
+            text = "INCOGNITO",
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.inverseOnSurface
+        )
+    }
+}
+
+@Composable
+internal fun IncognitoChatBanner(onSaveAsNormal: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        color = MaterialTheme.colorScheme.inverseSurface,
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("banner_incognito_chat")
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
+        ) {
+            Icon(
+                Icons.Outlined.VisibilityOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.inverseOnSurface,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = "Incognito: not saved, no notifications or widgets. Leaving discards it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.inverseOnSurface,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 10.dp)
+            )
+            TextButton(
+                onClick = onSaveAsNormal,
+                modifier = Modifier.testTag("btn_save_incognito_as_normal")
+            ) {
+                Text("Save as normal chat", color = MaterialTheme.colorScheme.inversePrimary)
+            }
+        }
+    }
 }
