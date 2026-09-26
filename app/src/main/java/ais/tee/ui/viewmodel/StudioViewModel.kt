@@ -389,6 +389,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /** Asks the launcher to pin the active native chat; returns false when pinning is unsupported. */
+    fun requestPinActiveNativeConversation(): Boolean {
+        val conversation = _uiState.value.activeNativeConversation ?: return false
+        return NativeChatConversationShortcuts.requestPin(getApplication(), conversation.id, conversation.title)
+    }
+
     private fun publishNativeConversationShortcut(conversationId: String) {
         val conversation = _uiState.value.nativeChat.conversations.firstOrNull { it.id == conversationId } ?: return
         if (conversation.messages.none { it.sender == CHAT_ROLE_USER }) return

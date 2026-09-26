@@ -1,6 +1,10 @@
 package ais.tee.notifications
 
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.core.app.Person
 import androidx.core.content.LocusIdCompat
 import androidx.core.content.pm.ShortcutInfoCompat
@@ -66,6 +70,19 @@ internal fun nativeChatConversationIdForShortcut(
     return conversationIds.firstOrNull { nativeChatConversationShortcutId(it) == target }
 }
 
+internal const val DELETED_CHAT_SHORTCUT_MESSAGE = "This chat was deleted"
+
+/** Native chat shortcuts that show a chat title and must be hidden when titles are not allowed. */
+internal fun isTitledNativeChatShortcut(shortcutId: String, shortLabel: CharSequence): Boolean =
+    shortcutId.startsWith(SHORTCUT_ID_PREFIX) && shortLabel.toString() != GENERIC_SHORTCUT_LABEL
+
+/** Shows a short confirmation once the launcher has pinned a chat. */
+class PinnedChatShortcutReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        Toast.makeText(context, "Chat added to home screen", Toast.LENGTH_SHORT).show()
+    }
+}
+
 internal object NativeChatConversationShortcuts {
     private val shortcutLock = Any()
 
@@ -76,6 +93,43 @@ internal object NativeChatConversationShortcuts {
             title = title,
             showConversationTitles = effectiveNativeChatNotificationPreferences(appContext).showConversationTitles,
         )
+        val shortcut = conversationShortcut(appContext, conversationId, shortcutId, presentation)
+
+        runCatching {
+            if (ShortcutManagerCompat.pushDynamicShortcut(appContext, shortcut)) shortcutId else null
+        }.getOrNull()
+    }
+
+    /**
+     * Asks the launcher to pin this conversation, using the same ID and label rule as the dynamic
+     * shortcut. The launcher confirms through [PinnedChatShortcutReceiver].
+     */
+    fun requestPin(context: Context, conversationId: String, title: String?): Boolean = synchronized(shortcutLock) {
+        val appContext = context.applicationContext
+        if (!ShortcutManagerCompat.isRequestPinShortcutSupported(appContext)) return false
+        val shortcutId = nativeChatConversationShortcutId(conversationId) ?: return false
+        val presentation = nativeChatShortcutPresentation(
+            title = title,
+            showConversationTitles = effectiveNativeChatNotificationPreferences(appContext).showConversationTitles,
+        )
+        val shortcut = conversationShortcut(appContext, conversationId, shortcutId, presentation)
+        val confirmation = PendingIntent.getBroadcast(
+            appContext,
+            0,
+            Intent(appContext, PinnedChatShortcutReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        runCatching {
+            ShortcutManagerCompat.requestPinShortcut(appContext, shortcut, confirmation.intentSender)
+        }.getOrDefault(false)
+    }
+
+    private fun conversationShortcut(
+        appContext: Context,
+        conversationId: String,
+        shortcutId: String,
+        presentation: NativeChatShortcutPresentation,
+    ): ShortcutInfoCompat {
         val assistant = Person.Builder()
             .setName("Aistee")
             .setBot(true)
@@ -83,7 +137,7 @@ internal object NativeChatConversationShortcuts {
         val launchIntent =
             AisteeQuickActionNavigation.nativeConversationLaunchIntent(appContext, conversationId)
                 .setClass(appContext, MainActivity::class.java)
-        val shortcut = ShortcutInfoCompat.Builder(appContext, shortcutId)
+        return ShortcutInfoCompat.Builder(appContext, shortcutId)
             .setShortLabel(presentation.shortLabel)
             .setLongLabel(presentation.longLabel)
             .setIntent(launchIntent)
@@ -95,10 +149,6 @@ internal object NativeChatConversationShortcuts {
                 if (presentation.isShareTarget) setCategories(setOf(NATIVE_CHAT_SHARE_TARGET_CATEGORY))
             }
             .build()
-
-        runCatching {
-            if (ShortcutManagerCompat.pushDynamicShortcut(appContext, shortcut)) shortcutId else null
-        }.getOrNull()
     }
 
     fun remove(context: Context, conversationId: String) {
@@ -108,6 +158,14 @@ internal object NativeChatConversationShortcuts {
                 ShortcutManagerCompat.removeLongLivedShortcuts(
                     context.applicationContext,
                     listOf(shortcutId),
+                )
+            }
+            // A pinned shortcut cannot be removed by the app; disable it instead of leaving a dead pin.
+            runCatching {
+                ShortcutManagerCompat.disableShortcuts(
+                    context.applicationContext,
+                    listOf(shortcutId),
+                    DELETED_CHAT_SHORTCUT_MESSAGE,
                 )
             }
         }
@@ -124,11 +182,23 @@ internal object NativeChatConversationShortcuts {
                 val titled = ShortcutManagerCompat.getShortcuts(
                     appContext,
                     ShortcutManagerCompat.FLAG_MATCH_DYNAMIC or ShortcutManagerCompat.FLAG_MATCH_CACHED,
-                ).filter { shortcut ->
-                    shortcut.id.startsWith(SHORTCUT_ID_PREFIX) &&
-                        shortcut.shortLabel.toString() != GENERIC_SHORTCUT_LABEL
-                }.map { it.id }
+                ).filter { shortcut -> isTitledNativeChatShortcut(shortcut.id, shortcut.shortLabel) }
+                    .map { it.id }
                 if (titled.isNotEmpty()) ShortcutManagerCompat.removeLongLivedShortcuts(appContext, titled)
+            }
+            // Pinned shortcuts stay on the home screen, so relabel them instead.
+            runCatching {
+                val pinned = ShortcutManagerCompat.getShortcuts(appContext, ShortcutManagerCompat.FLAG_MATCH_PINNED)
+                    .filter { shortcut -> isTitledNativeChatShortcut(shortcut.id, shortcut.shortLabel) }
+                    .mapNotNull { shortcut ->
+                        val intents = shortcut.intents.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                        ShortcutInfoCompat.Builder(appContext, shortcut.id)
+                            .setShortLabel(GENERIC_SHORTCUT_LABEL)
+                            .setLongLabel(GENERIC_SHORTCUT_LABEL)
+                            .setIntents(intents)
+                            .build()
+                    }
+                if (pinned.isNotEmpty()) ShortcutManagerCompat.updateShortcuts(appContext, pinned)
             }
         }
     }
