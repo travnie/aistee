@@ -1045,6 +1045,16 @@ private fun NativeChatDetailPane(
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
+                    uiState.pendingChatContextWarning
+                        ?.takeIf { it.conversationId == uiState.nativeChat.activeConversationId }
+                        ?.let { pending ->
+                        ChatContextWarningBanner(
+                            message = pending.warning.message,
+                            onSendAnyway = { viewModel.sendPendingChatDespiteContextWarning() },
+                            onNewChat = viewModel::movePendingChatToNewConversation,
+                            onDismiss = viewModel::dismissChatContextWarning,
+                        )
+                    }
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier
@@ -2123,6 +2133,39 @@ internal fun IncognitoChatBanner(onSaveAsNormal: () -> Unit, modifier: Modifier 
                 modifier = Modifier.testTag("btn_save_incognito_as_normal")
             ) {
                 Text("Save as normal chat", color = MaterialTheme.colorScheme.inversePrimary)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ChatContextWarningBanner(
+    message: String,
+    onSendAnyway: () -> Unit,
+    onNewChat: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 6.dp)
+            .testTag("chat_context_warning")
+    ) {
+        Column(modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 8.dp)) {
+            Text(text = message, style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = onDismiss, modifier = Modifier.testTag("btn_chat_context_dismiss")) {
+                    Text("Dismiss")
+                }
+                TextButton(onClick = onNewChat, modifier = Modifier.testTag("btn_chat_context_new_chat")) {
+                    Text("New chat")
+                }
+                TextButton(onClick = onSendAnyway, modifier = Modifier.testTag("btn_chat_context_send_anyway")) {
+                    Text("Send anyway")
+                }
             }
         }
     }

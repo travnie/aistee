@@ -22,6 +22,11 @@ import ais.tee.data.preferences.WebChatPreferencesStore
 import ais.tee.data.security.ApiKeyStore
 import ais.tee.data.skills.LocalSkillLibraryStore
 import ais.tee.data.skills.composeLocalSkillSystemInstruction
+import ais.tee.data.tokenizer.ChatContextWarning
+import ais.tee.data.tokenizer.LocalTokenCounter
+import ais.tee.data.tokenizer.chatContextWarning
+import ais.tee.data.tokenizer.knownChatContextWindowTokens
+import ais.tee.data.tokenizer.planChatContextBudget
 import ais.tee.share.IncomingSharePayload
 import ais.tee.share.PendingWebShare
 import ais.tee.share.claimText
@@ -54,6 +59,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
@@ -92,6 +98,17 @@ private data class NativeChatSendPlan(
     val providersToRun: List<AiProvider>,
     val apiKeys: ApiKeyConfig
 )
+
+data class PendingChatContextWarning(
+    val warning: ChatContextWarning,
+    val prompt: String,
+    /** The held prompt belongs to this chat and model; it is never sent anywhere else. */
+    val conversationId: String,
+    val provider: AiProvider,
+    val model: String,
+) {
+    override fun toString(): String = "PendingChatContextWarning(warning=$warning, prompt=<redacted>)"
+}
 
 private data class NativeChatPromptContext(
     val systemPrompt: String?,
@@ -136,6 +153,8 @@ data class StudioUiState(
     val isProjectLibraryReady: Boolean = false,
     /** In-memory only conversation; never persisted, notified, exported or saved to the Library. */
     val incognitoConversationId: String? = null,
+    /** Send held back because the chat context does not fit the model; cleared on send or dismiss. */
+    val pendingChatContextWarning: PendingChatContextWarning? = null,
 ) {
     val isActiveConversationIncognito: Boolean
         get() = incognitoConversationId != null && nativeChat.activeConversationId == incognitoConversationId
@@ -203,6 +222,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private var nativeChatDraftPersistenceJob: Job? = null
     private var studioPersistenceOwnerId: Long? = null
     private val activeChatGenerationId = AtomicLong(0)
+    private val offlineContextCheckInFlight = AtomicBoolean(false)
     private val incomingShareId = AtomicLong(0)
     private val pendingWebShareId = AtomicLong(0)
     private val nativeChatNavigationRequestId = AtomicLong(0)
@@ -1361,6 +1381,77 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         return NativeChatSendPlan(targetProvider, providersToRun, state.apiKeyConfig)
     }
 
+    /**
+     * Local o200k estimate of whether the system instruction and earlier turns fit the selected
+     * model's published window. Models without a known window, and compare mode, get no warning.
+     */
+    private suspend fun nativeChatContextWarning(
+        state: StudioUiState,
+        prompt: String,
+        systemPrompt: String?,
+    ): ChatContextWarning? {
+        val provider = state.selectedChatProvider
+        if (provider == AiProvider.ALL) return null
+        val window = knownChatContextWindowTokens(provider, state.selectedChatModel) ?: return null
+        val messages = state.chatMessages
+        val model = state.selectedChatModel
+        return withContext(Dispatchers.Default) {
+            // Same bounded, provider-scoped turns the request replays, minus the new prompt.
+            val history = buildBoundedProviderTextTurns(
+                prompt = prompt,
+                conversationHistory = messages,
+                provider = provider,
+                systemInstruction = systemPrompt,
+                // Replay state from another model is not sent, as in the provider adapters.
+                replayStateModelName = model,
+            ).dropLast(1).map { turn ->
+                // Claude replays opaque blocks (thinking, tool use) instead of the visible text.
+                listOfNotNull(turn.text, turn.providerReplayState).maxBy { it.length }
+            }
+            chatContextWarning(
+                planChatContextBudget(
+                    counter = LocalTokenCounter,
+                    contextTokens = window,
+                    prompt = prompt,
+                    systemInstruction = systemPrompt,
+                    history = history,
+                )
+            )
+        }
+    }
+
+    /**
+     * Returns true when [prompt] must not be sent yet. The check uses [origin], the state at the
+     * tap; the warning is only shown while that chat and model are still selected.
+     */
+    private suspend fun holdForContextWarning(
+        prompt: String,
+        systemPrompt: String?,
+        origin: StudioUiState = _uiState.value,
+    ): Boolean {
+        val state = origin
+        val conversationId = state.nativeChat.activeConversationId
+        val warning = nativeChatContextWarning(state, prompt, systemPrompt) ?: return false
+        if (!isSameChatTarget(state, _uiState.value)) return true
+        _uiState.update {
+            it.copy(
+                pendingChatContextWarning = PendingChatContextWarning(
+                    warning = warning,
+                    prompt = prompt,
+                    conversationId = conversationId,
+                    provider = state.selectedChatProvider,
+                    model = state.selectedChatModel,
+                )
+            )
+        }
+        return true
+    }
+
+    private fun isSameChatTarget(a: StudioUiState, b: StudioUiState): Boolean =
+        a.nativeChat.activeConversationId == b.nativeChat.activeConversationId &&
+            a.selectedChatProvider == b.selectedChatProvider &&
+            a.selectedChatModel == b.selectedChatModel
+
     private suspend fun prepareNativeChatPromptContext(state: StudioUiState): NativeChatPromptContext? {
         val profileSystemPrompt = if (state.includeSystemProfileInChat) {
             state.renderedInstructions.ifBlank { null }
@@ -1382,7 +1473,40 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         )
     }
 
-    fun sendChatMessage(prompt: String): Boolean {
+    /** Sends the prompt held back by the context warning without checking the budget again. */
+    fun sendPendingChatDespiteContextWarning(): Boolean {
+        val state = _uiState.value
+        val pending = state.pendingChatContextWarning ?: return false
+        if (
+            pending.conversationId != state.nativeChat.activeConversationId ||
+            pending.provider != state.selectedChatProvider ||
+            pending.model != state.selectedChatModel
+        ) {
+            _uiState.update { it.copy(pendingChatContextWarning = null) }
+            showSnackbar("The chat or model changed. Send the message again to recheck its size.")
+            return false
+        }
+        return sendChatMessage(pending.prompt, ignoreContextBudget = true)
+    }
+
+    /** Moves the held-back prompt into a new chat, which starts without the earlier turns. */
+    fun movePendingChatToNewConversation() {
+        val pending = _uiState.value.pendingChatContextWarning ?: return
+        _uiState.update { it.copy(pendingChatContextWarning = null) }
+        newNativeConversation()
+        updateNativeConversationDraft(pending.prompt)
+    }
+
+    fun dismissChatContextWarning() {
+        _uiState.update { it.copy(pendingChatContextWarning = null) }
+    }
+
+    /**
+     * Sends [prompt] in the active native chat. Unless [ignoreContextBudget] is set (the user chose
+     * "Send anyway"), a request that does not fit the model's known context window is held back
+     * as [StudioUiState.pendingChatContextWarning] instead of being sent or queued.
+     */
+    fun sendChatMessage(prompt: String, ignoreContextBudget: Boolean = false): Boolean {
         val trimmed = prompt.trim()
         val initialState = _uiState.value
         if (!initialState.isNativeConversationStoreReady) {
@@ -1401,7 +1525,28 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 text = trimmed,
             )
         ) {
-            return queueNativeChatSend(activeConversation, trimmed)
+            if (ignoreContextBudget) {
+                val queued = queueNativeChatSend(activeConversation, trimmed)
+                if (queued) _uiState.update { it.copy(pendingChatContextWarning = null) }
+                return queued
+            }
+            // One preflight at a time, so a second tap cannot queue the same message twice.
+            if (!offlineContextCheckInFlight.compareAndSet(false, true)) return false
+            viewModelScope.launch {
+                try {
+                    val promptContext = prepareNativeChatPromptContext(initialState) ?: return@launch
+                    if (holdForContextWarning(trimmed, promptContext.systemPrompt, initialState)) return@launch
+                    // Dropped if the user moved to another chat or model while it was counted.
+                    if (!isSameChatTarget(initialState, _uiState.value)) return@launch
+                    val current = _uiState.value.activeNativeConversation ?: return@launch
+                    if (queueNativeChatSend(current, trimmed)) {
+                        _uiState.update { it.copy(pendingChatContextWarning = null) }
+                    }
+                } finally {
+                    offlineContextCheckInFlight.set(false)
+                }
+            }
+            return true
         }
 
         val plan = resolveNativeChatSendPlan(initialState) ?: return false
@@ -1433,6 +1578,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
                 currentCoroutineContext().ensureActive()
                 if (generationId != activeChatGenerationId.get()) return@launch
+                if (!ignoreContextBudget && holdForContextWarning(trimmed, promptContext.systemPrompt)) return@launch
+                if (generationId != activeChatGenerationId.get()) return@launch
+                _uiState.update { it.copy(pendingChatContextWarning = null) }
                 val now = System.currentTimeMillis()
                 val userMessage = ModelChatMessage(
                     id = "user_$now",
