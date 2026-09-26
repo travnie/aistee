@@ -1,6 +1,6 @@
 # Active skills runtime (Skills++) — design
 
-Status: **reviewed proposal, implementation pending.** Skills v1 stays inert: imported `scripts/`, `allowed-tools` and other active content never run. This document describes the only shape in which a skill may run code. The implementation ships behind a flag that is off by default.
+Status: **implemented behind the active skills switch (off by default).** With the switch off, skills stay inert: imported `scripts/`, `allowed-tools` and other active content never run. This document describes the only shape in which a skill may run code.
 
 Reference: the AI Edge Gallery pattern recorded in `product-ideas.md` (hidden WebView running `scripts/index.html`, JSON in / JSON out, a closed allowlist of named native intents, optional inline result card).
 
@@ -55,8 +55,9 @@ Both the user and the model:
 
 ## Result cards
 
-- Rendered inline under the assistant message in a fixed-height sandboxed WebView, lazily, one live at a time; long chats keep the WebView budget from `android-performance.md`.
-- Cards cannot request tools or network. Links open only after an explicit tap, in the system browser.
+- Under the reply, a card is only its title and an **Open** button; no WebView lives in the chat list. Open shows the card full screen in an activity in the `:skills` process, with the same WebView settings, CSP and cookie check as a skill run. The card is `noHistory` and excluded from recents because the app lock does not run in that process.
+- Cards are stored with the reply (at most four), never sent to the model, and left out of Markdown export. Opening one needs the active skills switch on.
+- Cards cannot request tools, network or navigation; links do nothing in v1.
 
 ## Flag, rollout and tests
 

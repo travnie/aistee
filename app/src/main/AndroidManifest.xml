@@ -143,6 +143,15 @@
             android:name=".data.skills.ActiveSkillService"
             android:exported="false"
             android:process=":skills" />
+        <!-- Skill cards render in the same sandboxed process; leaving the card closes it. -->
+        <activity
+            android:name=".data.skills.ActiveSkillCardActivity"
+            android:exported="false"
+            android:process=":skills"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:theme="@style/Theme.Aistee" />
         <!-- WorkManager is initialized on demand from AisteeApplication (Configuration.Provider). -->
         <provider
             android:name="androidx.startup.InitializationProvider"

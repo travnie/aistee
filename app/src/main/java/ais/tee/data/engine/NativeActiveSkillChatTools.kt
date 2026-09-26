@@ -8,7 +8,9 @@ import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
 import ais.tee.data.preferences.ActiveSkillsPreferencesStore
 import ais.tee.data.skills.ACTIVE_SKILL_CHAT_INPUT_FIELD
+import ais.tee.data.skills.ACTIVE_SKILL_MAX_CARDS_PER_MESSAGE
 import ais.tee.data.skills.ActiveSkillBundle
+import ais.tee.data.skills.ActiveSkillCard
 import ais.tee.data.skills.ActiveSkillInvocationContext
 import ais.tee.data.skills.ActiveSkillInvoker
 import ais.tee.data.skills.ActiveSkillOutcome
@@ -45,8 +47,8 @@ sealed interface ActiveSkillChatStage {
     data class Run(val input: String) : ActiveSkillChatStage
     /** The skill asked for a native action; the chip performs it with an Activity context. */
     data class Action(val action: ActiveSkillToolAction) : ActiveSkillChatStage
-    /** What would go back to the model. */
-    data class Result(val output: String, val isError: Boolean) : ActiveSkillChatStage
+    /** What would go back to the model; [cardTitle] is shown under the reply either way. */
+    data class Result(val output: String, val isError: Boolean, val cardTitle: String? = null) : ActiveSkillChatStage
 }
 
 sealed interface ActiveSkillChatAnswer {
@@ -71,9 +73,13 @@ internal class NativeActiveSkillChatTools(
     private val appContext = context.applicationContext
     private val skillsByTool = LinkedHashMap<String, String>()
     private val notes = mutableListOf<String>()
+    private val cards = mutableListOf<ActiveSkillCard>()
 
     /** Visible transcript lines for this send; stored with the reply, never exported. */
     val transcriptNotes: List<String> get() = synchronized(notes) { notes.toList() }
+
+    /** Cards from skills that ran in this send, shown under the reply and never sent to the model. */
+    val skillCards: List<ActiveSkillCard> get() = synchronized(cards) { cards.toList() }
 
     fun handles(toolName: String): Boolean = toolName in skillsByTool
 
@@ -125,15 +131,16 @@ internal class NativeActiveSkillChatTools(
         }
         val (output, isError) = when (outcome) {
             is ActiveSkillOutcome.Error -> outcome.message to true
-            // Cards are shown in a later step; only the JSON result goes back.
+            // Only the JSON result goes back; the card stays with the user.
             is ActiveSkillOutcome.Result -> outcome.result.toString() to false
             is ActiveSkillOutcome.ToolRequests -> performActions(skillName, outcome) to false
         }
+        val card = (outcome as? ActiveSkillOutcome.Result)?.card?.takeIf { addCard(it) }
         if (output.length > MAX_NATIVE_TOOL_RESULT_CHARS) {
             note("Skill $skillName result was too large to share.")
             return error(call, "The skill result is too large to return.")
         }
-        if (ask(skillName, ActiveSkillChatStage.Result(output, isError)) !is ActiveSkillChatAnswer.Approved) {
+        if (ask(skillName, ActiveSkillChatStage.Result(output, isError, card?.title)) !is ActiveSkillChatAnswer.Approved) {
             note("Skill $skillName result was not shared.")
             return error(call, "The user chose not to share the skill result.")
         }
@@ -189,6 +196,10 @@ internal class NativeActiveSkillChatTools(
 
     /** Read on every call so turning Quick privacy on mid-reply blocks the next skill call. */
     private fun quickPrivacyOn(): Boolean = QuickPrivacyModeStore.get(appContext).enabled.value
+
+    private fun addCard(card: ActiveSkillCard): Boolean = synchronized(cards) {
+        (cards.size < ACTIVE_SKILL_MAX_CARDS_PER_MESSAGE).also { if (it) cards += card }
+    }
 
     private fun note(text: String) {
         synchronized(notes) { notes += text }

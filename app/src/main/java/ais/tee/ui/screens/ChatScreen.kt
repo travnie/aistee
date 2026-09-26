@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
+import ais.tee.data.skills.ActiveSkillCardActivity
 import ais.tee.share.copyPlainTextToClipboard
 import ais.tee.R
 import ais.tee.data.document.MarkdownDocumentFileAccess
@@ -1607,6 +1608,33 @@ fun ChatMessageItem(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 lineHeight = 14.sp
                             )
+                        }
+                    }
+                }
+
+                if (!isUser && message.skillCards.isNotEmpty()) {
+                    val context = LocalContext.current
+                    message.skillCards.forEachIndexed { index, card ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp)
+                                .clip(MaterialTheme.shapes.small)
+                                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f))
+                                .padding(start = 10.dp)
+                                .testTag("skill_card_$index")
+                        ) {
+                            Text(
+                                text = card.title,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { ActiveSkillCardActivity.open(context, card) }) {
+                                Text("Open")
+                            }
                         }
                     }
                 }

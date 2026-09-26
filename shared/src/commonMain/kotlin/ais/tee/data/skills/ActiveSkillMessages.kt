@@ -1,6 +1,7 @@
 package ais.tee.data.skills
 
 import ais.tee.data.model.CapabilityDecision
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -23,6 +24,8 @@ fun activeSkillRequestJson(input: JsonElement, locale: String, nowIso8601: Strin
         put("now", nowIso8601)
     }.toString()
 
+/** Shown only to the user, full screen in the skills sandbox; never sent to a model or exported. */
+@Serializable
 data class ActiveSkillCard(val title: String, val html: String) {
     override fun toString(): String = "ActiveSkillCard(title=<redacted>, html=<${html.length} chars>)"
 }
