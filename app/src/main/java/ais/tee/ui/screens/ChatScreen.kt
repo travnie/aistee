@@ -276,6 +276,13 @@ private fun NativeChatDetailPane(
     var pendingMarkdownPromptReplacement by remember { mutableStateOf<String?>(null) }
     var isPreparingChatMarkdown by remember { mutableStateOf(false) }
     var showProjectLibrary by remember { mutableStateOf(false) }
+    val projectLibraryRequestId = uiState.projectLibraryRequestId
+    LaunchedEffect(projectLibraryRequestId) {
+        if (projectLibraryRequestId > 0L) {
+            showProjectLibrary = true
+            viewModel.consumeProjectLibraryRequest(projectLibraryRequestId)
+        }
+    }
 
     val chatMarkdownImportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()

@@ -27,6 +27,7 @@ import ais.tee.share.PendingWebShare
 import ais.tee.share.claimText
 import ais.tee.share.completeTextClaim
 import ais.tee.share.releaseTextClaim
+import ais.tee.navigation.QuickActionDestination
 import ais.tee.notifications.NativeChatConversationShortcuts
 import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.widget.NativeChatWidgetUpdater
@@ -114,6 +115,7 @@ data class StudioUiState(
     val nativeChat: NativeChatArchive = NativeChatArchive(),
     val isNativeConversationStoreReady: Boolean = false,
     val nativeChatNavigationRequest: NativeChatNavigationRequest? = null,
+    val projectLibraryRequestId: Long = 0L,
     val apiKeyConfig: ApiKeyConfig = ApiKeyConfig(),
     val isChatGenerating: Boolean = false,
     val activeGeneratingProviders: Set<AiProvider> = emptySet(),
@@ -191,6 +193,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val pendingWebShareId = AtomicLong(0)
     private val nativeChatNavigationRequestId = AtomicLong(0)
     private val pendingNativeConversationId = AtomicReference<String?>(null)
+    private val pendingQuickAction = AtomicReference<QuickActionDestination?>(null)
+    private val projectLibraryRequestIds = AtomicLong(0)
     val uiState: StateFlow<StudioUiState> = _uiState.asStateFlow()
 
     init {
@@ -342,7 +346,44 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         applyPendingNativeConversationTarget()
     }
 
+    /** Widget/shortcut action: open Compare on a fresh native chat once the chat store is ready. */
+    fun openNewNativeConversation() {
+        selectTab(NavigationTab.COMPARE_HUB)
+        pendingQuickAction.set(QuickActionDestination.NewNativeChat)
+        applyPendingNativeConversationTarget()
+    }
+
+    /** Widget/shortcut action: open Compare with the Project Library dialog. */
+    fun openProjectLibrary() {
+        selectTab(NavigationTab.COMPARE_HUB)
+        pendingQuickAction.set(QuickActionDestination.ProjectLibrary)
+        applyPendingNativeConversationTarget()
+    }
+
+    fun consumeProjectLibraryRequest(requestId: Long) {
+        _uiState.update { state ->
+            if (state.projectLibraryRequestId == requestId) state.copy(projectLibraryRequestId = 0L) else state
+        }
+    }
+
+    private fun applyPendingQuickAction() {
+        if (!_uiState.value.isNativeConversationStoreReady) return
+        when (pendingQuickAction.getAndSet(null)) {
+            QuickActionDestination.NewNativeChat -> newNativeConversation()
+            QuickActionDestination.ProjectLibrary -> _uiState.update {
+                it.copy(projectLibraryRequestId = projectLibraryRequestIds.incrementAndGet())
+            }
+            is QuickActionDestination.Tab, null -> return
+        }
+        val request = NativeChatNavigationRequest(
+            id = nativeChatNavigationRequestId.incrementAndGet(),
+            conversationId = _uiState.value.nativeChat.activeConversationId
+        )
+        _uiState.update { it.copy(nativeChatNavigationRequest = request) }
+    }
+
     private fun applyPendingNativeConversationTarget() {
+        applyPendingQuickAction()
         val state = _uiState.value
         if (!state.isNativeConversationStoreReady) return
         val requestedId = pendingNativeConversationId.getAndSet(null) ?: return
