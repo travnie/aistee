@@ -10,10 +10,10 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import ais.tee.data.model.AiProvider
 import ais.tee.data.model.AsyncProviderJob
-import ais.tee.data.model.AsyncProviderJobKind
 import ais.tee.data.model.AsyncProviderJobState
+import ais.tee.data.model.isClaudeBatch
+import ais.tee.data.model.needsPolling
 import ais.tee.data.preferences.AsyncProviderJobStore
 import ais.tee.data.preferences.ProjectLibraryStore
 import ais.tee.data.security.ApiKeyStore
@@ -25,13 +25,6 @@ private const val WORK_NAME_PREFIX = "claude-batch-job:"
 // Exponential from 1 minute, capped by WorkManager at 5 hours: about a day of polling,
 // which covers the 24-hour batch window.
 private const val MAX_AUTOMATIC_POLL_ATTEMPTS = 16
-
-internal val AsyncProviderJob.isClaudeBatch: Boolean
-    get() = provider == AiProvider.CLAUDE && kind == AsyncProviderJobKind.BATCH
-
-/** Whether a job still needs polling: not finished, or finished without its result saved yet. */
-internal val AsyncProviderJob.needsPolling: Boolean
-    get() = !state.isTerminal || (state == AsyncProviderJobState.SUCCEEDED && resultAssetId == null)
 
 internal object ClaudeBatchJobWork {
     fun enqueue(context: Context, jobId: String) {

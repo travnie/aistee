@@ -13,7 +13,6 @@ import ais.tee.data.engine.NativeChatSendRequest
 import ais.tee.data.engine.ClaudeBatchJobWork
 import ais.tee.data.engine.OpenAiBackgroundJobWork
 import ais.tee.data.engine.cancelClaudeBatchJob
-import ais.tee.data.engine.isClaudeBatch
 import ais.tee.data.engine.persistClaudeBatchState
 import ais.tee.data.engine.refreshClaudeBatchJob
 import ais.tee.data.engine.cancelOpenAiBackgroundJob
@@ -309,10 +308,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 it.copy(asyncProviderJobs = archive, isAsyncProviderJobStoreReady = true)
             }
             archive.jobs
-                .filter { job ->
-                    !job.state.isTerminal ||
-                        (job.state == AsyncProviderJobState.SUCCEEDED && job.resultAssetId == null)
-                }
+                .filter { it.needsPolling }
                 .forEach { job ->
                     if (job.provider == AiProvider.CHATGPT &&
                         job.kind == AsyncProviderJobKind.BACKGROUND_RESPONSE

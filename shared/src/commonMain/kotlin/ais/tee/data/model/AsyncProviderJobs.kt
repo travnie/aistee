@@ -44,6 +44,13 @@ data class AsyncProviderJob(
             if (resultAssetId == null) "null)" else "<redacted>)"
 }
 
+/** Whether a job still needs polling: not finished, or finished without its result saved yet. */
+val AsyncProviderJob.needsPolling: Boolean
+    get() = !state.isTerminal || (state == AsyncProviderJobState.SUCCEEDED && resultAssetId == null)
+
+val AsyncProviderJob.isClaudeBatch: Boolean
+    get() = provider == AiProvider.CLAUDE && kind == AsyncProviderJobKind.BATCH
+
 @Serializable
 data class AsyncProviderJobArchive(
     val version: Int = ASYNC_PROVIDER_JOB_ARCHIVE_VERSION,
