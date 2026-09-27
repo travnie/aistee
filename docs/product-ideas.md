@@ -110,6 +110,61 @@ Treat Token Arena as the overlap between Bench tooling and a small experimental 
 - Keep the Android local baseline fully usable offline and without an Aistee account; future platform backends should preserve the same property. Network-backed provider counting is optional and must not silently upload text merely to obtain a more exact number.
 - Use accumulated Arena results to reveal practical family/model tendencies without claiming that tokenization alone explains model reasoning or internal processing.
 
+## Agent Lab / runtime interoperability
+
+Treat Aistee's next layer as an LLM and agent workbench rather than another pile of provider-specific chat screens. Keep the normal chat simple; experimental orchestration belongs in an explicit Lab surface.
+
+- **Agent Lab:** run one task through selected runtimes/models and compare result, latency, token/cost usage, tool calls, retries, steps and failures. Reuse Token Arena concepts, but compare whole agent runs rather than prompt tokenization alone.
+- **DeepSeek Harness adapter:** treat DSH as an optional runtime, not another provider tab. Prefer its SDK/JSON-RPC or headless profiles behind a narrow Aistee adapter; keep DSH developer-preview status visible and never grant broad host access by default.
+- **Local and remote runtimes:** allow an experimental local host where practical (including a future Termux-backed path), but also support a remote desktop/LAN/VPN runtime so Android can stay the cockpit while a desktop owns Node/Python/Git-heavy execution.
+- **Universal MCP manager:** browse configured servers, connect/disconnect, inspect live status and tools, test calls and expose explicit permissions. Support Streamable HTTP directly where possible and stdio through a capable runtime host.
+- **Lazy tool discovery:** do not dump hundreds of MCP/function schemas into every model context. Add searchable/deferred tool catalogs inspired by DSH MCP-lens-style progressive disclosure and provider-native tool-search mechanisms where available.
+- **Dynamic capability matrix:** maintain one source of truth for model/provider/runtime support for web search, URL context, file search, code execution, computer use, functions, MCP, image/audio and related capabilities. Disable impossible combinations before a request fails remotely.
+- **Unified trace explorer:** normalize model requests, streamed output, tool calls, approvals, results, retries, compaction, model switches, subagents and failures into one inspectable timeline. Provider/runtime-specific details can remain expandable metadata.
+- **Conversation forks:** branch a locally owned conversation from a chosen turn and continue it with another model/runtime without mutating the original. Preserve provenance so comparisons remain reproducible.
+- **Permission profiles:** layer reusable profiles such as read-only, workspace-write, network-off, no-shell and ask-everything over the existing ALLOW/ASK/DENY registry. The same policy surface should govern active skills, MCP and external agent runtimes instead of growing separate permission systems.
+- **Subagents / teams playground:** where a runtime supports it, expose researcher/coder/reviewer-style isolated agents with separate traces and a final synthesis. Keep this an advanced Lab feature rather than adding team ceremony to ordinary chat.
+- **Context Lab:** show what history/context is actually sent, measured token usage, compaction events, cache usage and dropped/truncated material. Make provider-exact facts distinct from local estimates.
+- **Provider-agnostic routing:** support policies such as free-first, fast-first, local-first, privacy-first and fallback chains. Do not duplicate an upstream router's internals; let Aistee route between configured endpoints/runtimes and record why a route was chosen.
+- **Jobs v2:** extend the existing durable Jobs surface to Gemini Batch and, later, background jobs exposed by local/external runtimes. Keep one queue for status, cancellation, retry and result capture into Project Library.
+- **Local/OpenAI-compatible models:** add a first-class custom OpenAI-compatible endpoint boundary with convenient presets for local servers such as Ollama, LM Studio, llama.cpp/vLLM-style deployments and compatible gateways. Capabilities must be declared/probed rather than assumed from the protocol label.
+- **Memory backend seam:** keep one Aistee memory contract with local-first storage, scopes, deduplication and provenance/citations. Optional external backends may implement the contract, but should not create competing hidden memory stores.
+- **Skill portability scanner:** inspect imported skill bundles and report portable instructions/assets versus runtime-specific tools/scripts. Offer adapters only where the semantics are clear; never silently broaden permissions.
+- **Mutation / diff cards:** render file writes and edits from agent/tool runs as compact diffs with provenance and approval state instead of burying mutations in raw tool logs.
+- **Eval Bench:** run saved datasets/cases through selected models or runtimes and track regressions over time. Preserve model IDs, runtime versions, tool sets, pricing snapshot and whether a result was live, replayed or simulated.
+- **Reproducible run bundle:** export a scrubbed bundle containing prompts, model/runtime IDs, tool definitions, settings, results, usage and trace metadata without credentials or hidden reasoning, so an experiment can be inspected or rerun elsewhere.
+- **Voice / realtime playground:** provide one experimental surface for realtime speech APIs with comparable latency, turn-detection and transcription metadata rather than provider-specific one-off demos.
+- **Provider-native tools mode:** expose provider-hosted search/file/code/computer/MCP capabilities through the shared capability model instead of reimplementing every tool locally.
+- **LLM changelog radar:** optionally surface concise official provider/runtime capability changes relevant to configured adapters so Aistee can flag newly available or deprecated features without turning the app into a news reader.
+
+DeepSeek Harness is especially interesting because its model adapters, tool registry, session log, agent loop, jobs, sandbox and UI are plugin-composed. Its own safety notice says the project is experimental, unaudited developer-preview software, so any integration should stay opt-in, least-privileged and visibly separated from Aistee's trusted local core.
+
+## Power-user conversation navigation and Web enhancements
+
+Recent browser-extension projects around Gemini, Claude, ChatGPT and DeepSeek reinforce a set of useful Web-chat ergonomics. Treat them as interaction references, not code sources; Aistee should implement provider-scoped adapters that preserve its existing WebView isolation rules.
+
+- **Conversation timeline:** add a compact rail for long conversations with markers for user turns, one-tap jump, optional preview and locally stored starred/key moments. For locally owned native chats, derive it from the archive. For account-backed Web chats, operate only on the currently loaded page through a small provider adapter; never background-scrape history.
+- **Branch-aware navigation:** when a provider exposes visible response branches in the loaded conversation, represent branch points in the same timeline without pretending Aistee owns remote branch history.
+- **Local folders for Web chats:** allow users to organize provider conversation references into local folders/subfolders without moving or rewriting the provider's data. Store only the minimum stable reference/title metadata needed for navigation and degrade cleanly if a provider URL changes.
+- **Prompt Vault insertion everywhere:** reuse Aistee's canonical local prompt library across native chats and supported Web composers. Keep import/export format versioned and portable; compatibility adapters for common external prompt-vault JSON formats may be added without making those formats canonical.
+- **Starred messages / bookmarks:** local bookmarks should survive app restarts and can optionally carry a short user note. Do not copy whole remote conversations merely to implement a star.
+- **Quote reply:** selecting text in a supported loaded chat can stage a quoted excerpt in the composer with an explicit user action. Do not auto-send.
+- **Reading controls:** per-provider comfortable-width setting, optional collapsible composer for long reading sessions and a prevent-auto-scroll toggle where a provider's page repeatedly yanks the viewport.
+- **Default model helper:** where a provider exposes a stable, user-visible model selector, remember the user's preferred choice and offer a provider-scoped helper. Avoid brittle hidden endpoint calls or silent model switching.
+- **Chat export:** for locally owned chats, keep Markdown as the readable source-of-truth export and optionally add JSON/PDF packaging. For Web chats, only export content explicitly available in the loaded page and label the export as a captured snapshot rather than a complete provider archive.
+- **Rich-content copy tools:** one-tap copy for source forms such as TeX/MathML and, later, tables/code blocks where extraction is reliable. Prefer preserving semantic source over screenshot-style copying.
+- **Mermaid and Markdown repair:** optionally render supported Mermaid blocks and repair clearly broken presentation artifacts in Aistee-owned previews without rewriting the provider page's underlying conversation.
+- **Long-text helpers:** turn oversized text into a local file/library asset, attach a text asset to a prompt and collapse long instruction blocks in Aistee UI so large prompts remain manageable.
+- **Backup and recovery for Aistee-owned metadata:** use versioned local export/import for folders, bookmarks, prompt mappings and Web-chat references; validate before overwrite and preserve recoverable previous data on failed migrations.
+- **Privacy-aware diagnostics:** add an opt-in bounded structured diagnostic log for provider adapter lifecycle, page detection and fallback paths. Keep it off by default and exclude chat bodies, credentials, cookies, full URLs and other sensitive content.
+- **Per-provider feature switches:** timeline, width tweaks, quote helper and similar DOM-facing enhancements should be independently disableable so one provider redesign cannot destabilize unrelated Web chats.
+
+Interaction references inspected in September 2026:
+- [Voyager](https://github.com/Nagi-ovo/voyager): cross-provider timeline, starred moments, prompt vault, folders, export and small reading/composer helpers.
+- [claude-nexus](https://github.com/Qiuner/claude-nexus): Claude-focused folders, timeline previews, prompt-library portability, export and chat-width controls.
+- [DeepSeek Enhancer](https://github.com/dlshuangchenyue1210/DeepSeek-Enhancer): provider-local folders, selective Markdown export, rich formula copy, versioned backup/recovery and privacy-conscious diagnostic logging.
+- [ChatGPT Conversation Timeline](https://github.com/Reborn14/chatgpt-conversation-timeline): minimal multi-provider timeline with local starred-message persistence and per-site enable/disable controls.
+
 ## UI/UX architecture and smoothness
 
 ### Shipped foundations
