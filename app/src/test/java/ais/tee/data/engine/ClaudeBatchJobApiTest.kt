@@ -40,6 +40,10 @@ class ClaudeBatchJobApiTest {
             """{"custom_id":"$CLAUDE_BATCH_CUSTOM_ID","result":{"type":"succeeded","message":{"model":"m","stop_reason":"max_tokens","content":[{"type":"text","text":"part"}]}}}"""
         )
         assertEquals("The answer stopped at the output limit.", truncated.errorMessage)
+        val overflow = service.parseClaudeBatchResult(
+            """{"custom_id":"$CLAUDE_BATCH_CUSTOM_ID","result":{"type":"succeeded","message":{"model":"m","stop_reason":"model_context_window_exceeded","content":[{"type":"text","text":"part"}]}}}"""
+        )
+        assertEquals("The answer stopped at the model's context window.", overflow.errorMessage)
 
         val errored = service.parseClaudeBatchResult(
             """{"custom_id":"$CLAUDE_BATCH_CUSTOM_ID","result":{"type":"errored","error":{"type":"error","error":{"type":"invalid_request_error","message":"max_tokens too large"}}}}"""

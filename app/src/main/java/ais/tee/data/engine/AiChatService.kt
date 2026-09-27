@@ -447,6 +447,7 @@ class AiChatService {
                     .joinToString("")
                 val note = when (message?.get("stop_reason")?.jsonPrimitive?.contentOrNull) {
                     CLAUDE_STOP_MAX_TOKENS -> "The answer stopped at the output limit."
+                    CLAUDE_STOP_CONTEXT_WINDOW_EXCEEDED -> "The answer stopped at the model's context window."
                     "refusal" -> "Claude declined this request."
                     else -> null
                 }

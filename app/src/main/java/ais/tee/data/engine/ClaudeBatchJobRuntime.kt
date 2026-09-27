@@ -66,21 +66,24 @@ class ClaudeBatchJobWorker(
             when {
                 !refreshed.shouldRetry -> Result.success()
                 runAttemptCount < MAX_AUTOMATIC_POLL_ATTEMPTS -> Result.retry()
-                else -> {
-                    AsyncProviderJobStore(applicationContext.noBackupFilesDir).update(jobId) { job ->
-                        job.copy(
-                            updatedAtEpochMs = System.currentTimeMillis(),
-                            errorMessage = "Automatic polling paused. Open Jobs and refresh manually.",
-                        )
-                    }
-                    Result.success()
-                }
+                else -> pausePolling(jobId)
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            if (runAttemptCount < MAX_AUTOMATIC_POLL_ATTEMPTS) Result.retry() else Result.success()
+            if (runAttemptCount < MAX_AUTOMATIC_POLL_ATTEMPTS) Result.retry() else pausePolling(jobId)
         }
+    }
+
+    /** Out of retries, whether still running or failing: say so on the job instead of going quiet. */
+    private fun pausePolling(jobId: String): Result {
+        AsyncProviderJobStore(applicationContext.noBackupFilesDir).update(jobId) { job ->
+            job.copy(
+                updatedAtEpochMs = System.currentTimeMillis(),
+                errorMessage = "Automatic polling paused. Open Jobs and refresh manually.",
+            )
+        }
+        return Result.success()
     }
 }
 
