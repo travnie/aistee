@@ -1568,7 +1568,7 @@ fun ChatMessageItem(
                 }
                 SelectionContainer {
                     if (markdownBlocks != null) {
-                        ChatMarkdownContent(blocks = markdownBlocks, color = textColor)
+                        ChatMarkdownContent(markdown = markdownBlocks, color = textColor)
                     } else {
                         Text(
                             text = message.text,

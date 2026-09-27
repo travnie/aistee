@@ -58,55 +58,61 @@ import kotlinx.coroutines.withContext
 
 private const val CHAT_MARKDOWN_CACHE_ENTRIES = 128
 
+/**
+ * A parsed answer with every math expression already converted, so composition never runs the
+ * TeX converter. [math] maps TeX source to its runs, or to null when it is shown as source.
+ */
+internal class ChatMarkdownRender(val blocks: List<ChatMarkdownBlock>, val math: Map<String, List<ChatMathRun>?>)
+
 // Parsed bubbles survive LazyColumn recycling, so scrolling a long chat does not re-parse.
-private val chatMarkdownCache = LruCache<String, List<ChatMarkdownBlock>>(CHAT_MARKDOWN_CACHE_ENTRIES)
-
-private const val CHAT_MATH_CACHE_ENTRIES = 2_048
-
-/** Converted TeX, filled during the background parse so composition only reads it. */
-private class ConvertedMath(val runs: List<ChatMathRun>?)
-private val chatMathCache = LruCache<String, ConvertedMath>(CHAT_MATH_CACHE_ENTRIES)
-
-private fun convertedMath(tex: String): List<ChatMathRun>? =
-    (chatMathCache.get(tex) ?: ConvertedMath(chatMathRuns(tex)).also { chatMathCache.put(tex, it) }).runs
-
-private fun warmMath(blocks: List<ChatMarkdownBlock>) {
-    blocks.forEach { block ->
-        when (block) {
-            is ChatMarkdownBlock.Math -> convertedMath(block.tex)
-            is ChatMarkdownBlock.Paragraph -> block.spans.forEach { if (it.math) convertedMath(it.text) }
-            is ChatMarkdownBlock.Heading -> block.spans.forEach { if (it.math) convertedMath(it.text) }
-            is ChatMarkdownBlock.Quote -> warmMath(block.blocks)
-            is ChatMarkdownBlock.ListBlock -> block.items.forEach(::warmMath)
-            else -> Unit
-        }
-    }
-}
+private val chatMarkdownCache = LruCache<String, ChatMarkdownRender>(CHAT_MARKDOWN_CACHE_ENTRIES)
 
 internal fun chatMarkdownCacheKey(messageId: String, text: String): String =
     "$messageId:${text.length}:${text.hashCode()}"
 
-/** Parses off the main thread; null until parsed or when the text should stay plain. */
+/** Parses and converts math off the main thread; null until parsed or when the text should stay plain. */
 @Composable
-internal fun rememberChatMarkdown(messageId: String, text: String): List<ChatMarkdownBlock>? {
+internal fun rememberChatMarkdown(messageId: String, text: String): ChatMarkdownRender? {
     val key = remember(messageId, text) { chatMarkdownCacheKey(messageId, text) }
-    val blocks by produceState(initialValue = chatMarkdownCache.get(key), key) {
+    val render by produceState(initialValue = chatMarkdownCache.get(key), key) {
         if (value == null) {
-            value = withContext(Dispatchers.Default) { parseChatMarkdown(text)?.also(::warmMath) }
+            value = withContext(Dispatchers.Default) { parseChatMarkdown(text)?.let(::prepareChatMarkdown) }
                 ?.also { parsed -> chatMarkdownCache.put(key, parsed) }
         }
     }
-    return blocks
+    return render
+}
+
+internal fun prepareChatMarkdown(blocks: List<ChatMarkdownBlock>): ChatMarkdownRender {
+    val math = HashMap<String, List<ChatMathRun>?>()
+    fun convert(tex: String) {
+        if (tex !in math) math[tex] = chatMathRuns(tex)
+    }
+    fun visit(nodes: List<ChatMarkdownBlock>) {
+        nodes.forEach { block ->
+            when (block) {
+                is ChatMarkdownBlock.Math -> convert(block.tex)
+                is ChatMarkdownBlock.Paragraph -> block.spans.forEach { if (it.math) convert(it.text) }
+                is ChatMarkdownBlock.Heading -> block.spans.forEach { if (it.math) convert(it.text) }
+                is ChatMarkdownBlock.Quote -> visit(block.blocks)
+                is ChatMarkdownBlock.ListBlock -> block.items.forEach(::visit)
+                else -> Unit
+            }
+        }
+    }
+    visit(blocks)
+    return ChatMarkdownRender(blocks, math)
 }
 
 internal fun chatMarkdownAnnotatedString(
     spans: List<ChatMarkdownSpan>,
     linkColor: Color,
     codeBackground: Color,
+    math: Map<String, List<ChatMathRun>?> = emptyMap(),
 ): AnnotatedString = buildAnnotatedString {
     spans.forEach { span ->
         if (span.math) {
-            appendMath(span.text, codeBackground)
+            appendMath(span.text, codeBackground, math)
             return@forEach
         }
         val style = SpanStyle(
@@ -127,8 +133,12 @@ internal fun chatMarkdownAnnotatedString(
 }
 
 /** Converted math, or the TeX source in code style when it uses anything the converter does not know. */
-internal fun AnnotatedString.Builder.appendMath(tex: String, codeBackground: Color) {
-    val runs = convertedMath(tex)
+internal fun AnnotatedString.Builder.appendMath(
+    tex: String,
+    codeBackground: Color,
+    math: Map<String, List<ChatMathRun>?>,
+) {
+    val runs = if (tex in math) math[tex] else chatMathRuns(tex)
     if (runs == null) {
         withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) { append(tex) }
         return
@@ -151,31 +161,37 @@ private fun mathRunStyle(run: ChatMathRun): SpanStyle {
 }
 
 @Composable
+internal fun ChatMarkdownContent(markdown: ChatMarkdownRender, color: Color, modifier: Modifier = Modifier) {
+    ChatMarkdownContent(markdown.blocks, color, modifier, markdown.math)
+}
+
+@Composable
 internal fun ChatMarkdownContent(
     blocks: List<ChatMarkdownBlock>,
     color: Color,
     modifier: Modifier = Modifier,
+    math: Map<String, List<ChatMathRun>?> = emptyMap(),
 ) {
     Column(
         modifier = modifier.testTag("chat_markdown_content"),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        blocks.forEach { block -> ChatMarkdownBlockView(block, color) }
+        blocks.forEach { block -> ChatMarkdownBlockView(block, color, math) }
     }
 }
 
 @Composable
-private fun ChatMarkdownBlockView(block: ChatMarkdownBlock, color: Color) {
+private fun ChatMarkdownBlockView(block: ChatMarkdownBlock, color: Color, math: Map<String, List<ChatMathRun>?>) {
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     val bodyStyle = MaterialTheme.typography.bodyMedium.copy(color = color, lineHeight = 21.sp)
     when (block) {
         is ChatMarkdownBlock.Paragraph -> Text(
-            text = remember(block, linkColor, codeBackground) { chatMarkdownAnnotatedString(block.spans, linkColor, codeBackground) },
+            text = remember(block, linkColor, codeBackground) { chatMarkdownAnnotatedString(block.spans, linkColor, codeBackground, math) },
             style = bodyStyle,
         )
         is ChatMarkdownBlock.Heading -> Text(
-            text = chatMarkdownAnnotatedString(block.spans, linkColor, codeBackground),
+            text = chatMarkdownAnnotatedString(block.spans, linkColor, codeBackground, math),
             style = headingStyle(block.level).copy(color = color),
             fontWeight = FontWeight.Bold,
         )
@@ -204,7 +220,7 @@ private fun ChatMarkdownBlockView(block: ChatMarkdownBlock, color: Color) {
                 modifier = Modifier.padding(start = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                block.blocks.forEach { ChatMarkdownBlockView(it, color.copy(alpha = 0.85f)) }
+                block.blocks.forEach { ChatMarkdownBlockView(it, color.copy(alpha = 0.85f), math) }
             }
         }
         is ChatMarkdownBlock.ListBlock -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -216,7 +232,7 @@ private fun ChatMarkdownBlockView(block: ChatMarkdownBlock, color: Color) {
                         modifier = Modifier.width(if (block.ordered) 28.dp else 18.dp),
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        item.forEach { ChatMarkdownBlockView(it, color) }
+                        item.forEach { ChatMarkdownBlockView(it, color, math) }
                     }
                 }
             }
@@ -228,7 +244,7 @@ private fun ChatMarkdownBlockView(block: ChatMarkdownBlock, color: Color) {
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = remember(block, codeBackground) { buildAnnotatedString { appendMath(block.tex, codeBackground) } },
+                text = remember(block, codeBackground) { buildAnnotatedString { appendMath(block.tex, codeBackground, math) } },
                 style = bodyStyle.copy(fontSize = 17.sp, lineHeight = 26.sp, textAlign = TextAlign.Center),
                 softWrap = false,
                 modifier = Modifier

@@ -10,6 +10,7 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import ais.tee.data.document.parseChatMarkdown
 import ais.tee.ui.screens.ChatMarkdownContent
+import ais.tee.ui.screens.prepareChatMarkdown
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,7 +27,8 @@ class ChatMarkdownMathTest {
                 "Euler: \$e^{i\\pi}+1=0\$ costs \$5.\n\n\$\$\\frac{a}{b} \\le \\sqrt{2}\$\$\n\n\\(\\begin{pmatrix}1\\end{pmatrix}\\)"
             )
         )
-        composeRule.setContent { ChatMarkdownContent(blocks = blocks, color = Color.Black) }
+        val markdown = prepareChatMarkdown(blocks)
+        composeRule.setContent { ChatMarkdownContent(markdown = markdown, color = Color.Black) }
 
         composeRule.onNodeWithText("Euler: eiπ+1=0 costs \$5.").assertIsDisplayed()
         composeRule.onNode(hasText("a/b≤√2") and hasAnyAncestor(hasTestTag("chat_markdown_math"))).assertIsDisplayed()
