@@ -44,8 +44,8 @@ internal class ChatMathExtraction(val text: String, val segments: List<ChatMathS
 
 /**
  * Finds `$…$`, `\(…\)` (inline) and `$$…$$`, `\[…\]` (display) outside code. A `$` opens only
- * before a non-space and closes only after a non-space and not before a digit, so prices such as
- * "$5 and $10" stay text. `\$` is a literal dollar. Math never spans a blank line.
+ * before a non-space and the next unescaped `$` must close it: after a non-space and not before a
+ * digit. Prices such as "$5 and $10" or "Costs $5; solve $x$" stay text around the formula. `\$` is a literal dollar. Math never spans a blank line.
  */
 internal fun extractChatMath(text: String): ChatMathExtraction {
     if (PLACEHOLDER_START in text || PLACEHOLDER_END in text || ('$' !in text && '\\' !in text)) {
@@ -144,11 +144,12 @@ private class MathDelimiters(private val text: String) {
         for (k in singleDollars.indices.reversed()) {
             val j = singleDollars[k]
             val next = text.getOrNull(j + 1)
+            // Math never holds an unescaped `$`, so the first one after an opener closes it or nothing
+            // does: "Costs $5; solve $x$" keeps "$5" as text instead of swallowing the formula.
             result[k] = when {
                 escaped(j) -> if (k + 1 < singleDollars.size) result[k + 1] else -1
                 j > 0 && !text[j - 1].isWhitespace() && text[j - 1] != '$' && next != '$' && next?.isDigit() != true -> j
-                next == '$' -> -1
-                else -> if (k + 1 < singleDollars.size) result[k + 1] else -1
+                else -> -1
             }
         }
     }

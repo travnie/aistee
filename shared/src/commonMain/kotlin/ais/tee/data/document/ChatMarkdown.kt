@@ -96,7 +96,14 @@ private class ChatMarkdownReader(private val source: String, private val math: C
             blocks(node.children.filter { it.type != MarkdownTokenTypes.BLOCK_QUOTE }, depth + 1)
         )
         MarkdownElementTypes.UNORDERED_LIST, MarkdownElementTypes.ORDERED_LIST -> list(node, depth)
-        GFMElementTypes.TABLE -> extractMarkdownTables(node.text()).firstOrNull()
+        // Split cells before restoring math, so a `|` inside a formula is not a column break.
+        GFMElementTypes.TABLE -> extractMarkdownTables(node.raw()).firstOrNull()
+            ?.let { table ->
+                table.copy(
+                    header = table.header.map(math::restore),
+                    rows = table.rows.map { row -> row.map(math::restore) },
+                )
+            }
             ?.let(ChatMarkdownBlock::Table)
             ?: plain(node)
         MarkdownTokenTypes.HORIZONTAL_RULE -> ChatMarkdownBlock.Rule

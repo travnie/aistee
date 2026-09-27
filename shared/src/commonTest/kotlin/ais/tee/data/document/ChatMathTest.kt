@@ -44,6 +44,10 @@ class ChatMathTest {
         listOf("\$5 and \$10", "costs \$5.", "\$ x \$", "between \$5-\$10 today", "a \$5 b\n\nc\$ d").forEach { text ->
             assertTrue(parseChatMarkdown(text)!!.flatMap { (it as ChatMarkdownBlock.Paragraph).spans }.none { it.math }, text)
         }
+        assertEquals(
+            listOf(ChatMarkdownSpan("Costs \$5; solve "), ChatMarkdownSpan("x", math = true)),
+            spans("Costs \$5; solve \$x\$"),
+        )
         assertEquals(listOf(ChatMarkdownSpan("\$x\$", code = true)), spans("`\$x\$`"))
         assertEquals(listOf(ChatMarkdownSpan("\$x\$")), spans("\\\$x\\\$"))
         assertEquals(
@@ -55,7 +59,7 @@ class ChatMathTest {
     @Test
     fun tablesKeepTheirMathSource() {
         val table = assertIs<ChatMarkdownBlock.Table>(parseChatMarkdown("| f | g |\n|---|---|\n| \$x^2\$ | \$a|b\$ |")!!.single())
-        assertEquals("\$x^2\$", table.table.rows.single().first())
+        assertEquals(listOf("\$x^2\$", "\$a|b\$"), table.table.rows.single())
     }
 
     @Test
