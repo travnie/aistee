@@ -44,7 +44,7 @@ class NativeChatBenchmark {
             iterations = 5,
             setupBlock = {
                 pressHome()
-                startActivityAndWait()
+                startActivityInCompareHub()
                 ensureBenchmarkConversation()
             }
         ) {
@@ -62,7 +62,7 @@ class NativeChatBenchmark {
             iterations = 5,
             setupBlock = {
                 pressHome()
-                startActivityAndWait()
+                startActivityInCompareHub()
                 ensureBenchmarkConversation()
                 openBenchmarkConversation()
             }

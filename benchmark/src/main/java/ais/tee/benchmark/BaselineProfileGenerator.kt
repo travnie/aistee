@@ -37,7 +37,7 @@ class BaselineProfileGenerator {
         packageName = TARGET_PACKAGE
     ) {
         pressHome()
-        startActivityAndWait()
+        startActivityInCompareHub()
         openNativeConversationList()
         importBenchmarkConversationFixture()
         scrollNativeChatHistory()

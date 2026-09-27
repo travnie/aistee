@@ -1,5 +1,7 @@
 package ais.tee.benchmark
 
+import android.content.Intent
+import android.net.Uri
 import android.os.SystemClock
 import androidx.benchmark.macro.MacrobenchmarkScope
 import androidx.test.uiautomator.By
@@ -41,6 +43,19 @@ internal fun MacrobenchmarkScope.switchWebProvider(providerName: String) {
         ?: error("Web provider $providerName did not become visible")
     visibleDrawerProvider.click()
     device.waitForIdle()
+}
+
+/**
+ * Launches straight into the Compare hub via the app's quick-action intent. The default Web AI tab hides
+ * the primary navigation, so native chat journeys must not depend on the tab the app starts on.
+ */
+internal fun MacrobenchmarkScope.startActivityInCompareHub() {
+    startActivityAndWait(
+        Intent("ais.tee.action.OPEN_DESTINATION")
+            .setClassName(TARGET_PACKAGE, "$TARGET_PACKAGE.MainActivity")
+            .setData(Uri.parse("aistee://quick-action/compare"))
+            .putExtra("ais.tee.extra.DESTINATION", "compare")
+    )
 }
 
 internal fun MacrobenchmarkScope.openStudioTab() {
