@@ -140,6 +140,7 @@ private class MathDelimiters(private val text: String) {
     val parenClosers = positions { text[it] == '\\' && text.getOrNull(it + 1) == ')' }
     val bracketClosers = positions { text[it] == '\\' && text.getOrNull(it + 1) == ']' }
     private val singleDollars = positions { text[it] == '$' }
+    private val backticks = positions { text[it] == '`' }
     private val inlineClose = IntArray(singleDollars.size).also { result ->
         for (k in singleDollars.indices.reversed()) {
             val j = singleDollars[k]
@@ -178,15 +179,18 @@ private class MathDelimiters(private val text: String) {
 
     /** Start of the first two-character closer in [closers] at or after [from], or -1. */
     fun closer(closers: IntArray, from: Int): Int =
-        closers.firstAtOrAfter(from).takeIf { it >= 0 && it < limit(from) } ?: -1
+        closers.firstAtOrAfter(from).takeIf { it >= 0 && it < limit(from) && !crossesCode(from, it) } ?: -1
 
     /** Index of the closing `$` for an inline `$` at [open], or -1. */
     fun inlineDollarEnd(open: Int): Int {
         if (open + 1 >= text.length || text[open + 1].isWhitespace()) return -1
         val k = singleDollars.indexAtOrAfter(open + 1)
         if (k < 0) return -1
-        return inlineClose[k].takeIf { it >= 0 && it < limit(open) } ?: -1
+        return inlineClose[k].takeIf { it >= 0 && it < limit(open) && !crossesCode(open, it) } ?: -1
     }
+
+    /** Math never contains a backtick, so a closer past one belongs to later code, not this formula. */
+    private fun crossesCode(from: Int, end: Int): Boolean = backticks.firstAtOrAfter(from).let { it in 0 until end }
 
     private fun limit(from: Int): Int = minOf(paragraphEnd(from), from + MAX_CHAT_MATH_CHARS + 2)
 

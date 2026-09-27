@@ -48,6 +48,10 @@ class ChatMathTest {
             listOf(ChatMarkdownSpan("Costs \$5; solve "), ChatMarkdownSpan("x", math = true)),
             spans("Costs \$5; solve \$x\$"),
         )
+        assertEquals(
+            listOf(ChatMarkdownSpan("Costs \$5; type "), ChatMarkdownSpan("\$x\$", code = true)),
+            spans("Costs \$5; type `\$x\$`"),
+        )
         assertEquals(listOf(ChatMarkdownSpan("\$x\$", code = true)), spans("`\$x\$`"))
         assertEquals(listOf(ChatMarkdownSpan("\$x\$")), spans("\\\$x\\\$"))
         assertEquals(
