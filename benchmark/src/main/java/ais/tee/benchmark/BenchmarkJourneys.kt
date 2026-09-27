@@ -132,21 +132,27 @@ internal fun MacrobenchmarkScope.importBenchmarkConversationFixture() {
  */
 private fun MacrobenchmarkScope.openFixtureFromDocumentPicker() {
     if (device.wait(Until.hasObject(By.text(BENCHMARK_FIXTURE_FILE)), UI_TIMEOUT_MS) != true) {
-        device.findObject(By.desc("Show roots"))?.click()
-        device.wait(Until.findObject(By.text("Downloads")), UI_TIMEOUT_MS)?.click()
+        device.findObject(By.desc("Show roots"))?.let { clickFresh(By.desc("Show roots"), "Document picker roots") }
+        clickFresh(By.text("Downloads"), "Downloads root")
     }
-    // The picker refreshes its list after it first draws, so re-find the row if a click hits a stale node.
+    clickFresh(By.text(BENCHMARK_FIXTURE_FILE), "Benchmark chat fixture in the document picker", UI_TIMEOUT_MS * 2)
+}
+
+/** The document picker redraws its drawer and list after they first appear, so re-find a node that went stale. */
+private fun MacrobenchmarkScope.clickFresh(
+    selector: BySelector,
+    description: String,
+    timeoutMs: Long = UI_TIMEOUT_MS
+) {
     repeat(3) {
-        val fixture = device.wait(Until.findObject(By.text(BENCHMARK_FIXTURE_FILE)), UI_TIMEOUT_MS * 2)
-            ?: error("Benchmark chat fixture did not appear in the document picker")
         try {
-            fixture.click()
+            waitForObject(selector, description, timeoutMs).click()
             return
         } catch (_: StaleObjectException) {
             device.waitForIdle()
         }
     }
-    error("Benchmark chat fixture kept going stale in the document picker")
+    error("$description kept going stale")
 }
 
 /** Imports the long-chat fixture only when the list does not already show it, so samples see the same data. */
