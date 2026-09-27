@@ -1,9 +1,19 @@
 package ais.tee.benchmark
 
+import android.content.ContentUris
+import android.content.ContentValues
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.os.SystemClock
+import android.provider.MediaStore
 import androidx.benchmark.macro.MacrobenchmarkScope
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
+import androidx.test.uiautomator.StaleObjectException
+import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import java.util.Base64
@@ -13,6 +23,20 @@ private const val UI_TIMEOUT_MS = 5_000L
 private const val UI_POLL_INTERVAL_MS = 50L
 private const val BENCHMARK_FIXTURE_FILE = "aistee-benchmark-chat.md"
 private const val BENCHMARK_FIXTURE_PATH = "/sdcard/Download/$BENCHMARK_FIXTURE_FILE"
+private const val BENCHMARK_CONVERSATION_TITLE = "Benchmark question 0."
+
+/**
+ * Clears Aistee's local data so native chat journeys start from the same archive: the long-chat fixture is
+ * imported exactly once and always sits at the top of the conversation list.
+ */
+internal fun clearTargetAppData() {
+    UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        .executeShellCommand("pm clear $TARGET_PACKAGE")
+}
+
+/** List-detail reopen timing only means something when the list and detail panes do not share the screen. */
+internal fun isCompactWidthDevice(): Boolean =
+    UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).displaySizeDp.x < 600
 
 internal fun MacrobenchmarkScope.switchWebProvider(providerName: String) {
     val providerSelector = By.desc("Switch to $providerName")
@@ -42,6 +66,19 @@ internal fun MacrobenchmarkScope.switchWebProvider(providerName: String) {
     device.waitForIdle()
 }
 
+/**
+ * Launches straight into the Compare hub via the app's quick-action intent. The default Web AI tab hides
+ * the primary navigation, so native chat journeys must not depend on the tab the app starts on.
+ */
+internal fun MacrobenchmarkScope.startActivityInCompareHub() {
+    startActivityAndWait(
+        Intent("ais.tee.action.OPEN_DESTINATION")
+            .setClassName(TARGET_PACKAGE, "$TARGET_PACKAGE.MainActivity")
+            .setData(Uri.parse("aistee://quick-action/compare"))
+            .putExtra("ais.tee.extra.DESTINATION", "compare")
+    )
+}
+
 internal fun MacrobenchmarkScope.openStudioTab() {
     waitForObject(By.desc("Studio"), "Studio navigation item").click()
     device.waitForIdle()
@@ -51,9 +88,14 @@ internal fun MacrobenchmarkScope.openNativeConversationList() {
     waitForObject(By.desc("AI Compare Hub"), "Compare navigation item").click()
     device.waitForIdle()
 
-    device.findObject(By.desc("Native conversations"))
-        ?.takeIf { !it.visibleBounds.isEmpty }
-        ?.click()
+    // The button stays disabled until the native chat store has loaded after launch.
+    if (device.findObject(By.desc("Native conversations")) != null) {
+        clickFresh(
+            By.desc("Native conversations").enabled(true),
+            "Enabled native conversations button",
+            UI_TIMEOUT_MS * 2
+        )
+    }
 
     waitForObject(By.text("New conversation"), "Native conversation list")
     device.waitForIdle()
@@ -81,17 +123,79 @@ internal fun MacrobenchmarkScope.importBenchmarkConversationFixture() {
         "Import Aistee chat Markdown action"
     ).click()
 
-    val fixture = device.wait(
-        Until.findObject(By.text(BENCHMARK_FIXTURE_FILE)),
-        UI_TIMEOUT_MS
-    ) ?: error("Benchmark chat fixture did not appear in the document picker")
-    fixture.click()
+    openFixtureFromDocumentPicker()
 
     waitForObject(
         By.textContains("Benchmark answer 11"),
         "Imported benchmark conversation",
         timeoutMs = UI_TIMEOUT_MS * 2
     )
+    device.waitForIdle()
+}
+
+/**
+ * A fresh document picker opens on Recent. If it has not surfaced the MediaStore fixture yet, navigate
+ * through primary storage to the Download directory where the same registered file lives.
+ */
+private fun MacrobenchmarkScope.openFixtureFromDocumentPicker() {
+    if (device.wait(Until.hasObject(By.text(BENCHMARK_FIXTURE_FILE)), UI_TIMEOUT_MS) == true) {
+        clickFresh(
+            By.text(BENCHMARK_FIXTURE_FILE),
+            "Benchmark chat fixture in the document picker",
+            UI_TIMEOUT_MS * 2
+        )
+        return
+    }
+
+    // Prefer the raw primary-storage root over the separate DownloadsProvider root. The fixture is
+    // registered in MediaStore, but this path also keeps the fallback independent of Recent indexing.
+    device.findObject(By.desc("Show roots"))
+        ?.let { clickFresh(By.desc("Show roots"), "Document picker roots") }
+
+    val deviceModel = device.executeShellCommand("getprop ro.product.model").trim()
+    val primaryRoot = when {
+        deviceModel.isNotEmpty() && device.findObject(By.text(deviceModel)) != null -> By.text(deviceModel)
+        device.findObject(By.text("Internal storage")) != null -> By.text("Internal storage")
+        else -> error("Primary storage root did not become available in the document picker")
+    }
+    clickFresh(primaryRoot, "Primary storage root")
+    clickFresh(By.text("Download"), "Download directory", UI_TIMEOUT_MS * 2)
+    clickFresh(
+        By.text(BENCHMARK_FIXTURE_FILE),
+        "Benchmark chat fixture in the document picker",
+        UI_TIMEOUT_MS * 2
+    )
+}
+
+/** The document picker redraws its drawer and list after they first appear, so re-find a node that went stale. */
+internal fun MacrobenchmarkScope.clickFresh(
+    selector: BySelector,
+    description: String,
+    timeoutMs: Long = UI_TIMEOUT_MS
+) {
+    repeat(3) {
+        try {
+            waitForObject(selector, description, timeoutMs).click()
+            return
+        } catch (_: StaleObjectException) {
+            device.waitForIdle()
+        }
+    }
+    error("$description kept going stale")
+}
+
+/** Imports the long-chat fixture only when the list does not already show it, so samples see the same data. */
+internal fun MacrobenchmarkScope.ensureBenchmarkConversation() {
+    openNativeConversationList()
+    if (device.findObject(By.textStartsWith(BENCHMARK_CONVERSATION_TITLE)) != null) return
+    importBenchmarkConversationFixture()
+    returnToNativeConversationList()
+}
+
+internal fun MacrobenchmarkScope.openBenchmarkConversation() {
+    waitForObject(By.textStartsWith(BENCHMARK_CONVERSATION_TITLE), "Benchmark conversation in list").click()
+    waitForObject(By.desc("More chat actions"), "Native chat detail")
+    waitForObject(By.textContains("Benchmark answer 11"), "Benchmark conversation history")
     device.waitForIdle()
 }
 
@@ -110,11 +214,50 @@ internal fun MacrobenchmarkScope.scrollNativeChatHistory() {
 }
 
 private fun MacrobenchmarkScope.writeBenchmarkConversationFixture() {
-    val encoded = Base64.getEncoder().encodeToString(
-        benchmarkConversationMarkdown().toByteArray()
-    )
-    device.executeShellCommand(
-        "mkdir -p /sdcard/Download; printf '%s' '$encoded' | base64 -d > $BENCHMARK_FIXTURE_PATH"
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        val encoded = Base64.getEncoder().encodeToString(
+            benchmarkConversationMarkdown().toByteArray()
+        )
+        device.executeShellCommand(
+            "mkdir -p /sdcard/Download; printf '%s' '$encoded' | base64 -d > $BENCHMARK_FIXTURE_PATH"
+        )
+        return
+    }
+
+    val resolver = InstrumentationRegistry.getInstrumentation().context.contentResolver
+    val downloads = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+    val selection =
+        "${MediaStore.MediaColumns.DISPLAY_NAME}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH}=?"
+    val args = arrayOf(BENCHMARK_FIXTURE_FILE, "${Environment.DIRECTORY_DOWNLOADS}/")
+
+    // Reuse an entry left by an earlier run, but always rewrite it so a stale fixture never survives.
+    val existingUri = resolver.query(
+        downloads,
+        arrayOf(MediaStore.MediaColumns._ID),
+        selection,
+        args,
+        null
+    )?.use { existing ->
+        if (existing.moveToFirst()) ContentUris.withAppendedId(downloads, existing.getLong(0)) else null
+    }
+
+    val uri = existingUri ?: resolver.insert(
+        downloads,
+        ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, BENCHMARK_FIXTURE_FILE)
+            put(MediaStore.MediaColumns.MIME_TYPE, "text/markdown")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+    ) ?: error("Could not stage the benchmark chat fixture in Downloads")
+    resolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use {
+        it.write(benchmarkConversationMarkdown())
+    } ?: error("Could not write the benchmark chat fixture")
+    resolver.update(
+        uri,
+        ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+        null,
+        null
     )
 }
 

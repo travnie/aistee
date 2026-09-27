@@ -31,4 +31,17 @@ class BaselineProfileGenerator {
         switchWebProvider("Claude")
         switchWebProvider("ChatGPT")
     }
+
+    @Test
+    fun nativeChatJourneys() {
+        clearTargetAppData()
+        baselineProfileRule.collect(packageName = TARGET_PACKAGE) {
+            pressHome()
+            startActivityInCompareHub()
+            ensureBenchmarkConversation()
+            openBenchmarkConversation()
+            scrollNativeChatHistory()
+            returnToNativeConversationList()
+        }
+    }
 }

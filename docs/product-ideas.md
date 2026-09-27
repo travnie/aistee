@@ -191,6 +191,7 @@ Interaction references inspected in September 2026:
 - Prefer Material typography over hard-coded tiny essential labels; keep touch targets and Android font-scaling/accessibility behavior intact.
 - Keep edge-to-edge, IME handling and predictive back coherent across chats, sheets, drawers and list-detail panes.
 - Add Macrobenchmark journeys and Baseline Profiles for cold/warm start, opening a chat, provider switching, long-message-list scrolling, returning from a detail pane and active streaming. Judge smoothness from release builds and frame timing, not debug feel.
+- **Shipped:** Macrobenchmark journeys for cold/warm start, provider switching, opening a new or long existing native chat, returning to the list and long-conversation scrolling, with the native chat journeys also feeding the Baseline Profile. Active streaming remains open because it needs a deterministic local stream source instead of a provider call.
 - Re-check the current Android guidance at implementation time: Material 3, Material 3 Adaptive, Compose lazy-list performance and Baseline Profile/Macrobenchmark docs are the source of truth rather than version numbers frozen in this backlog.
 
 ### UI construction shortlist from the inspected APK batch
