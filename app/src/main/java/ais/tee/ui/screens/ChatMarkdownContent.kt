@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -37,12 +38,20 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.style.BaselineShift
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import kotlin.math.pow
 import ais.tee.data.document.ChatMarkdownBlock
 import ais.tee.data.document.ChatMarkdownSpan
+import ais.tee.data.document.ChatMathRun
+import ais.tee.data.document.ChatMathStyle
 import ais.tee.data.document.MarkdownTable
+import ais.tee.data.document.chatMathRuns
 import ais.tee.data.document.parseChatMarkdown
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -74,6 +83,10 @@ internal fun chatMarkdownAnnotatedString(
     codeBackground: Color,
 ): AnnotatedString = buildAnnotatedString {
     spans.forEach { span ->
+        if (span.math) {
+            appendMath(span.text, codeBackground)
+            return@forEach
+        }
         val style = SpanStyle(
             fontWeight = if (span.bold) FontWeight.Bold else null,
             fontStyle = if (span.italic) FontStyle.Italic else null,
@@ -89,6 +102,30 @@ internal fun chatMarkdownAnnotatedString(
             withStyle(style) { append(span.text) }
         }
     }
+}
+
+/** Converted math, or the TeX source in code style when it uses anything the converter does not know. */
+internal fun AnnotatedString.Builder.appendMath(tex: String, codeBackground: Color) {
+    val runs = chatMathRuns(tex)
+    if (runs == null) {
+        withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) { append(tex) }
+        return
+    }
+    runs.forEach { run -> withStyle(mathRunStyle(run)) { append(run.text) } }
+}
+
+private fun mathRunStyle(run: ChatMathRun): SpanStyle {
+    val depth = run.scripts.length
+    var shift = 0f
+    run.scripts.forEachIndexed { level, script ->
+        shift += (if (script == '^') 0.45f else -0.25f) * 0.75f.pow(level)
+    }
+    return SpanStyle(
+        fontStyle = if (run.style == ChatMathStyle.ITALIC) FontStyle.Italic else FontStyle.Normal,
+        fontWeight = if (run.style == ChatMathStyle.BOLD) FontWeight.Bold else null,
+        fontSize = if (depth == 0) TextUnit.Unspecified else 0.75f.pow(depth).em,
+        baselineShift = if (depth == 0) null else BaselineShift(shift),
+    )
 }
 
 @Composable
@@ -112,7 +149,7 @@ private fun ChatMarkdownBlockView(block: ChatMarkdownBlock, color: Color) {
     val bodyStyle = MaterialTheme.typography.bodyMedium.copy(color = color, lineHeight = 21.sp)
     when (block) {
         is ChatMarkdownBlock.Paragraph -> Text(
-            text = chatMarkdownAnnotatedString(block.spans, linkColor, codeBackground),
+            text = remember(block, linkColor, codeBackground) { chatMarkdownAnnotatedString(block.spans, linkColor, codeBackground) },
             style = bodyStyle,
         )
         is ChatMarkdownBlock.Heading -> Text(
@@ -163,6 +200,20 @@ private fun ChatMarkdownBlockView(block: ChatMarkdownBlock, color: Color) {
             }
         }
         is ChatMarkdownBlock.Table -> ChatMarkdownTable(block.table, color)
+        // Centered when it fits, scrolls sideways when it does not.
+        is ChatMarkdownBlock.Math -> Box(
+            modifier = Modifier.fillMaxWidth().testTag("chat_markdown_math"),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = remember(block, codeBackground) { buildAnnotatedString { appendMath(block.tex, codeBackground) } },
+                style = bodyStyle.copy(fontSize = 17.sp, lineHeight = 26.sp, textAlign = TextAlign.Center),
+                softWrap = false,
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(vertical = 4.dp),
+            )
+        }
         ChatMarkdownBlock.Rule -> HorizontalDivider(color = color.copy(alpha = 0.25f))
     }
 }

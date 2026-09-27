@@ -9,7 +9,10 @@ import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 import org.intellij.markdown.parser.MarkdownParser
 
-/** One styled run of inline text. [link] is set only for http(s) destinations. */
+/**
+ * One styled run of inline text. [link] is set only for http(s) destinations. When [math] is set,
+ * [text] is the TeX source of an inline expression (see [chatMathRuns]).
+ */
 data class ChatMarkdownSpan(
     val text: String,
     val bold: Boolean = false,
@@ -17,6 +20,7 @@ data class ChatMarkdownSpan(
     val code: Boolean = false,
     val strikethrough: Boolean = false,
     val link: String? = null,
+    val math: Boolean = false,
 )
 
 /** Display model for chat Markdown. Rendering never executes HTML; raw HTML stays literal text. */
@@ -31,6 +35,8 @@ sealed interface ChatMarkdownBlock {
         val items: List<List<ChatMarkdownBlock>>,
     ) : ChatMarkdownBlock
     data class Table(val table: MarkdownTable) : ChatMarkdownBlock
+    /** Display math; [tex] is the source without delimiters. */
+    data class Math(val tex: String) : ChatMarkdownBlock
     data object Rule : ChatMarkdownBlock
 }
 
@@ -43,29 +49,35 @@ private val LIST_NUMBER = Regex("^\\s*(\\d{1,9})")
 
 /**
  * Parses GFM into [ChatMarkdownBlock]s, or returns null when [text] is too large or the parser
- * fails, so callers can fall back to plain text.
+ * fails, so callers can fall back to plain text. Math (`$…$`, `\(…\)`, `$$…$$`, `\[…\]`) is
+ * taken out before parsing so Markdown emphasis and escapes cannot break it; in code and tables it
+ * stays as written.
  */
 fun parseChatMarkdown(text: String): List<ChatMarkdownBlock>? {
     if (text.length > MAX_CHAT_MARKDOWN_CHARS) return null
+    val math = runCatching { extractChatMath(text) }.getOrElse { ChatMathExtraction(text, emptyList()) }
     val root = runCatching {
-        MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(text as CharSequence)
+        MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(math.text as CharSequence)
     }.getOrNull() ?: return null
-    return runCatching { ChatMarkdownReader(text).blocks(root.children, depth = 0) }.getOrNull()
+    return runCatching { ChatMarkdownReader(math.text, math).blocks(root.children, depth = 0) }.getOrNull()
 }
 
-private class ChatMarkdownReader(private val source: String) {
-    private fun ASTNode.text(): String = source.substring(startOffset, endOffset)
+private class ChatMarkdownReader(private val source: String, private val math: ChatMathExtraction) {
+    /** Literal source, with any math put back as written. */
+    private fun ASTNode.text(): String = math.restore(raw())
+    private fun ASTNode.raw(): String = source.substring(startOffset, endOffset)
 
     fun blocks(nodes: List<ASTNode>, depth: Int): List<ChatMarkdownBlock> {
         if (depth > MAX_BLOCK_DEPTH) {
             val text = nodes.joinToString("") { it.text() }.trim()
             return if (text.isEmpty()) emptyList() else listOf(ChatMarkdownBlock.Paragraph(listOf(ChatMarkdownSpan(text))))
         }
-        return nodes.mapNotNull { block(it, depth) }
+        return nodes.flatMap { node ->
+            if (node.type == MarkdownElementTypes.PARAGRAPH) paragraphs(node.children) else listOfNotNull(block(node, depth))
+        }
     }
 
     private fun block(node: ASTNode, depth: Int): ChatMarkdownBlock? = when (val type = node.type) {
-        MarkdownElementTypes.PARAGRAPH -> paragraph(node.children)
         MarkdownElementTypes.ATX_1, MarkdownElementTypes.ATX_2, MarkdownElementTypes.ATX_3,
         MarkdownElementTypes.ATX_4, MarkdownElementTypes.ATX_5, MarkdownElementTypes.ATX_6 -> heading(
             level = ATX_LEVELS.getValue(type),
@@ -98,9 +110,34 @@ private class ChatMarkdownReader(private val source: String) {
         node.text().trim().takeIf { it.isNotEmpty() }
             ?.let { ChatMarkdownBlock.Paragraph(listOf(ChatMarkdownSpan(it))) }
 
-    private fun paragraph(children: List<ASTNode>): ChatMarkdownBlock? =
-        inline(children).trimmed().takeIf { spans -> spans.any { it.text.isNotBlank() } }
-            ?.let(ChatMarkdownBlock::Paragraph)
+    /** A paragraph, split around any display math it contains. */
+    private fun paragraphs(children: List<ASTNode>): List<ChatMarkdownBlock> {
+        val result = mutableListOf<ChatMarkdownBlock>()
+        var current = mutableListOf<ChatMarkdownSpan>()
+        fun flush() {
+            current.trimmed().takeIf { spans -> spans.any { it.text.isNotBlank() } }
+                ?.let { result += ChatMarkdownBlock.Paragraph(it) }
+            current = mutableListOf()
+        }
+        styledSpans(children).forEach { span ->
+            if (span.code) {
+                current += span.copy(text = math.restore(span.text))
+                return@forEach
+            }
+            math.split(span.text).forEach { (text, segment) ->
+                when {
+                    segment == null -> current += span.copy(text = text)
+                    segment.display -> {
+                        flush()
+                        result += ChatMarkdownBlock.Math(segment.tex)
+                    }
+                    else -> current += span.copy(text = segment.tex, math = true)
+                }
+            }
+        }
+        flush()
+        return result
+    }
 
     private fun heading(level: Int, content: ASTNode?): ChatMarkdownBlock? {
         val spans = content?.let { inline(it.children).trimmed() }.orEmpty()
@@ -153,7 +190,19 @@ private class ChatMarkdownReader(private val source: String) {
         }
     }
 
-    fun inline(nodes: List<ASTNode>): List<ChatMarkdownSpan> {
+    /** Inline spans; display math is shown inline here (headings). */
+    fun inline(nodes: List<ASTNode>): List<ChatMarkdownSpan> = styledSpans(nodes).flatMap { span ->
+        if (span.code) {
+            listOf(span.copy(text = math.restore(span.text)))
+        } else {
+            math.split(span.text).map { (text, segment) ->
+                if (segment == null) span.copy(text = text) else span.copy(text = segment.tex, math = true)
+            }
+        }
+    }
+
+    /** Styled spans whose text may still hold math placeholders. */
+    private fun styledSpans(nodes: List<ASTNode>): List<ChatMarkdownSpan> {
         val spans = mutableListOf<ChatMarkdownSpan>()
         nodes.forEach { appendInline(it, ChatMarkdownSpan(""), spans) }
         return spans.merged()
@@ -206,9 +255,9 @@ private class ChatMarkdownReader(private val source: String) {
             MarkdownTokenTypes.HARD_LINE_BREAK -> emit("\n")
             // Chat answers use single newlines as line breaks, so soft breaks stay line breaks.
             MarkdownTokenTypes.EOL -> emit("\n")
-            MarkdownTokenTypes.TEXT -> emit(node.text().replace(ESCAPABLE, "$1"))
+            MarkdownTokenTypes.TEXT -> emit(node.raw().replace(ESCAPABLE, "$1"))
             else -> if (node.children.isEmpty()) {
-                emit(node.text())
+                emit(node.raw())
             } else {
                 node.children.forEach { appendInline(it, style, out) }
             }
