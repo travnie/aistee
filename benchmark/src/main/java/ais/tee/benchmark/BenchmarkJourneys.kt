@@ -85,9 +85,11 @@ internal fun MacrobenchmarkScope.openNativeConversationList() {
 
     // The button stays disabled until the native chat store has loaded after launch.
     if (device.findObject(By.desc("Native conversations")) != null) {
-        device.wait(Until.findObject(By.desc("Native conversations").enabled(true)), UI_TIMEOUT_MS * 2)
-            ?.takeIf { !it.visibleBounds.isEmpty }
-            ?.click()
+        clickFresh(
+            By.desc("Native conversations").enabled(true),
+            "Enabled native conversations button",
+            UI_TIMEOUT_MS * 2
+        )
     }
 
     waitForObject(By.text("New conversation"), "Native conversation list")
@@ -139,7 +141,7 @@ private fun MacrobenchmarkScope.openFixtureFromDocumentPicker() {
 }
 
 /** The document picker redraws its drawer and list after they first appear, so re-find a node that went stale. */
-private fun MacrobenchmarkScope.clickFresh(
+internal fun MacrobenchmarkScope.clickFresh(
     selector: BySelector,
     description: String,
     timeoutMs: Long = UI_TIMEOUT_MS
