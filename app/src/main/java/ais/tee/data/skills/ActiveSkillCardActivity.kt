@@ -136,6 +136,11 @@ class ActiveSkillCardActivity : ComponentActivity() {
                 Toast.makeText(context, "Trust this skill version again to open its card.", Toast.LENGTH_SHORT).show()
                 return
             }
+            // Checked here too: an oversized card from an old or imported archive would overflow the Intent.
+            if (card.html.length > ACTIVE_SKILL_MAX_OUTPUT_BYTES) {
+                Toast.makeText(context, "This card is too large to open.", Toast.LENGTH_SHORT).show()
+                return
+            }
             context.startActivity(
                 Intent(context, ActiveSkillCardActivity::class.java)
                     .putExtra(EXTRA_TITLE, card.title)
