@@ -96,6 +96,14 @@ internal fun MacrobenchmarkScope.importBenchmarkConversationFixture() {
     device.waitForIdle()
 }
 
+/** Imports the long-chat fixture only when the list does not already show it, so samples see the same data. */
+internal fun MacrobenchmarkScope.ensureBenchmarkConversation() {
+    openNativeConversationList()
+    if (device.findObject(By.textStartsWith(BENCHMARK_CONVERSATION_TITLE)) != null) return
+    importBenchmarkConversationFixture()
+    returnToNativeConversationList()
+}
+
 internal fun MacrobenchmarkScope.openBenchmarkConversation() {
     waitForObject(By.textStartsWith(BENCHMARK_CONVERSATION_TITLE), "Benchmark conversation in list").click()
     waitForObject(By.desc("More chat actions"), "Native chat detail")

@@ -45,9 +45,7 @@ class NativeChatBenchmark {
             setupBlock = {
                 pressHome()
                 startActivityAndWait()
-                openNativeConversationList()
-                importBenchmarkConversationFixture()
-                returnToNativeConversationList()
+                ensureBenchmarkConversation()
             }
         ) {
             openBenchmarkConversation()
@@ -65,8 +63,8 @@ class NativeChatBenchmark {
             setupBlock = {
                 pressHome()
                 startActivityAndWait()
-                openNativeConversationList()
-                importBenchmarkConversationFixture()
+                ensureBenchmarkConversation()
+                openBenchmarkConversation()
             }
         ) {
             scrollNativeChatHistory()
