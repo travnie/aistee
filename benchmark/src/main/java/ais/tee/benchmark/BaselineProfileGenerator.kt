@@ -31,4 +31,18 @@ class BaselineProfileGenerator {
         switchWebProvider("Claude")
         switchWebProvider("ChatGPT")
     }
+
+    @Test
+    fun nativeChatJourneys() = baselineProfileRule.collect(
+        packageName = TARGET_PACKAGE
+    ) {
+        pressHome()
+        startActivityAndWait()
+        openNativeConversationList()
+        importBenchmarkConversationFixture()
+        scrollNativeChatHistory()
+        returnToNativeConversationList()
+        openBenchmarkConversation()
+        returnToNativeConversationList()
+    }
 }

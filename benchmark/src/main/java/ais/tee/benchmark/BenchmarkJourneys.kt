@@ -13,6 +13,7 @@ private const val UI_TIMEOUT_MS = 5_000L
 private const val UI_POLL_INTERVAL_MS = 50L
 private const val BENCHMARK_FIXTURE_FILE = "aistee-benchmark-chat.md"
 private const val BENCHMARK_FIXTURE_PATH = "/sdcard/Download/$BENCHMARK_FIXTURE_FILE"
+private const val BENCHMARK_CONVERSATION_TITLE = "Benchmark question 0."
 
 internal fun MacrobenchmarkScope.switchWebProvider(providerName: String) {
     val providerSelector = By.desc("Switch to $providerName")
@@ -92,6 +93,13 @@ internal fun MacrobenchmarkScope.importBenchmarkConversationFixture() {
         "Imported benchmark conversation",
         timeoutMs = UI_TIMEOUT_MS * 2
     )
+    device.waitForIdle()
+}
+
+internal fun MacrobenchmarkScope.openBenchmarkConversation() {
+    waitForObject(By.textStartsWith(BENCHMARK_CONVERSATION_TITLE), "Benchmark conversation in list").click()
+    waitForObject(By.desc("More chat actions"), "Native chat detail")
+    waitForObject(By.textContains("Benchmark answer 11"), "Benchmark conversation history")
     device.waitForIdle()
 }
 

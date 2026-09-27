@@ -36,6 +36,26 @@ class NativeChatBenchmark {
     }
 
     @Test
+    fun openLongConversation() {
+        benchmarkRule.measureRepeated(
+            packageName = TARGET_PACKAGE,
+            metrics = listOf(FrameTimingMetric()),
+            compilationMode = CompilationMode.Partial(BaselineProfileMode.Require),
+            iterations = 5,
+            setupBlock = {
+                pressHome()
+                startActivityAndWait()
+                openNativeConversationList()
+                importBenchmarkConversationFixture()
+                returnToNativeConversationList()
+            }
+        ) {
+            openBenchmarkConversation()
+            returnToNativeConversationList()
+        }
+    }
+
+    @Test
     fun longConversationScroll() {
         benchmarkRule.measureRepeated(
             packageName = TARGET_PACKAGE,
