@@ -38,11 +38,9 @@ class BaselineProfileGenerator {
     ) {
         pressHome()
         startActivityInCompareHub()
-        openNativeConversationList()
-        importBenchmarkConversationFixture()
-        scrollNativeChatHistory()
-        returnToNativeConversationList()
+        ensureBenchmarkConversation()
         openBenchmarkConversation()
+        scrollNativeChatHistory()
         returnToNativeConversationList()
     }
 }
