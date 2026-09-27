@@ -100,11 +100,7 @@ internal fun MacrobenchmarkScope.importBenchmarkConversationFixture() {
         "Import Aistee chat Markdown action"
     ).click()
 
-    val fixture = device.wait(
-        Until.findObject(By.text(BENCHMARK_FIXTURE_FILE)),
-        UI_TIMEOUT_MS
-    ) ?: error("Benchmark chat fixture did not appear in the document picker")
-    fixture.click()
+    findFixtureInDocumentPicker().click()
 
     waitForObject(
         By.textContains("Benchmark answer 11"),
@@ -112,6 +108,19 @@ internal fun MacrobenchmarkScope.importBenchmarkConversationFixture() {
         timeoutMs = UI_TIMEOUT_MS * 2
     )
     device.waitForIdle()
+}
+
+/**
+ * A fresh document picker opens on Recent, which does not list a file written from the shell, so fall back
+ * to the Downloads root where the fixture lives.
+ */
+private fun MacrobenchmarkScope.findFixtureInDocumentPicker(): UiObject2 {
+    device.wait(Until.findObject(By.text(BENCHMARK_FIXTURE_FILE)), UI_TIMEOUT_MS)?.let { return it }
+
+    device.findObject(By.desc("Show roots"))?.click()
+    device.wait(Until.findObject(By.text("Downloads")), UI_TIMEOUT_MS)?.click()
+    return device.wait(Until.findObject(By.text(BENCHMARK_FIXTURE_FILE)), UI_TIMEOUT_MS * 2)
+        ?: error("Benchmark chat fixture did not appear in the document picker")
 }
 
 /** Imports the long-chat fixture only when the list does not already show it, so samples see the same data. */
