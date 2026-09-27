@@ -10,7 +10,12 @@ import ais.tee.data.engine.ActiveSkillChatStage
 import ais.tee.data.engine.NativeActiveSkillChatTools
 import ais.tee.data.engine.NativeBenchChatTools
 import ais.tee.data.engine.NativeChatSendRequest
+import ais.tee.data.engine.ClaudeBatchJobWork
 import ais.tee.data.engine.OpenAiBackgroundJobWork
+import ais.tee.data.engine.cancelClaudeBatchJob
+import ais.tee.data.engine.isClaudeBatch
+import ais.tee.data.engine.persistClaudeBatchState
+import ais.tee.data.engine.refreshClaudeBatchJob
 import ais.tee.data.engine.cancelOpenAiBackgroundJob
 import ais.tee.data.engine.refreshOpenAiBackgroundJob
 import ais.tee.data.engine.persistOpenAiBackgroundSnapshot
@@ -313,6 +318,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         job.kind == AsyncProviderJobKind.BACKGROUND_RESPONSE
                     ) {
                         OpenAiBackgroundJobWork.enqueue(getApplication(), job.id)
+                    } else if (job.isClaudeBatch) {
+                        ClaudeBatchJobWork.enqueue(getApplication(), job.id)
                     }
                 }
         }
@@ -1093,11 +1100,76 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /** Starts a one-request Claude Message Batch whose text result is saved to [projectId]. */
+    fun startClaudeBatchJob(
+        prompt: String,
+        model: String,
+        projectId: String,
+    ) {
+        val trimmedPrompt = prompt.trim()
+        val resolvedModel = model.trim()
+        val state = _uiState.value
+        val apiKey = state.apiKeyConfig.claudeKey
+        when {
+            trimmedPrompt.isEmpty() -> return showSnackbar("Enter a prompt for the batch job.")
+            trimmedPrompt.length > MAX_BACKGROUND_JOB_PROMPT_CHARS -> return showSnackbar("Batch prompt is too large.")
+            resolvedModel.isEmpty() -> return showSnackbar("Choose a Claude model.")
+            apiKey.isBlank() -> return showSnackbar("Add a Claude API key before starting a batch job.")
+            state.projectLibrary.projects.none { it.id == projectId } ->
+                return showSnackbar("Choose a valid Project Library destination.")
+        }
+
+        viewModelScope.launch {
+            try {
+                val snapshot = withContext(Dispatchers.IO) {
+                    aiChatService.createClaudeBatch(trimmedPrompt, resolvedModel, apiKey)
+                }
+                val now = System.currentTimeMillis()
+                val stored = withContext(Dispatchers.IO) {
+                    asyncProviderJobStore.upsert(
+                        AsyncProviderJob(
+                            id = UUID.randomUUID().toString(),
+                            provider = AiProvider.CLAUDE,
+                            kind = AsyncProviderJobKind.BATCH,
+                            remoteId = snapshot.remoteId,
+                            model = resolvedModel,
+                            projectId = projectId,
+                            state = AsyncProviderJobState.RUNNING,
+                            createdAtEpochMs = now,
+                        )
+                    )
+                }
+                if (stored == null) {
+                    val remoteCancelled = runCatching {
+                        withContext(Dispatchers.IO) { aiChatService.cancelClaudeBatch(snapshot.remoteId, apiKey) }
+                    }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }.isSuccess
+                    showSnackbar(
+                        if (remoteCancelled) {
+                            "Could not save the batch job. The remote batch was cancelled."
+                        } else {
+                            "Could not save the batch job. The remote batch may still run."
+                        }
+                    )
+                    return@launch
+                }
+                withContext(Dispatchers.IO) { persistClaudeBatchState(getApplication(), stored, snapshot, null) }
+                ClaudeBatchJobWork.enqueue(getApplication(), stored.id)
+                reloadAsyncProviderJobsFromDisk()
+                showSnackbar("Claude batch job started.")
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                showSnackbar(error.localizedMessage ?: "Could not start Claude batch job.")
+            }
+        }
+    }
+
     fun refreshAsyncProviderJob(jobId: String) {
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
                     refreshOpenAiBackgroundJob(getApplication(), jobId, aiChatService)
+                    refreshClaudeBatchJob(getApplication(), jobId, aiChatService)
                 }
                 reloadAsyncProviderJobsFromDisk()
                 reloadProjectLibraryFromDisk()
@@ -1114,6 +1186,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 withContext(Dispatchers.IO) {
                     cancelOpenAiBackgroundJob(getApplication(), jobId, aiChatService)
+                    cancelClaudeBatchJob(getApplication(), jobId, aiChatService)
                 }
                 reloadAsyncProviderJobsFromDisk()
                 reloadProjectLibraryFromDisk()
@@ -1128,6 +1201,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun deleteAsyncProviderJob(jobId: String) {
         viewModelScope.launch {
             OpenAiBackgroundJobWork.cancel(getApplication(), jobId)
+            ClaudeBatchJobWork.cancel(getApplication(), jobId)
             val deleted = withContext(Dispatchers.IO) {
                 asyncProviderJobStore.delete(jobId)
             }

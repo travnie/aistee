@@ -90,7 +90,9 @@ Batch and background execution are separate job-shaped workflows, not fake chat 
 
 OpenAI background execution still requires temporary provider-side response storage for asynchronous execution and polling even with `store=false`; the UI states that boundary explicitly. Automatic polling is bounded and can be resumed manually from Jobs if Android scheduling or network conditions outlive the retry window.
 
-Gemini Batch and Anthropic Message Batches should reuse the same durable job model and Project Library result boundary rather than adding provider-specific pseudo-chat state.
+**Claude Message Batches** use the same job model. Each Aistee batch holds one request (fixed `custom_id`). The request params come from the normal Claude request builder, so model limits and thinking settings match chat. Polling uses its own WorkManager work with exponential backoff that covers the 24-hour batch window. Results are read from the fixed `/v1/messages/batches/{id}/results` path, never from a URL in a response, so the API key only goes to `api.anthropic.com`. Batches cost half the normal price; Anthropic keeps batch requests and results for 29 days, and Jobs says so before starting.
+
+Gemini Batch should reuse the same durable job model and Project Library result boundary rather than adding provider-specific pseudo-chat state.
 
 ## Usage and comparison metadata
 
@@ -135,6 +137,7 @@ Costs are recorded only when the response reports them. Aistee does not estimate
 - Google Gemini 3 guidance: https://ai.google.dev/gemini-api/docs/generate-content/gemini-3
 - OpenAI Responses API: https://developers.openai.com/api/reference/resources/responses/methods/create
 - OpenAI Background mode: https://developers.openai.com/api/docs/guides/background
+- Anthropic Message Batches: https://platform.claude.com/docs/en/build-with-claude/batch-processing
 - OpenAI model guidance: https://developers.openai.com/api/docs/guides/latest-model
 - Anthropic prompting/thinking guidance: https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/prompt-templates-and-variables
 - Anthropic Models API: https://platform.claude.com/docs/en/api/models/retrieve
