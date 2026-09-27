@@ -75,6 +75,11 @@ class ChatMathTest {
         assertEquals("ℝ", chatMathRuns("\\mathbb{R}")!!.joinToString("") { it.text })
         assertEquals("if x>0", chatMathRuns("\\text{if } x>0")!!.joinToString("") { it.text })
         assertEquals(
+            listOf(ChatMathRun("for all", ChatMathStyle.BOLD), ChatMathRun(" "), ChatMathRun("x", ChatMathStyle.ITALIC)),
+            chatMathRuns("\\textbf{for all}\\ x"),
+        )
+        assertEquals("ab", chatMathRuns("\\mathbf{a b}")!!.joinToString("") { it.text })
+        assertEquals(
             listOf("∑" to "", "i" to "_", "=1" to "_", "n" to "^"),
             chatMathRuns("\\sum_{i=1}^{n}")!!.map { it.text to it.scripts },
         )

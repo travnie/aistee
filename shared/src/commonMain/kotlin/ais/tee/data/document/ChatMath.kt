@@ -288,6 +288,8 @@ private class TexReader(private val tex: String) {
 
     private fun argument(style: ChatMathStyle, scripts: String, depth: Int): List<ChatMathRun> = atom(style, scripts, depth + 1)
 
+    private fun textArgument(): String = rawArgument().replace(ESCAPED_TEXT, "$1")
+
     private fun rawArgument(): String {
         skipSpaces()
         if (pos >= tex.length) throw Unsupported()
@@ -358,10 +360,14 @@ private class TexReader(private val tex: String) {
                 index + ChatMathRun("√", ChatMathStyle.NORMAL, scripts) + wrapped(body, style, scripts)
             }
             "text", "textrm", "mathrm", "operatorname", "textnormal", "mbox", "rm" ->
-                if (name == "rm") emptyList() else listOf(ChatMathRun(rawArgument().replace(ESCAPED_TEXT, "$1"), ChatMathStyle.NORMAL, scripts))
-            "textbf", "mathbf", "boldsymbol", "bm" -> argument(ChatMathStyle.BOLD, scripts, depth).map { it.copy(style = ChatMathStyle.BOLD) }
-            "textit", "mathit", "emph" -> argument(ChatMathStyle.ITALIC, scripts, depth).map { it.copy(style = ChatMathStyle.ITALIC) }
-            "mathcal", "mathscr", "mathsf", "mathtt", "texttt" -> argument(ChatMathStyle.NORMAL, scripts, depth).map { it.copy(style = ChatMathStyle.NORMAL) }
+                if (name == "rm") emptyList() else listOf(ChatMathRun(textArgument(), ChatMathStyle.NORMAL, scripts))
+            // Text-mode commands keep their spaces; the math-mode ones below drop them like TeX does.
+            "textbf" -> listOf(ChatMathRun(textArgument(), ChatMathStyle.BOLD, scripts))
+            "textit", "emph" -> listOf(ChatMathRun(textArgument(), ChatMathStyle.ITALIC, scripts))
+            "texttt", "textsf" -> listOf(ChatMathRun(textArgument(), ChatMathStyle.NORMAL, scripts))
+            "mathbf", "boldsymbol", "bm" -> argument(ChatMathStyle.BOLD, scripts, depth).map { it.copy(style = ChatMathStyle.BOLD) }
+            "mathit" -> argument(ChatMathStyle.ITALIC, scripts, depth).map { it.copy(style = ChatMathStyle.ITALIC) }
+            "mathcal", "mathscr", "mathsf", "mathtt" -> argument(ChatMathStyle.NORMAL, scripts, depth).map { it.copy(style = ChatMathStyle.NORMAL) }
             "mathbb" -> rawArgument().trim().map { letter ->
                 ChatMathRun(DOUBLE_STRUCK[letter] ?: letter.toString(), ChatMathStyle.BOLD, scripts)
             }

@@ -61,6 +61,28 @@ private const val CHAT_MARKDOWN_CACHE_ENTRIES = 128
 // Parsed bubbles survive LazyColumn recycling, so scrolling a long chat does not re-parse.
 private val chatMarkdownCache = LruCache<String, List<ChatMarkdownBlock>>(CHAT_MARKDOWN_CACHE_ENTRIES)
 
+private const val CHAT_MATH_CACHE_ENTRIES = 2_048
+
+/** Converted TeX, filled during the background parse so composition only reads it. */
+private class ConvertedMath(val runs: List<ChatMathRun>?)
+private val chatMathCache = LruCache<String, ConvertedMath>(CHAT_MATH_CACHE_ENTRIES)
+
+private fun convertedMath(tex: String): List<ChatMathRun>? =
+    (chatMathCache.get(tex) ?: ConvertedMath(chatMathRuns(tex)).also { chatMathCache.put(tex, it) }).runs
+
+private fun warmMath(blocks: List<ChatMarkdownBlock>) {
+    blocks.forEach { block ->
+        when (block) {
+            is ChatMarkdownBlock.Math -> convertedMath(block.tex)
+            is ChatMarkdownBlock.Paragraph -> block.spans.forEach { if (it.math) convertedMath(it.text) }
+            is ChatMarkdownBlock.Heading -> block.spans.forEach { if (it.math) convertedMath(it.text) }
+            is ChatMarkdownBlock.Quote -> warmMath(block.blocks)
+            is ChatMarkdownBlock.ListBlock -> block.items.forEach(::warmMath)
+            else -> Unit
+        }
+    }
+}
+
 internal fun chatMarkdownCacheKey(messageId: String, text: String): String =
     "$messageId:${text.length}:${text.hashCode()}"
 
@@ -70,7 +92,7 @@ internal fun rememberChatMarkdown(messageId: String, text: String): List<ChatMar
     val key = remember(messageId, text) { chatMarkdownCacheKey(messageId, text) }
     val blocks by produceState(initialValue = chatMarkdownCache.get(key), key) {
         if (value == null) {
-            value = withContext(Dispatchers.Default) { parseChatMarkdown(text) }
+            value = withContext(Dispatchers.Default) { parseChatMarkdown(text)?.also(::warmMath) }
                 ?.also { parsed -> chatMarkdownCache.put(key, parsed) }
         }
     }
@@ -106,7 +128,7 @@ internal fun chatMarkdownAnnotatedString(
 
 /** Converted math, or the TeX source in code style when it uses anything the converter does not know. */
 internal fun AnnotatedString.Builder.appendMath(tex: String, codeBackground: Color) {
-    val runs = chatMathRuns(tex)
+    val runs = convertedMath(tex)
     if (runs == null) {
         withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) { append(tex) }
         return
