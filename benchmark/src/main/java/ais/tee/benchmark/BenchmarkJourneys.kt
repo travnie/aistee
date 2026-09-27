@@ -1,8 +1,12 @@
 package ais.tee.benchmark
 
+import android.content.ContentValues
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.os.SystemClock
+import android.provider.MediaStore
 import androidx.benchmark.macro.MacrobenchmarkScope
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -129,8 +133,8 @@ internal fun MacrobenchmarkScope.importBenchmarkConversationFixture() {
 }
 
 /**
- * A fresh document picker opens on Recent, which does not list a file written from the shell, so fall back
- * to the Downloads root where the fixture lives.
+ * A fresh document picker opens on Recent. If it has not surfaced the MediaStore fixture yet, navigate
+ * through primary storage to the Download directory where the same registered file lives.
  */
 private fun MacrobenchmarkScope.openFixtureFromDocumentPicker() {
     if (device.wait(Until.hasObject(By.text(BENCHMARK_FIXTURE_FILE)), UI_TIMEOUT_MS) == true) {
@@ -142,9 +146,8 @@ private fun MacrobenchmarkScope.openFixtureFromDocumentPicker() {
         return
     }
 
-    // Files created by the benchmark shell are present in primary storage immediately, but the
-    // DownloadsProvider database can lag behind and show an empty Downloads root. Navigate through
-    // the raw primary-storage root instead so the picker reads the same filesystem path we wrote.
+    // Prefer the raw primary-storage root over the separate DownloadsProvider root. The fixture is
+    // registered in MediaStore, but this path also keeps the fallback independent of Recent indexing.
     device.findObject(By.desc("Show roots"))
         ?.let { clickFresh(By.desc("Show roots"), "Document picker roots") }
 
@@ -210,11 +213,48 @@ internal fun MacrobenchmarkScope.scrollNativeChatHistory() {
 }
 
 private fun MacrobenchmarkScope.writeBenchmarkConversationFixture() {
-    val encoded = Base64.getEncoder().encodeToString(
-        benchmarkConversationMarkdown().toByteArray()
-    )
-    device.executeShellCommand(
-        "mkdir -p /sdcard/Download; printf '%s' '$encoded' | base64 -d > $BENCHMARK_FIXTURE_PATH"
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        val encoded = Base64.getEncoder().encodeToString(
+            benchmarkConversationMarkdown().toByteArray()
+        )
+        device.executeShellCommand(
+            "mkdir -p /sdcard/Download; printf '%s' '$encoded' | base64 -d > $BENCHMARK_FIXTURE_PATH"
+        )
+        return
+    }
+
+    val resolver = InstrumentationRegistry.getInstrumentation().context.contentResolver
+    val downloads = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+    val selection =
+        "${MediaStore.MediaColumns.DISPLAY_NAME}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH}=?"
+    val args = arrayOf(BENCHMARK_FIXTURE_FILE, "${Environment.DIRECTORY_DOWNLOADS}/")
+
+    resolver.query(
+        downloads,
+        arrayOf(MediaStore.MediaColumns._ID),
+        selection,
+        args,
+        null
+    )?.use { existing ->
+        if (existing.moveToFirst()) return
+    }
+
+    val values = ContentValues().apply {
+        put(MediaStore.MediaColumns.DISPLAY_NAME, BENCHMARK_FIXTURE_FILE)
+        put(MediaStore.MediaColumns.MIME_TYPE, "text/markdown")
+        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+        put(MediaStore.MediaColumns.IS_PENDING, 1)
+    }
+    val uri = resolver.insert(downloads, values)
+        ?: error("Could not stage the benchmark chat fixture in Downloads")
+    resolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use {
+        it.write(benchmarkConversationMarkdown())
+    } ?: error("Could not write the benchmark chat fixture")
+    resolver.update(
+        uri,
+        ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+        null,
+        null
     )
 }
 
