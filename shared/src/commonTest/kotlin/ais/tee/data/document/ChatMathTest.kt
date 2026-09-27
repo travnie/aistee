@@ -67,6 +67,8 @@ class ChatMathTest {
         val blocks = parseChatMarkdown("Costs \$5\n~~~\nfoo\$\n~~~")!!
         assertEquals(ChatMarkdownBlock.CodeBlock(null, "foo\$"), blocks.last())
         assertTrue(blocks.none { it is ChatMarkdownBlock.Math })
+        val quoted = extractChatMath("Costs \$5\n> ~~~\n> foo\$\n> ~~~\n\n- ~~~\n  \$x\$ \$\n  ~~~")
+        assertTrue(quoted.segments.isEmpty())
     }
 
     @Test

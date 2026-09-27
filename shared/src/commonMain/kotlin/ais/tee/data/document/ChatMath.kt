@@ -16,10 +16,12 @@ private const val MAX_MATH_DEPTH = 16
 private const val PLACEHOLDER_START = ''
 private const val PLACEHOLDER_END = ''
 private val PLACEHOLDER = Regex("$PLACEHOLDER_START(\\d+)$PLACEHOLDER_END")
-private val FENCE = Regex("^ {0,3}(`{3,}|~{3,})")
+// Fences may sit inside quotes or list items, so any `>` / list-marker prefix is allowed.
+private const val CONTAINER_PREFIX = "[ \\t]*(?:(?:>|[-*+]|\\d{1,9}[.)])[ \\t]*)*"
+private val FENCE = Regex("^$CONTAINER_PREFIX(`{3,}|~{3,})")
 private val BLANK_LINE = Regex("\\n[ \\t]*\\n")
 private val QUOTE_PREFIX = Regex("^[ \\t]*(?:>[ \\t]?)+")
-private val TILDE_FENCE = Regex("(?m)^ {0,3}~{3,}")
+private val TILDE_FENCE = Regex("(?m)^$CONTAINER_PREFIX~{3,}")
 
 internal data class ChatMathSegment(val source: String, val tex: String, val display: Boolean)
 
@@ -64,7 +66,7 @@ internal fun extractChatMath(text: String): ChatMathExtraction {
             val fence = FENCE.find(text.substring(i, lineEnd))
             if (fence != null) {
                 val marker = fence.groupValues[1]
-                val close = Regex("(?m)^ {0,3}${marker[0]}{${marker.length},}[ \\t]*$")
+                val close = Regex("(?m)^$CONTAINER_PREFIX${marker[0]}{${marker.length},}[ \\t]*$")
                 val end = close.find(text, lineEnd)?.range?.last?.plus(1) ?: text.length
                 out.append(text, i, end)
                 i = end
