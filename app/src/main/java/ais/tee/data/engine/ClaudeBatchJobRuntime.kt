@@ -140,8 +140,9 @@ internal fun persistClaudeBatchState(
     result: ClaudeBatchResult?,
 ): AsyncJobRefreshResult {
     val store = AsyncProviderJobStore(context.noBackupFilesDir)
-    var outputMissing = false
-    val updated = store.update(job.id) { persisted ->
+    val library = ProjectLibraryStore(context.noBackupFilesDir)
+    var savedAssetId: String? = null
+    val stored = store.update(job.id) { persisted ->
         if (!persisted.needsPolling) return@update persisted
         val now = System.currentTimeMillis()
         if (result == null) {
@@ -162,7 +163,7 @@ internal fun persistClaudeBatchState(
                 state = AsyncProviderJobState.INCOMPLETE
                 error = error ?: "Claude finished the batch without text output."
             } else {
-                resultAssetId = ProjectLibraryStore(context.noBackupFilesDir)
+                resultAssetId = library
                     .saveTextAsset(
                         projectId = persisted.projectId,
                         title = "Claude batch result · $model",
@@ -171,8 +172,8 @@ internal fun persistClaudeBatchState(
                         text = claudeBatchResultMarkdown(model, output),
                     )
                     ?.id
+                savedAssetId = resultAssetId
                 if (resultAssetId == null) {
-                    outputMissing = true
                     error = "Completed, but the result could not be saved to Project Library."
                 }
             }
@@ -184,8 +185,14 @@ internal fun persistClaudeBatchState(
             resultAssetId = resultAssetId,
             errorMessage = error,
         )
-    } ?: job
-    return AsyncJobRefreshResult(updated, shouldRetry = updated.needsPolling && (result == null || outputMissing))
+    }
+    if (stored == null) {
+        // The job record was not written, so it will save the result again on the next try.
+        savedAssetId?.let(library::deleteAsset)
+    }
+    val updated = stored ?: job
+    // Still running, not saved yet, or the record could not be written: keep polling.
+    return AsyncJobRefreshResult(updated, shouldRetry = updated.needsPolling)
 }
 
 internal fun claudeBatchResultMarkdown(model: String, output: String): String = buildString {
