@@ -6,6 +6,7 @@ import android.os.SystemClock
 import androidx.benchmark.macro.MacrobenchmarkScope
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
+import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import java.util.Base64
@@ -100,7 +101,7 @@ internal fun MacrobenchmarkScope.importBenchmarkConversationFixture() {
         "Import Aistee chat Markdown action"
     ).click()
 
-    findFixtureInDocumentPicker().click()
+    openFixtureFromDocumentPicker()
 
     waitForObject(
         By.textContains("Benchmark answer 11"),
@@ -114,13 +115,23 @@ internal fun MacrobenchmarkScope.importBenchmarkConversationFixture() {
  * A fresh document picker opens on Recent, which does not list a file written from the shell, so fall back
  * to the Downloads root where the fixture lives.
  */
-private fun MacrobenchmarkScope.findFixtureInDocumentPicker(): UiObject2 {
-    device.wait(Until.findObject(By.text(BENCHMARK_FIXTURE_FILE)), UI_TIMEOUT_MS)?.let { return it }
-
-    device.findObject(By.desc("Show roots"))?.click()
-    device.wait(Until.findObject(By.text("Downloads")), UI_TIMEOUT_MS)?.click()
-    return device.wait(Until.findObject(By.text(BENCHMARK_FIXTURE_FILE)), UI_TIMEOUT_MS * 2)
-        ?: error("Benchmark chat fixture did not appear in the document picker")
+private fun MacrobenchmarkScope.openFixtureFromDocumentPicker() {
+    if (device.wait(Until.hasObject(By.text(BENCHMARK_FIXTURE_FILE)), UI_TIMEOUT_MS) != true) {
+        device.findObject(By.desc("Show roots"))?.click()
+        device.wait(Until.findObject(By.text("Downloads")), UI_TIMEOUT_MS)?.click()
+    }
+    // The picker refreshes its list after it first draws, so re-find the row if a click hits a stale node.
+    repeat(3) {
+        val fixture = device.wait(Until.findObject(By.text(BENCHMARK_FIXTURE_FILE)), UI_TIMEOUT_MS * 2)
+            ?: error("Benchmark chat fixture did not appear in the document picker")
+        try {
+            fixture.click()
+            return
+        } catch (_: StaleObjectException) {
+            device.waitForIdle()
+        }
+    }
+    error("Benchmark chat fixture kept going stale in the document picker")
 }
 
 /** Imports the long-chat fixture only when the list does not already show it, so samples see the same data. */
