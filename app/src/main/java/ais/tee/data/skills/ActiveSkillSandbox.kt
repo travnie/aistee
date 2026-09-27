@@ -73,6 +73,32 @@ private const val DOCUMENT_START_SCRIPT = """(() => {
 })();"""
 
 /**
+ * Sandbox settings shared by skill runs and cards: scripts but no JavaScript interface, DOM
+ * storage, file/content access, popups or third-party cookies, plus [DOCUMENT_START_SCRIPT].
+ * Callers must check [WebViewFeature.DOCUMENT_START_SCRIPT] first.
+ */
+@SuppressLint("SetJavaScriptEnabled", "RequiresFeature")
+internal fun configureActiveSkillWebView(webView: WebView) {
+    webView.settings.apply {
+        javaScriptEnabled = true
+        javaScriptCanOpenWindowsAutomatically = false
+        setSupportMultipleWindows(false)
+        allowFileAccess = false
+        allowContentAccess = false
+        domStorageEnabled = false
+        @Suppress("DEPRECATION")
+        databaseEnabled = false
+        setGeolocationEnabled(false)
+        mediaPlaybackRequiresUserGesture = true
+        mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        cacheMode = WebSettings.LOAD_NO_CACHE
+        safeBrowsingEnabled = true
+    }
+    CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
+    WebViewCompat.addDocumentStartJavaScript(webView, DOCUMENT_START_SCRIPT, setOf("*"))
+}
+
+/**
  * Runs one active skill call in a throwaway, hidden WebView (`docs/skills-runtime.md`). Only used
  * inside the dedicated skills process ([ActiveSkillService]): no JavaScript interface, no DOM
  * storage, file/content access, popups or network; files served by [WebViewAssetLoader] for the
@@ -99,7 +125,7 @@ internal class ActiveSkillWebViewRunner(
         return withContext(Dispatchers.Main) { runOnMain(bundle, requestJson) }
     }
 
-    @SuppressLint("SetJavaScriptEnabled", "RequiresFeature")
+    @SuppressLint("RequiresFeature")
     private suspend fun runOnMain(bundle: ActiveSkillBundle, requestJson: String): ActiveSkillHostMessage {
         val callId = UUID.randomUUID().toString()
         val result = CompletableDeferred<ActiveSkillHostMessage>()
@@ -110,23 +136,7 @@ internal class ActiveSkillWebViewRunner(
             .build()
         val webView = WebView(appContext)
         try {
-            webView.settings.apply {
-                javaScriptEnabled = true
-                javaScriptCanOpenWindowsAutomatically = false
-                setSupportMultipleWindows(false)
-                allowFileAccess = false
-                allowContentAccess = false
-                domStorageEnabled = false
-                @Suppress("DEPRECATION")
-                databaseEnabled = false
-                setGeolocationEnabled(false)
-                mediaPlaybackRequiresUserGesture = true
-                mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                cacheMode = WebSettings.LOAD_NO_CACHE
-                safeBrowsingEnabled = true
-            }
-            CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
-            WebViewCompat.addDocumentStartJavaScript(webView, DOCUMENT_START_SCRIPT, setOf("*"))
+            configureActiveSkillWebView(webView)
             WebViewCompat.addWebMessageListener(
                 webView,
                 ACTIVE_SKILL_HOST_OBJECT,
@@ -183,8 +193,8 @@ internal class ActiveSkillWebViewRunner(
 
     private class BundlePathHandler(private val bundle: ActiveSkillBundle) : WebViewAssetLoader.PathHandler {
         override fun handle(path: String): WebResourceResponse {
-            val file = activeSkillBundlePath(path) ?: return denied(404)
-            val bytes = bundle.files[file] ?: return denied(404)
+            val file = activeSkillBundlePath(path) ?: return activeSkillDenied(404)
+            val bytes = bundle.files[file] ?: return activeSkillDenied(404)
             val headers = buildMap {
                 put("Cache-Control", "no-store")
                 put("X-Content-Type-Options", "nosniff")
@@ -214,15 +224,15 @@ internal class ActiveSkillWebViewRunner(
 
         /** Only the current bundle is served; everything else, network included, is denied. */
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse {
-            if (request.method != "GET") return denied(405)
-            return assetLoader.shouldInterceptRequest(request.url) ?: denied(403)
+            if (request.method != "GET") return activeSkillDenied(405)
+            return assetLoader.shouldInterceptRequest(request.url) ?: activeSkillDenied(403)
         }
     }
 }
 
 private fun Uri.originString(): String? = scheme?.let { scheme -> authority?.let { "$scheme://$it" } }
 
-private fun denied(status: Int): WebResourceResponse = WebResourceResponse(
+internal fun activeSkillDenied(status: Int): WebResourceResponse = WebResourceResponse(
     "text/plain",
     "utf-8",
     status,

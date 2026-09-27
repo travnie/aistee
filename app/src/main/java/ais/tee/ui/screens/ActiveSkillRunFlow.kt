@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import ais.tee.data.model.CapabilityDecision
 import ais.tee.data.preferences.ActiveSkillsPreferencesStore
 import ais.tee.data.skills.ActiveSkillBundle
+import ais.tee.data.skills.ActiveSkillCard
+import ais.tee.data.skills.ActiveSkillCardActivity
 import ais.tee.data.skills.ActiveSkillDeclaration
 import ais.tee.data.skills.ActiveSkillInvoker
 import ais.tee.data.skills.ActiveSkillOutcome
@@ -54,7 +56,7 @@ private sealed interface RunStep {
     data class Trust(val skill: LoadedSkill) : RunStep
     data class Input(val skill: LoadedSkill, val running: Boolean = false) : RunStep
     data class Consent(val skill: LoadedSkill, val pending: List<ActiveSkillToolValidation>, val done: List<String>) : RunStep
-    data class Finished(val title: String, val body: String) : RunStep
+    data class Finished(val title: String, val body: String, val card: ActiveSkillCard? = null) : RunStep
 }
 
 private class LoadedSkill(
@@ -96,10 +98,8 @@ internal fun ActiveSkillRunFlow(
         step = when (outcome) {
             is ActiveSkillOutcome.Result -> RunStep.Finished(
                 title = "Result",
-                body = buildString {
-                    append(prettyJson.encodeToString(JsonElement.serializer(), outcome.result))
-                    outcome.card?.let { append("\n\nCard: ${it.title} (card display comes in a later step)") }
-                },
+                body = prettyJson.encodeToString(JsonElement.serializer(), outcome.result),
+                card = outcome.card?.copy(skillName = skill.manifest.name, bundleDigest = skill.bundle.digest),
             )
             is ActiveSkillOutcome.Error -> RunStep.Finished("Skill failed", outcome.message)
             is ActiveSkillOutcome.ToolRequests -> {
@@ -192,6 +192,14 @@ internal fun ActiveSkillRunFlow(
                 )
             },
             confirmButton = { TextButton(onClick = onClose) { Text("Close") } },
+            dismissButton = current.card?.let { card ->
+                {
+                    TextButton(
+                        onClick = { ActiveSkillCardActivity.open(context, card) },
+                        modifier = Modifier.testTag("btn_active_skill_open_card"),
+                    ) { Text("Open ${card.title.take(40)}") }
+                }
+            },
         )
     }
 }

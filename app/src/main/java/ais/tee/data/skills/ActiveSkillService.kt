@@ -12,11 +12,9 @@ import android.os.Process
 import android.os.RemoteException
 import android.webkit.CookieManager
 import java.io.File
-import kotlin.coroutines.resume
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
@@ -77,7 +75,7 @@ class ActiveSkillService : Service() {
         if (!ActiveSkillProcess.isDataDirectoryIsolated) {
             return ActiveSkillHostMessage.Failed("Skills cannot run: the skills process is not isolated.")
         }
-        if (!disableCookies()) {
+        if (!disableActiveSkillProcessCookies()) {
             return ActiveSkillHostMessage.Failed("Skills cannot run: cookies could not be disabled.")
         }
         val directory = data.getString(KEY_BUNDLE_DIR)?.let(::File)
@@ -96,17 +94,6 @@ class ActiveSkillService : Service() {
             ?: return ActiveSkillHostMessage.Failed("The request is not a JSON object.")
         val timeoutMs = data.getLong(KEY_TIMEOUT_MS, ACTIVE_SKILL_TIMEOUT_MS).coerceIn(1L, ACTIVE_SKILL_TIMEOUT_MS)
         return ActiveSkillWebViewRunner(this, timeoutMs).run(bundle, request)
-    }
-
-    /** Process-wide in the skills process only; the app process keeps its own cookie settings. */
-    private suspend fun disableCookies(): Boolean {
-        val cookies = CookieManager.getInstance()
-        cookies.setAcceptCookie(false)
-        suspendCancellableCoroutine { continuation ->
-            cookies.removeAllCookies { if (continuation.isActive) continuation.resume(Unit) }
-        }
-        cookies.flush()
-        return !cookies.acceptCookie() && !cookies.hasCookies()
     }
 
     private fun readBundle(directory: File): Map<String, ByteArray>? = runCatching {

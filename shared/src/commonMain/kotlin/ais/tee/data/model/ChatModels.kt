@@ -1,5 +1,6 @@
 package ais.tee.data.model
 
+import ais.tee.data.skills.ActiveSkillCard
 import kotlin.time.Clock
 
 import kotlinx.serialization.Serializable
@@ -359,11 +360,13 @@ data class ModelChatMessage(
     val latencyMs: Long? = null,
     val usage: ProviderUsage? = null,
     val activeProfileNotes: List<String> = emptyList(),
+    /** Cards from skills the model called for this reply; shown only to the user. */
+    val skillCards: List<ActiveSkillCard> = emptyList(),
     @Transient val providerReplayState: String? = null
 ) {
     /** User text, identifiers, profile notes and opaque replay state are sensitive debug payloads. */
     override fun toString(): String =
         "ModelChatMessage(id=<redacted>, sender=$sender, provider=${provider?.id ?: "none"}, " +
-            "text=<redacted>, activeProfileNotes=<redacted>, providerReplayState=<redacted>, " +
+            "text=<redacted>, activeProfileNotes=<redacted>, skillCards=${skillCards.size}, providerReplayState=<redacted>, " +
             "isError=$isError, isSimulated=$isSimulated, isPartial=$isPartial, isImported=$isImported, isQueued=$isQueued)"
 }

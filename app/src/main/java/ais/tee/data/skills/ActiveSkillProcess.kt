@@ -2,8 +2,11 @@ package ais.tee.data.skills
 
 import android.app.Application
 import android.os.Build
+import android.webkit.CookieManager
 import android.webkit.WebView
 import java.io.File
+import kotlin.coroutines.resume
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 /** Process name suffix declared for [ActiveSkillService] in the manifest. */
 internal const val ACTIVE_SKILL_PROCESS_SUFFIX = ":skills"
@@ -37,4 +40,18 @@ internal object ActiveSkillProcess {
         } else {
             runCatching { File("/proc/self/cmdline").readText().substringBefore('\u0000').trim() }.getOrNull()
         }
+}
+
+/**
+ * Clears and refuses cookies, then verifies it. Call only in the skills process, before any skill
+ * page or card loads there; the app process keeps its own cookie settings.
+ */
+internal suspend fun disableActiveSkillProcessCookies(): Boolean {
+    val cookies = CookieManager.getInstance()
+    cookies.setAcceptCookie(false)
+    suspendCancellableCoroutine { continuation ->
+        cookies.removeAllCookies { if (continuation.isActive) continuation.resume(Unit) }
+    }
+    cookies.flush()
+    return !cookies.acceptCookie() && !cookies.hasCookies()
 }

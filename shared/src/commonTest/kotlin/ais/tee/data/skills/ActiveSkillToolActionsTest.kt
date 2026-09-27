@@ -66,5 +66,9 @@ class ActiveSkillToolActionsTest {
     fun userInputIsJsonWhenItParses() {
         assertEquals(Json.parseToJsonElement("""{"km":5}"""), activeSkillUserInput("""{"km":5}"""))
         assertEquals(JsonPrimitive("5 km to miles"), activeSkillUserInput("5 km to miles"))
+        // kotlinx reads bare words as unquoted literals; they must stay strings.
+        assertEquals(JsonPrimitive("go"), activeSkillUserInput("go"))
+        assertEquals(JsonPrimitive(true), activeSkillUserInput("true"))
+        assertEquals(JsonPrimitive(3), activeSkillUserInput("3"))
     }
 }

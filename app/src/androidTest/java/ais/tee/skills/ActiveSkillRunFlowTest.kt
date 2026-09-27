@@ -82,6 +82,23 @@ class ActiveSkillRunFlowTest {
         composeRule.onNodeWithTag("active_skill_result").assertTextContains("clipboard", substring = true)
     }
 
+    @Test
+    fun cardsOfferAnOpenButtonNextToTheResult() {
+        addSkill(
+            "current_datetime",
+            "window.aistee_skill_run = () => JSON.stringify({ result: 1, card: { title: 'Trip plan', html: '<p>hi</p>' } });",
+        )
+        composeRule.setContent { ActiveSkillRunFlow(skillName = SKILL, store = store, onClose = {}) }
+
+        waitForTag("btn_active_skill_trust")
+        composeRule.onNodeWithTag("btn_active_skill_trust").performClick()
+        waitForTag("btn_active_skill_run")
+        composeRule.onNodeWithTag("btn_active_skill_run").performClick()
+
+        waitForTag("btn_active_skill_open_card")
+        composeRule.onNodeWithTag("btn_active_skill_open_card").assertTextContains("Trip plan", substring = true)
+    }
+
     private companion object {
         const val SKILL = "echo-skill"
     }

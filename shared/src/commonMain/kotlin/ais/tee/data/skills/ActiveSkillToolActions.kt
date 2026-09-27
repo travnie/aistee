@@ -102,7 +102,19 @@ private fun JsonObject.instant(name: String): Long? {
     return runCatching { Instant.parse(value).toEpochMilliseconds() }.getOrNull()
 }
 
-/** What the user typed into "Run skill": JSON when it parses as JSON, otherwise a plain string. */
-fun activeSkillUserInput(text: String): kotlinx.serialization.json.JsonElement =
-    runCatching { kotlinx.serialization.json.Json.parseToJsonElement(text) }.getOrNull()
-        ?: JsonPrimitive(text)
+private val jsonLiteral = Regex("^(true|false|null|-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?)$")
+
+/**
+ * What the user or model typed as skill input: strict JSON when it parses as such, otherwise a
+ * plain string. kotlinx accepts bare words like `go` as unquoted literals, which would reach the
+ * skill as invalid JSON, so only objects, arrays, strings and real literals are kept.
+ */
+fun activeSkillUserInput(text: String): kotlinx.serialization.json.JsonElement {
+    val parsed = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(text) }.getOrNull()
+    val valid = when (parsed) {
+        is JsonObject, is JsonArray -> true
+        is JsonPrimitive -> parsed.isString || jsonLiteral.matches(parsed.content)
+        else -> false
+    }
+    return if (valid) parsed!! else JsonPrimitive(text)
+}

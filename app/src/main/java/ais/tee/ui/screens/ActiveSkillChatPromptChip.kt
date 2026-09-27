@@ -44,7 +44,7 @@ internal fun ActiveSkillChatPromptChip(
         is ActiveSkillChatStage.Action -> Triple("${prompt.skillName} wants to…", describeAction(stage.action), "Allow once")
         is ActiveSkillChatStage.Result -> Triple(
             if (stage.isError) "${prompt.skillName} failed. Send this to the model?" else "Send this ${prompt.skillName} result to the model?",
-            stage.output,
+            stage.output + (stage.cardTitle?.let { "\n\nCard \"$it\" stays with you, under the reply." } ?: ""),
             "Send",
         )
     }
