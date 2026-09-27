@@ -137,7 +137,11 @@ internal class NativeActiveSkillChatTools(
         }
         val card = (outcome as? ActiveSkillOutcome.Result)?.card
             ?.copy(skillName = skillName, bundleDigest = bundle.digest)
-            ?.takeIf { addCard(it) }
+            ?.takeIf { card ->
+                addCard(card).also { kept ->
+                    if (!kept) note("Skill $skillName card \"${card.title}\" was not kept (limit of $ACTIVE_SKILL_MAX_CARDS_PER_MESSAGE per reply).")
+                }
+            }
         if (output.length > MAX_NATIVE_TOOL_RESULT_CHARS) {
             note("Skill $skillName result was too large to share.")
             return error(call, "The skill result is too large to return.")
