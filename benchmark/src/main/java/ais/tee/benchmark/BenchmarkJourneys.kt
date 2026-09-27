@@ -67,9 +67,12 @@ internal fun MacrobenchmarkScope.openNativeConversationList() {
     waitForObject(By.desc("AI Compare Hub"), "Compare navigation item").click()
     device.waitForIdle()
 
-    device.findObject(By.desc("Native conversations"))
-        ?.takeIf { !it.visibleBounds.isEmpty }
-        ?.click()
+    // The button stays disabled until the native chat store has loaded after launch.
+    if (device.findObject(By.desc("Native conversations")) != null) {
+        device.wait(Until.findObject(By.desc("Native conversations").enabled(true)), UI_TIMEOUT_MS * 2)
+            ?.takeIf { !it.visibleBounds.isEmpty }
+            ?.click()
+    }
 
     waitForObject(By.text("New conversation"), "Native conversation list")
     device.waitForIdle()
