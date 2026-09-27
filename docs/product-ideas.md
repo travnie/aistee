@@ -116,6 +116,12 @@ Treat Aistee's next layer as an LLM and agent workbench rather than another pile
 
 - **Agent Lab:** run one task through selected runtimes/models and compare result, latency, token/cost usage, tool calls, retries, steps and failures. Reuse Token Arena concepts, but compare whole agent runs rather than prompt tokenization alone.
 - **DeepSeek Harness adapter:** treat DSH as an optional runtime, not another provider tab. Prefer its SDK/JSON-RPC or headless profiles behind a narrow Aistee adapter; keep DSH developer-preview status visible and never grant broad host access by default.
+- **Meta Model API family:** treat Meta Model API as one provider family behind existing shared transports rather than another bespoke stack. Muse Spark can reuse the Responses/OpenAI-compatible/Anthropic-compatible boundaries while the capability matrix records its actual tools, multimodal support, context and server-side features.
+- **Muse Code adapter:** treat Muse Code as another optional Agent Lab runtime beside DSH. Prefer its stable versioned session protocol (`muse serve`) / TypeScript SDK, or headless `muse exec` where appropriate, over brittle terminal scraping; map approvals, sandboxing, skills/hooks/MCP and workflow state into Aistee's shared runtime/permission surfaces.
+- **Muse session handoffs:** use Muse Code session messaging as a reference for bounded coordination between independent live agents. Researcher/coder/reviewer sessions should keep separate context and permissions while exchanging explicit handoffs, review requests and status updates rather than sharing one giant hidden context.
+- **Deferred tool loading:** Meta Model API tool search reinforces the lazy-tool direction: keep compact searchable tool metadata available and load full schemas only when selected, so large MCP/tool catalogs do not consume every request context by default.
+- **Muse media toolbox:** expose Muse Image, Muse Voice Transcribe and SAM through shared image/audio/media-tool surfaces rather than top-level chat tabs. Generated/edited images, transcripts and segmentation outputs should flow through the same artifact/Project Library model used by other providers.
+- **Muse Glimmer local preset:** support self-hosted Glimmer through the existing local/OpenAI-compatible model boundary when served by a compatible runtime such as vLLM or llama.cpp, with additional runtime adapters where useful. Keep capabilities declared/probed instead of assuming parity with hosted Muse Spark.
 - **Local and remote runtimes:** allow an experimental local host where practical (including a future Termux-backed path), but also support a remote desktop/LAN/VPN runtime so Android can stay the cockpit while a desktop owns Node/Python/Git-heavy execution.
 - **Universal MCP manager:** browse configured servers, connect/disconnect, inspect live status and tools, test calls and expose explicit permissions. Support Streamable HTTP directly where possible and stdio through a capable runtime host.
 - **Lazy tool discovery:** do not dump hundreds of MCP/function schemas into every model context. Add searchable/deferred tool catalogs inspired by DSH MCP-lens-style progressive disclosure and provider-native tool-search mechanisms where available.
@@ -138,6 +144,8 @@ Treat Aistee's next layer as an LLM and agent workbench rather than another pile
 - **LLM changelog radar:** optionally surface concise official provider/runtime capability changes relevant to configured adapters so Aistee can flag newly available or deprecated features without turning the app into a news reader.
 
 DeepSeek Harness is especially interesting because its model adapters, tool registry, session log, agent loop, jobs, sandbox and UI are plugin-composed. Its own safety notice says the project is experimental, unaudited developer-preview software, so any integration should stay opt-in, least-privileged and visibly separated from Aistee's trusted local core.
+
+Meta references inspected in September 2026: [Meta Model API / Muse overview](https://dev.meta.ai/docs/overview), [Muse Code](https://dev.meta.ai/docs/muse-code), [tool search](https://dev.meta.ai/docs/tool-search) and [Muse Glimmer](https://dev.meta.ai/models/muse-glimmer).
 
 ## Power-user conversation navigation and Web enhancements
 
