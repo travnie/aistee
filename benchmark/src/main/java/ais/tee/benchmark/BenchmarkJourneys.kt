@@ -1,5 +1,6 @@
 package ais.tee.benchmark
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Intent
 import android.net.Uri
@@ -229,24 +230,26 @@ private fun MacrobenchmarkScope.writeBenchmarkConversationFixture() {
         "${MediaStore.MediaColumns.DISPLAY_NAME}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH}=?"
     val args = arrayOf(BENCHMARK_FIXTURE_FILE, "${Environment.DIRECTORY_DOWNLOADS}/")
 
-    resolver.query(
+    // Reuse an entry left by an earlier run, but always rewrite it so a stale fixture never survives.
+    val existingUri = resolver.query(
         downloads,
         arrayOf(MediaStore.MediaColumns._ID),
         selection,
         args,
         null
     )?.use { existing ->
-        if (existing.moveToFirst()) return
+        if (existing.moveToFirst()) ContentUris.withAppendedId(downloads, existing.getLong(0)) else null
     }
 
-    val values = ContentValues().apply {
-        put(MediaStore.MediaColumns.DISPLAY_NAME, BENCHMARK_FIXTURE_FILE)
-        put(MediaStore.MediaColumns.MIME_TYPE, "text/markdown")
-        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-        put(MediaStore.MediaColumns.IS_PENDING, 1)
-    }
-    val uri = resolver.insert(downloads, values)
-        ?: error("Could not stage the benchmark chat fixture in Downloads")
+    val uri = existingUri ?: resolver.insert(
+        downloads,
+        ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, BENCHMARK_FIXTURE_FILE)
+            put(MediaStore.MediaColumns.MIME_TYPE, "text/markdown")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+    ) ?: error("Could not stage the benchmark chat fixture in Downloads")
     resolver.openOutputStream(uri, "wt")?.bufferedWriter()?.use {
         it.write(benchmarkConversationMarkdown())
     } ?: error("Could not write the benchmark chat fixture")
