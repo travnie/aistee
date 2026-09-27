@@ -154,9 +154,12 @@ internal fun persistClaudeBatchState(
         val model = result.model.ifBlank { persisted.model }
         var resultAssetId = persisted.resultAssetId
         var error = result.errorMessage
+        var state = result.state
         if (result.state == AsyncProviderJobState.SUCCEEDED && resultAssetId == null) {
             val output = result.outputText?.trim()
             if (output.isNullOrEmpty()) {
+                // Nothing to save, so the job ends here instead of being fetched again on every start.
+                state = AsyncProviderJobState.INCOMPLETE
                 error = error ?: "Claude finished the batch without text output."
             } else {
                 resultAssetId = ProjectLibraryStore(context.noBackupFilesDir)
@@ -176,7 +179,7 @@ internal fun persistClaudeBatchState(
         }
         persisted.copy(
             model = model,
-            state = result.state,
+            state = state,
             updatedAtEpochMs = now,
             resultAssetId = resultAssetId,
             errorMessage = error,

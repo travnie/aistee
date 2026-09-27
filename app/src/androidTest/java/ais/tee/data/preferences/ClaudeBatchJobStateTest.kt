@@ -10,6 +10,7 @@ import ais.tee.data.model.AsyncProviderJob
 import ais.tee.data.model.AsyncProviderJobKind
 import ais.tee.data.model.AsyncProviderJobState
 import ais.tee.data.model.DEFAULT_PROJECT_ID
+import ais.tee.data.model.needsPolling
 import java.util.UUID
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -68,6 +69,38 @@ class ClaudeBatchJobStateTest {
         } finally {
             store.delete(job.id)
             assetId?.let(library::deleteAsset)
+        }
+    }
+
+    @Test
+    fun succeededBatchWithoutTextEndsIncompleteInsteadOfPollingForever() {
+        val store = AsyncProviderJobStore(context.noBackupFilesDir)
+        val job = requireNotNull(
+            store.upsert(
+                AsyncProviderJob(
+                    id = "claude-batch-empty-${UUID.randomUUID()}",
+                    provider = AiProvider.CLAUDE,
+                    kind = AsyncProviderJobKind.BATCH,
+                    remoteId = "msgbatch_empty",
+                    model = "claude-opus-5",
+                    projectId = DEFAULT_PROJECT_ID,
+                    state = AsyncProviderJobState.RUNNING,
+                    createdAtEpochMs = 1,
+                )
+            )
+        )
+        try {
+            val done = persistClaudeBatchState(
+                context,
+                job,
+                ClaudeBatchSnapshot("msgbatch_empty", ended = true, cancelling = false),
+                ClaudeBatchResult(AsyncProviderJobState.SUCCEEDED, "claude-opus-5", "  ", null),
+            )
+            assertEquals(AsyncProviderJobState.INCOMPLETE, done.job.state)
+            assertFalse(done.shouldRetry)
+            assertFalse(done.job.needsPolling)
+        } finally {
+            store.delete(job.id)
         }
     }
 }
