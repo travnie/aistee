@@ -13,7 +13,6 @@ import ais.tee.data.engine.NativeChatSendRequest
 import ais.tee.data.engine.ClaudeBatchJobWork
 import ais.tee.data.engine.OpenAiBackgroundJobWork
 import ais.tee.data.engine.cancelClaudeBatchJob
-import ais.tee.data.engine.persistClaudeBatchState
 import ais.tee.data.engine.refreshClaudeBatchJob
 import ais.tee.data.engine.cancelOpenAiBackgroundJob
 import ais.tee.data.engine.refreshOpenAiBackgroundJob
@@ -1148,7 +1147,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     )
                     return@launch
                 }
-                withContext(Dispatchers.IO) { persistClaudeBatchState(getApplication(), stored, snapshot, null) }
+                // Stored as RUNNING already; polling starts right after the record exists (and again on
+                // the next app start if this fails), so a job is never left without a poller.
                 ClaudeBatchJobWork.enqueue(getApplication(), stored.id)
                 reloadAsyncProviderJobsFromDisk()
                 showSnackbar("Claude batch job started.")
