@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ais.tee.data.engine.AsyncJobBackends
 import ais.tee.data.model.AiProvider
 import ais.tee.data.model.AsyncProviderJob
 import ais.tee.data.model.AsyncProviderJobState
@@ -44,6 +45,7 @@ internal fun AsyncJobsPanel(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var prompt by rememberSaveable { mutableStateOf("") }
+    var provider by rememberSaveable { mutableStateOf(AiProvider.CHATGPT) }
     var selectedModel by rememberSaveable { mutableStateOf(AiProvider.CHATGPT.defaultModel) }
     var selectedProjectId by rememberSaveable { mutableStateOf(DEFAULT_PROJECT_ID) }
 
@@ -70,16 +72,30 @@ internal fun AsyncJobsPanel(
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
         )
+        val backend = AsyncJobBackends.forProvider(provider) ?: AsyncJobBackends.all.first()
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AsyncJobBackends.all.forEach { option ->
+                FilterChip(
+                    selected = backend == option,
+                    onClick = {
+                        provider = option.provider
+                        selectedModel = option.provider.defaultModel
+                    },
+                    label = { Text(option.label) },
+                    modifier = Modifier.testTag("job_provider_${option.provider.id}"),
+                )
+            }
+        }
         Text(
-            text = "Long OpenAI Responses can run asynchronously while Aistee polls durable status in the background. " +
-                "Aistee keeps store=false; OpenAI still temporarily stores background response data so polling can work.",
+            text = backend.description,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        if (uiState.apiKeyConfig.openAiKey.isBlank()) {
+        val hasKey = backend.apiKey(uiState.apiKeyConfig).isNotBlank()
+        if (!hasKey) {
             Text(
-                text = "Add an OpenAI API key from native chat settings before starting a job.",
+                text = backend.missingKeyMessage,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -87,7 +103,7 @@ internal fun AsyncJobsPanel(
 
         Text("Model", style = MaterialTheme.typography.labelLarge)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(AiProvider.CHATGPT.availableModels) { model ->
+            items(backend.provider.availableModels) { model ->
                 FilterChip(
                     selected = model == selectedModel,
                     onClick = { selectedModel = model },
@@ -116,7 +132,7 @@ internal fun AsyncJobsPanel(
         OutlinedTextField(
             value = prompt,
             onValueChange = { prompt = it },
-            label = { Text("Standalone background prompt") },
+            label = { Text(backend.promptLabel) },
             minLines = 5,
             maxLines = 12,
             modifier = Modifier
@@ -125,18 +141,19 @@ internal fun AsyncJobsPanel(
         )
         Button(
             onClick = {
-                viewModel.startOpenAiBackgroundJob(
+                viewModel.startAsyncProviderJob(
+                    provider = backend.provider,
                     prompt = prompt,
                     model = selectedModel,
                     projectId = selectedProjectId,
                 )
             },
             enabled = prompt.isNotBlank() &&
-                uiState.apiKeyConfig.openAiKey.isNotBlank() &&
+                hasKey &&
                 uiState.projectLibrary.projects.any { it.id == selectedProjectId },
-            modifier = Modifier.testTag("btn_start_openai_background_job"),
+            modifier = Modifier.testTag("btn_start_async_job"),
         ) {
-            Text("Start background job")
+            Text(backend.startLabel)
         }
 
         HorizontalDivider()
@@ -198,7 +215,7 @@ private fun AsyncJobCard(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                text = job.model,
+                text = "${job.provider.shortName} · ${job.model}",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )

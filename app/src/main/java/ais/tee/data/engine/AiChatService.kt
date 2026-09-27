@@ -160,6 +160,25 @@ internal data class OpenAiBackgroundResponseSnapshot(
     val errorMessage: String?,
 )
 
+private const val CLAUDE_BATCHES_API_URL = "https://api.anthropic.com/v1/messages/batches"
+/** Aistee batches hold exactly one request, matched in the results by this ID. */
+internal const val CLAUDE_BATCH_CUSTOM_ID = "aistee-job"
+
+/** A Message Batch as last seen; [ended] means results can be read. */
+internal data class ClaudeBatchSnapshot(
+    val remoteId: String,
+    val ended: Boolean,
+    val cancelling: Boolean,
+)
+
+/** The single result of an ended Aistee batch. */
+internal data class ClaudeBatchResult(
+    val state: AsyncProviderJobState,
+    val model: String,
+    val outputText: String?,
+    val errorMessage: String?,
+)
+
 internal fun buildClaudeMetadataHttpClient(baseClient: OkHttpClient): OkHttpClient =
     baseClient.newBuilder()
         .callTimeout(CLAUDE_METADATA_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -324,6 +343,136 @@ class AiChatService {
         parseOpenAiBackgroundResponse(
             executeCancellableJson(request, "Empty OpenAI background cancellation response")
         )
+    }
+
+    /** Starts a one-request Message Batch (50% of the normal price, results within 24 hours). */
+    internal suspend fun createClaudeBatch(
+        prompt: String,
+        model: String,
+        apiKey: String,
+    ): ClaudeBatchSnapshot = withContext(Dispatchers.IO) {
+        require(prompt.isNotBlank()) { "Batch prompt cannot be blank" }
+        require(apiKey.isNotBlank()) { "Claude API key is required" }
+        val metadata = resolveClaudeMetadata(model, apiKey.trim())
+        val params = buildClaudeRequestPayload(
+            model = metadata.resolvedModel,
+            maxTokens = metadata.maxTokens,
+            stream = false,
+            systemInstruction = null,
+            messages = buildClaudeMessages(prompt, emptyList(), null, metadata.resolvedModel),
+            reasoningCapabilities = metadata.reasoningCapabilities,
+        )
+        val payload = buildJsonObject {
+            putJsonArray("requests") {
+                addJsonObject {
+                    put("custom_id", CLAUDE_BATCH_CUSTOM_ID)
+                    put("params", params)
+                }
+            }
+        }
+        val request = claudeBatchRequest(CLAUDE_BATCHES_API_URL.toHttpUrl(), apiKey)
+            .addHeader(HEADER_CONTENT_TYPE, JSON_MEDIA_TYPE)
+            .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
+            .build()
+        parseClaudeBatch(executeCancellableJson(request, "Empty response from Claude batch request"))
+    }
+
+    internal suspend fun retrieveClaudeBatch(batchId: String, apiKey: String): ClaudeBatchSnapshot =
+        withContext(Dispatchers.IO) {
+            val request = claudeBatchRequest(claudeBatchUrl(batchId), apiKey).get().build()
+            parseClaudeBatch(executeCancellableJson(request, "Empty Claude batch status response"))
+        }
+
+    internal suspend fun cancelClaudeBatch(batchId: String, apiKey: String): ClaudeBatchSnapshot =
+        withContext(Dispatchers.IO) {
+            val request = claudeBatchRequest(claudeBatchUrl(batchId, "cancel"), apiKey)
+                .post(ByteArray(0).toRequestBody(null))
+                .build()
+            parseClaudeBatch(executeCancellableJson(request, "Empty Claude batch cancellation response"))
+        }
+
+    /** Reads the results of an ended batch from the fixed API path, never from a URL in a response. */
+    internal suspend fun fetchClaudeBatchResult(batchId: String, apiKey: String): ClaudeBatchResult =
+        withContext(Dispatchers.IO) {
+            val request = claudeBatchRequest(claudeBatchUrl(batchId, "results"), apiKey).get().build()
+            parseClaudeBatchResult(executeCancellableJson(request, "Empty Claude batch results"))
+        }
+
+    private fun claudeBatchUrl(batchId: String, vararg suffix: String) =
+        CLAUDE_BATCHES_API_URL.toHttpUrl().newBuilder()
+            .addPathSegment(batchId.trim().also { require(it.isNotEmpty()) { "Claude batch ID is required" } })
+            .apply { suffix.forEach(::addPathSegment) }
+            .build()
+
+    private fun claudeBatchRequest(url: okhttp3.HttpUrl, apiKey: String): Request.Builder {
+        require(apiKey.isNotBlank()) { "Claude API key is required" }
+        return Request.Builder()
+            .url(url)
+            .addHeader(HEADER_ANTHROPIC_API_KEY, apiKey.trim())
+            .addHeader(HEADER_ANTHROPIC_VERSION, ANTHROPIC_API_VERSION)
+    }
+
+    internal fun parseClaudeBatch(rawJson: String): ClaudeBatchSnapshot {
+        val parsed = json.parseToJsonElement(rawJson).jsonObject
+        val remoteId = parsed["id"]?.jsonPrimitive?.contentOrNull?.trim()?.takeIf(String::isNotEmpty)
+            ?: throw IOException("Claude batch response is missing id")
+        val status = parsed["processing_status"]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+            ?: throw IOException("Claude batch response is missing processing_status")
+        return ClaudeBatchSnapshot(
+            remoteId = remoteId,
+            ended = status == "ended",
+            cancelling = status == "canceling",
+        )
+    }
+
+    /** Parses the JSONL results and returns the one for [CLAUDE_BATCH_CUSTOM_ID]. */
+    internal fun parseClaudeBatchResult(rawJsonl: String): ClaudeBatchResult {
+        val line = rawJsonl.lineSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .map { json.parseToJsonElement(it).jsonObject }
+            .firstOrNull { it["custom_id"]?.jsonPrimitive?.contentOrNull == CLAUDE_BATCH_CUSTOM_ID }
+            ?: return ClaudeBatchResult(AsyncProviderJobState.FAILED, "", null, "The batch ended without a result.")
+        val result = line["result"] as? JsonObject
+            ?: return ClaudeBatchResult(AsyncProviderJobState.FAILED, "", null, "The batch result is malformed.")
+        return when (result["type"]?.jsonPrimitive?.contentOrNull) {
+            "succeeded" -> {
+                val message = result["message"] as? JsonObject
+                val text = (message?.get("content") as? JsonArray).orEmpty()
+                    .mapNotNull { block ->
+                        (block as? JsonObject)
+                            ?.takeIf { it["type"]?.jsonPrimitive?.contentOrNull == "text" }
+                            ?.get("text")?.jsonPrimitive?.contentOrNull
+                    }
+                    .joinToString("")
+                val note = when (message?.get("stop_reason")?.jsonPrimitive?.contentOrNull) {
+                    CLAUDE_STOP_MAX_TOKENS -> "The answer stopped at the output limit."
+                    CLAUDE_STOP_CONTEXT_WINDOW_EXCEEDED -> "The answer stopped at the model's context window."
+                    "refusal" -> "Claude declined this request."
+                    else -> null
+                }
+                ClaudeBatchResult(
+                    state = AsyncProviderJobState.SUCCEEDED,
+                    model = message?.get("model")?.jsonPrimitive?.contentOrNull.orEmpty(),
+                    outputText = text,
+                    errorMessage = note,
+                )
+            }
+            "errored" -> {
+                val error = (result["error"] as? JsonObject)?.let { (it["error"] as? JsonObject) ?: it }
+                ClaudeBatchResult(
+                    state = AsyncProviderJobState.FAILED,
+                    model = "",
+                    outputText = null,
+                    errorMessage = error?.get("message")?.jsonPrimitive?.contentOrNull
+                        ?: error?.get("type")?.jsonPrimitive?.contentOrNull
+                        ?: "Claude could not process the request.",
+                )
+            }
+            "canceled" -> ClaudeBatchResult(AsyncProviderJobState.CANCELLED, "", null, null)
+            "expired" -> ClaudeBatchResult(AsyncProviderJobState.EXPIRED, "", null, "The batch expired before Claude processed it.")
+            else -> ClaudeBatchResult(AsyncProviderJobState.FAILED, "", null, "Unknown Claude batch result.")
+        }
     }
 
     internal fun buildOpenAiBackgroundRequestPayload(
