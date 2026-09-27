@@ -71,6 +71,8 @@ class ClaudeBatchJobWorker(
     /** Out of retries, whether still running or failing: say so on the job instead of going quiet. */
     private fun pausePolling(jobId: String): Result {
         AsyncProviderJobStore(applicationContext.noBackupFilesDir).update(jobId) { job ->
+            // A manual refresh or cancel may have finished the job meanwhile; keep its own note then.
+            if (!job.needsPolling) return@update job
             job.copy(
                 updatedAtEpochMs = System.currentTimeMillis(),
                 errorMessage = "Automatic polling paused. Open Jobs and refresh manually.",

@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ais.tee.data.engine.AsyncJobBackends
 import ais.tee.data.model.AiProvider
 import ais.tee.data.model.AsyncProviderJob
 import ais.tee.data.model.AsyncProviderJobState
@@ -71,39 +72,30 @@ internal fun AsyncJobsPanel(
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
         )
+        val backend = AsyncJobBackends.forProvider(provider) ?: AsyncJobBackends.all.first()
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(AiProvider.CHATGPT to "OpenAI background", AiProvider.CLAUDE to "Claude batch").forEach { (option, label) ->
+            AsyncJobBackends.all.forEach { option ->
                 FilterChip(
-                    selected = provider == option,
+                    selected = backend == option,
                     onClick = {
-                        provider = option
-                        selectedModel = option.defaultModel
+                        provider = option.provider
+                        selectedModel = option.provider.defaultModel
                     },
-                    label = { Text(label) },
-                    modifier = Modifier.testTag("job_provider_${option.id}"),
+                    label = { Text(option.label) },
+                    modifier = Modifier.testTag("job_provider_${option.provider.id}"),
                 )
             }
         }
         Text(
-            text = if (provider == AiProvider.CLAUDE) {
-                "Claude Message Batches cost half the normal price and usually finish within an hour (at most 24 hours). " +
-                    "Aistee polls in the background. Anthropic keeps the batch request and result for 29 days so they can be downloaded."
-            } else {
-                "Long OpenAI Responses can run asynchronously while Aistee polls durable status in the background. " +
-                    "Aistee keeps store=false; OpenAI still temporarily stores background response data so polling can work."
-            },
+            text = backend.description,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        val hasKey = if (provider == AiProvider.CLAUDE) {
-            uiState.apiKeyConfig.claudeKey.isNotBlank()
-        } else {
-            uiState.apiKeyConfig.openAiKey.isNotBlank()
-        }
+        val hasKey = backend.apiKey(uiState.apiKeyConfig).isNotBlank()
         if (!hasKey) {
             Text(
-                text = "Add ${if (provider == AiProvider.CLAUDE) "a Claude" else "an OpenAI"} API key from native chat settings before starting a job.",
+                text = backend.missingKeyMessage,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -111,7 +103,7 @@ internal fun AsyncJobsPanel(
 
         Text("Model", style = MaterialTheme.typography.labelLarge)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(provider.availableModels) { model ->
+            items(backend.provider.availableModels) { model ->
                 FilterChip(
                     selected = model == selectedModel,
                     onClick = { selectedModel = model },
@@ -140,7 +132,7 @@ internal fun AsyncJobsPanel(
         OutlinedTextField(
             value = prompt,
             onValueChange = { prompt = it },
-            label = { Text(if (provider == AiProvider.CLAUDE) "Standalone batch prompt" else "Standalone background prompt") },
+            label = { Text(backend.promptLabel) },
             minLines = 5,
             maxLines = 12,
             modifier = Modifier
@@ -149,20 +141,19 @@ internal fun AsyncJobsPanel(
         )
         Button(
             onClick = {
-                if (provider == AiProvider.CLAUDE) {
-                    viewModel.startClaudeBatchJob(prompt = prompt, model = selectedModel, projectId = selectedProjectId)
-                } else {
-                    viewModel.startOpenAiBackgroundJob(prompt = prompt, model = selectedModel, projectId = selectedProjectId)
-                }
+                viewModel.startAsyncProviderJob(
+                    provider = backend.provider,
+                    prompt = prompt,
+                    model = selectedModel,
+                    projectId = selectedProjectId,
+                )
             },
             enabled = prompt.isNotBlank() &&
                 hasKey &&
                 uiState.projectLibrary.projects.any { it.id == selectedProjectId },
-            modifier = Modifier.testTag(
-                if (provider == AiProvider.CLAUDE) "btn_start_claude_batch_job" else "btn_start_openai_background_job"
-            ),
+            modifier = Modifier.testTag("btn_start_async_job"),
         ) {
-            Text(if (provider == AiProvider.CLAUDE) "Start batch job" else "Start background job")
+            Text(backend.startLabel)
         }
 
         HorizontalDivider()

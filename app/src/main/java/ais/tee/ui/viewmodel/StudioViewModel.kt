@@ -4,19 +4,13 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import ais.tee.data.engine.AiChatService
+import ais.tee.data.engine.AsyncJobBackends
 import ais.tee.data.engine.InstructionRenderer
 import ais.tee.data.engine.ActiveSkillChatAnswer
 import ais.tee.data.engine.ActiveSkillChatStage
 import ais.tee.data.engine.NativeActiveSkillChatTools
 import ais.tee.data.engine.NativeBenchChatTools
 import ais.tee.data.engine.NativeChatSendRequest
-import ais.tee.data.engine.ClaudeBatchJobWork
-import ais.tee.data.engine.OpenAiBackgroundJobWork
-import ais.tee.data.engine.cancelClaudeBatchJob
-import ais.tee.data.engine.refreshClaudeBatchJob
-import ais.tee.data.engine.cancelOpenAiBackgroundJob
-import ais.tee.data.engine.refreshOpenAiBackgroundJob
-import ais.tee.data.engine.persistOpenAiBackgroundSnapshot
 import ais.tee.data.engine.executeNativeChatSend
 import ais.tee.data.engine.ProfileMerger
 import ais.tee.data.engine.ValidationResult
@@ -308,15 +302,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             }
             archive.jobs
                 .filter { it.needsPolling }
-                .forEach { job ->
-                    if (job.provider == AiProvider.CHATGPT &&
-                        job.kind == AsyncProviderJobKind.BACKGROUND_RESPONSE
-                    ) {
-                        OpenAiBackgroundJobWork.enqueue(getApplication(), job.id)
-                    } else if (job.isClaudeBatch) {
-                        ClaudeBatchJobWork.enqueue(getApplication(), job.id)
-                    }
-                }
+                .forEach { job -> AsyncJobBackends.forJob(job)?.schedulePolling(getApplication(), job.id) }
         }
     }
 
@@ -992,70 +978,51 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     suspend fun loadProjectLibraryAsset(assetId: String): String? =
         withContext(Dispatchers.IO) { projectLibraryStore.loadTextAsset(assetId)?.text }
 
-    fun startOpenAiBackgroundJob(
+    /** Starts a standalone job with [provider]'s async API; its text result goes to [projectId]. */
+    fun startAsyncProviderJob(
+        provider: AiProvider,
         prompt: String,
         model: String,
         projectId: String,
     ) {
+        val backend = AsyncJobBackends.forProvider(provider) ?: return showSnackbar("This provider has no job API.")
         val trimmedPrompt = prompt.trim()
         val resolvedModel = model.trim()
         val state = _uiState.value
+        val apiKey = backend.apiKey(state.apiKeyConfig)
         when {
-            trimmedPrompt.isEmpty() -> {
-                showSnackbar("Enter a prompt for the background job.")
-                return
-            }
-            trimmedPrompt.length > MAX_BACKGROUND_JOB_PROMPT_CHARS -> {
-                showSnackbar("Background prompt is too large.")
-                return
-            }
-            resolvedModel.isEmpty() -> {
-                showSnackbar("Choose an OpenAI model.")
-                return
-            }
-            state.apiKeyConfig.openAiKey.isBlank() -> {
-                showSnackbar("Add an OpenAI API key before starting a background job.")
-                return
-            }
-            state.projectLibrary.projects.none { it.id == projectId } -> {
-                showSnackbar("Choose a valid Project Library destination.")
-                return
-            }
+            trimmedPrompt.isEmpty() -> return showSnackbar("Enter a prompt for the job.")
+            trimmedPrompt.length > MAX_BACKGROUND_JOB_PROMPT_CHARS -> return showSnackbar("Job prompt is too large.")
+            resolvedModel.isEmpty() -> return showSnackbar("Choose a ${provider.shortName} model.")
+            apiKey.isBlank() -> return showSnackbar(backend.missingKeyMessage)
+            state.projectLibrary.projects.none { it.id == projectId } ->
+                return showSnackbar("Choose a valid Project Library destination.")
         }
 
         viewModelScope.launch {
             try {
-                val snapshot = withContext(Dispatchers.IO) {
-                    aiChatService.createOpenAiBackgroundResponse(
-                        prompt = trimmedPrompt,
-                        model = resolvedModel,
-                        apiKey = state.apiKeyConfig.openAiKey,
-                    )
+                val started = withContext(Dispatchers.IO) {
+                    backend.start(aiChatService, trimmedPrompt, resolvedModel, apiKey)
                 }
                 val now = System.currentTimeMillis()
-                val job = AsyncProviderJob(
-                    id = UUID.randomUUID().toString(),
-                    provider = AiProvider.CHATGPT,
-                    kind = AsyncProviderJobKind.BACKGROUND_RESPONSE,
-                    remoteId = snapshot.remoteId,
-                    model = snapshot.model.ifBlank { resolvedModel },
-                    projectId = projectId,
-                    state = snapshot.state,
-                    createdAtEpochMs = now,
-                    updatedAtEpochMs = now,
-                    errorMessage = snapshot.errorMessage,
-                )
                 val stored = withContext(Dispatchers.IO) {
-                    asyncProviderJobStore.upsert(job)
+                    asyncProviderJobStore.upsert(
+                        AsyncProviderJob(
+                            id = UUID.randomUUID().toString(),
+                            provider = backend.provider,
+                            kind = backend.kind,
+                            remoteId = started.remoteId,
+                            model = started.model,
+                            projectId = projectId,
+                            state = started.state,
+                            createdAtEpochMs = now,
+                            errorMessage = started.errorMessage,
+                        )
+                    )
                 }
                 if (stored == null) {
                     val remoteCancelled = try {
-                        withContext(Dispatchers.IO) {
-                            aiChatService.cancelOpenAiBackgroundResponse(
-                                responseId = snapshot.remoteId,
-                                apiKey = state.apiKeyConfig.openAiKey,
-                            )
-                        }
+                        withContext(Dispatchers.IO) { backend.cancelRemote(aiChatService, started.remoteId, apiKey) }
                         true
                     } catch (cancelled: kotlinx.coroutines.CancellationException) {
                         throw cancelled
@@ -1064,98 +1031,23 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     }
                     showSnackbar(
                         if (remoteCancelled) {
-                            "Could not save the background job. The remote response was cancelled."
+                            "Could not save the job. The remote job was cancelled."
                         } else {
-                            "Could not save the background job. The remote response may still run."
+                            "Could not save the job. The remote job may still run."
                         }
                     )
                     return@launch
                 }
-                val current = withContext(Dispatchers.IO) {
-                    persistOpenAiBackgroundSnapshot(
-                        context = getApplication(),
-                        job = stored,
-                        snapshot = snapshot,
-                    ).job
-                }
+                // Polling is scheduled as soon as the record exists; app start re-schedules it if this fails.
+                backend.schedulePolling(getApplication(), stored.id)
+                withContext(Dispatchers.IO) { started.afterStored(getApplication(), stored) }
                 reloadAsyncProviderJobsFromDisk()
                 reloadProjectLibraryFromDisk()
-                if (
-                    !current.state.isTerminal ||
-                    (current.state == AsyncProviderJobState.SUCCEEDED && current.resultAssetId == null)
-                ) {
-                    OpenAiBackgroundJobWork.enqueue(getApplication(), current.id)
-                }
-                showSnackbar("OpenAI background job started.")
+                showSnackbar("${backend.label} job started.")
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                showSnackbar(error.localizedMessage ?: "Could not start OpenAI background job.")
-            }
-        }
-    }
-
-    /** Starts a one-request Claude Message Batch whose text result is saved to [projectId]. */
-    fun startClaudeBatchJob(
-        prompt: String,
-        model: String,
-        projectId: String,
-    ) {
-        val trimmedPrompt = prompt.trim()
-        val resolvedModel = model.trim()
-        val state = _uiState.value
-        val apiKey = state.apiKeyConfig.claudeKey
-        when {
-            trimmedPrompt.isEmpty() -> return showSnackbar("Enter a prompt for the batch job.")
-            trimmedPrompt.length > MAX_BACKGROUND_JOB_PROMPT_CHARS -> return showSnackbar("Batch prompt is too large.")
-            resolvedModel.isEmpty() -> return showSnackbar("Choose a Claude model.")
-            apiKey.isBlank() -> return showSnackbar("Add a Claude API key before starting a batch job.")
-            state.projectLibrary.projects.none { it.id == projectId } ->
-                return showSnackbar("Choose a valid Project Library destination.")
-        }
-
-        viewModelScope.launch {
-            try {
-                val snapshot = withContext(Dispatchers.IO) {
-                    aiChatService.createClaudeBatch(trimmedPrompt, resolvedModel, apiKey)
-                }
-                val now = System.currentTimeMillis()
-                val stored = withContext(Dispatchers.IO) {
-                    asyncProviderJobStore.upsert(
-                        AsyncProviderJob(
-                            id = UUID.randomUUID().toString(),
-                            provider = AiProvider.CLAUDE,
-                            kind = AsyncProviderJobKind.BATCH,
-                            remoteId = snapshot.remoteId,
-                            model = resolvedModel,
-                            projectId = projectId,
-                            state = AsyncProviderJobState.RUNNING,
-                            createdAtEpochMs = now,
-                        )
-                    )
-                }
-                if (stored == null) {
-                    val remoteCancelled = runCatching {
-                        withContext(Dispatchers.IO) { aiChatService.cancelClaudeBatch(snapshot.remoteId, apiKey) }
-                    }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }.isSuccess
-                    showSnackbar(
-                        if (remoteCancelled) {
-                            "Could not save the batch job. The remote batch was cancelled."
-                        } else {
-                            "Could not save the batch job. The remote batch may still run."
-                        }
-                    )
-                    return@launch
-                }
-                // Stored as RUNNING already; polling starts right after the record exists (and again on
-                // the next app start if this fails), so a job is never left without a poller.
-                ClaudeBatchJobWork.enqueue(getApplication(), stored.id)
-                reloadAsyncProviderJobsFromDisk()
-                showSnackbar("Claude batch job started.")
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                showSnackbar(error.localizedMessage ?: "Could not start Claude batch job.")
+                showSnackbar(error.localizedMessage ?: "Could not start ${backend.label} job.")
             }
         }
     }
@@ -1164,8 +1056,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    refreshOpenAiBackgroundJob(getApplication(), jobId, aiChatService)
-                    refreshClaudeBatchJob(getApplication(), jobId, aiChatService)
+                    jobBackend(jobId)?.refresh(getApplication(), jobId, aiChatService)
                 }
                 reloadAsyncProviderJobsFromDisk()
                 reloadProjectLibraryFromDisk()
@@ -1181,8 +1072,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    cancelOpenAiBackgroundJob(getApplication(), jobId, aiChatService)
-                    cancelClaudeBatchJob(getApplication(), jobId, aiChatService)
+                    jobBackend(jobId)?.cancel(getApplication(), jobId, aiChatService)
                 }
                 reloadAsyncProviderJobsFromDisk()
                 reloadProjectLibraryFromDisk()
@@ -1194,10 +1084,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private suspend fun jobBackend(jobId: String) = withContext(Dispatchers.IO) {
+        asyncProviderJobStore.load().jobs.firstOrNull { it.id == jobId }?.let(AsyncJobBackends::forJob)
+    }
+
     fun deleteAsyncProviderJob(jobId: String) {
         viewModelScope.launch {
-            OpenAiBackgroundJobWork.cancel(getApplication(), jobId)
-            ClaudeBatchJobWork.cancel(getApplication(), jobId)
+            AsyncJobBackends.all.forEach { it.cancelPolling(getApplication(), jobId) }
             val deleted = withContext(Dispatchers.IO) {
                 asyncProviderJobStore.delete(jobId)
             }
