@@ -6,6 +6,8 @@ import androidx.benchmark.macro.FrameTimingMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
+import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -15,6 +17,9 @@ import org.junit.runner.RunWith
 class NativeChatBenchmark {
     @get:Rule
     val benchmarkRule = MacrobenchmarkRule()
+
+    @Before
+    fun startFromCleanArchive() = clearTargetAppData()
 
     @Test
     fun listDetailRoundTrip() {
@@ -37,6 +42,8 @@ class NativeChatBenchmark {
 
     @Test
     fun openLongConversation() {
+        // Expanded layouts keep the fixture's detail pane visible beside the list, so there is no reopen to time.
+        assumeTrue(isCompactWidthDevice())
         benchmarkRule.measureRepeated(
             packageName = TARGET_PACKAGE,
             metrics = listOf(FrameTimingMetric()),

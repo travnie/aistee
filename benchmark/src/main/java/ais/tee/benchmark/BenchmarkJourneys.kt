@@ -4,9 +4,11 @@ import android.content.Intent
 import android.net.Uri
 import android.os.SystemClock
 import androidx.benchmark.macro.MacrobenchmarkScope
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.StaleObjectException
+import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import java.util.Base64
@@ -17,6 +19,19 @@ private const val UI_POLL_INTERVAL_MS = 50L
 private const val BENCHMARK_FIXTURE_FILE = "aistee-benchmark-chat.md"
 private const val BENCHMARK_FIXTURE_PATH = "/sdcard/Download/$BENCHMARK_FIXTURE_FILE"
 private const val BENCHMARK_CONVERSATION_TITLE = "Benchmark question 0."
+
+/**
+ * Clears Aistee's local data so native chat journeys start from the same archive: the long-chat fixture is
+ * imported exactly once and always sits at the top of the conversation list.
+ */
+internal fun clearTargetAppData() {
+    UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        .executeShellCommand("pm clear $TARGET_PACKAGE")
+}
+
+/** List-detail reopen timing only means something when the list and detail panes do not share the screen. */
+internal fun isCompactWidthDevice(): Boolean =
+    UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).displaySizeDp.x < 600
 
 internal fun MacrobenchmarkScope.switchWebProvider(providerName: String) {
     val providerSelector = By.desc("Switch to $providerName")

@@ -33,14 +33,15 @@ class BaselineProfileGenerator {
     }
 
     @Test
-    fun nativeChatJourneys() = baselineProfileRule.collect(
-        packageName = TARGET_PACKAGE
-    ) {
-        pressHome()
-        startActivityInCompareHub()
-        ensureBenchmarkConversation()
-        openBenchmarkConversation()
-        scrollNativeChatHistory()
-        returnToNativeConversationList()
+    fun nativeChatJourneys() {
+        clearTargetAppData()
+        baselineProfileRule.collect(packageName = TARGET_PACKAGE) {
+            pressHome()
+            startActivityInCompareHub()
+            ensureBenchmarkConversation()
+            openBenchmarkConversation()
+            scrollNativeChatHistory()
+            returnToNativeConversationList()
+        }
     }
 }
