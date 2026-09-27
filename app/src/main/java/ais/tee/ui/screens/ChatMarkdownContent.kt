@@ -112,7 +112,13 @@ internal fun chatMarkdownAnnotatedString(
 ): AnnotatedString = buildAnnotatedString {
     spans.forEach { span ->
         if (span.math) {
-            appendMath(span.text, codeBackground, math)
+            val link = span.link
+            if (link != null) {
+                val linkStyle = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
+                withLink(LinkAnnotation.Url(link, TextLinkStyles(style = linkStyle))) { appendMath(span.text, codeBackground, math) }
+            } else {
+                appendMath(span.text, codeBackground, math)
+            }
             return@forEach
         }
         val style = SpanStyle(

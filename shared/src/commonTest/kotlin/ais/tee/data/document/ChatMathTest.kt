@@ -61,6 +61,23 @@ class ChatMathTest {
     }
 
     @Test
+    fun quotedMultilineMathAndTildeFencesStayClean() {
+        val quote = assertIs<ChatMarkdownBlock.Quote>(parseChatMarkdown("> \$\$\n> x+1\n> \$\$")!!.single())
+        assertEquals(listOf(ChatMarkdownBlock.Math("x+1")), quote.blocks)
+        val blocks = parseChatMarkdown("Costs \$5\n~~~\nfoo\$\n~~~")!!
+        assertEquals(ChatMarkdownBlock.CodeBlock(null, "foo\$"), blocks.last())
+        assertTrue(blocks.none { it is ChatMarkdownBlock.Math })
+    }
+
+    @Test
+    fun mathInLinksKeepsTheLink() {
+        assertEquals(
+            listOf(ChatMarkdownSpan("solve ", link = "https://example.com"), ChatMarkdownSpan("x", link = "https://example.com", math = true)),
+            spans("[solve \$x\$](https://example.com)"),
+        )
+    }
+
+    @Test
     fun tablesKeepTheirMathSource() {
         val table = assertIs<ChatMarkdownBlock.Table>(parseChatMarkdown("| f | g |\n|---|---|\n| \$x^2\$ | \$a|b\$ |")!!.single())
         assertEquals(listOf("\$x^2\$", "\$a|b\$"), table.table.rows.single())

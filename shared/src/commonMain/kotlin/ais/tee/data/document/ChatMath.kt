@@ -18,6 +18,8 @@ private const val PLACEHOLDER_END = ''
 private val PLACEHOLDER = Regex("$PLACEHOLDER_START(\\d+)$PLACEHOLDER_END")
 private val FENCE = Regex("^ {0,3}(`{3,}|~{3,})")
 private val BLANK_LINE = Regex("\\n[ \\t]*\\n")
+private val QUOTE_PREFIX = Regex("^[ \\t]*(?:>[ \\t]?)+")
+private val TILDE_FENCE = Regex("(?m)^ {0,3}~{3,}")
 
 internal data class ChatMathSegment(val source: String, val tex: String, val display: Boolean)
 
@@ -83,7 +85,7 @@ internal fun extractChatMath(text: String): ChatMathExtraction {
                 val end = scan.closer(if (display) scan.bracketClosers else scan.parenClosers, i + 2)
                 val tex = if (end < 0) null else text.substring(i + 2, end)
                 if (tex != null && tex.isNotBlank()) {
-                    out.placeholder(segments, ChatMathSegment(text.substring(i, end + 2), tex.trim(), display))
+                    out.placeholder(segments, ChatMathSegment(text.substring(i, end + 2), unquoted(text, i, tex).trim(), display))
                     i = end + 2
                 } else {
                     out.append(text, i, i + 2)
@@ -98,7 +100,7 @@ internal fun extractChatMath(text: String): ChatMathExtraction {
                 val end = scan.closer(scan.doubleDollars, i + 2)
                 val tex = if (end < 0) null else text.substring(i + 2, end)
                 if (tex != null && tex.isNotBlank()) {
-                    out.placeholder(segments, ChatMathSegment(text.substring(i, end + 2), tex.trim(), display = true))
+                    out.placeholder(segments, ChatMathSegment(text.substring(i, end + 2), unquoted(text, i, tex).trim(), display = true))
                     i = end + 2
                 } else {
                     out.append("$$")
@@ -108,7 +110,7 @@ internal fun extractChatMath(text: String): ChatMathExtraction {
             c == '$' -> {
                 val end = scan.inlineDollarEnd(i)
                 if (end > 0) {
-                    out.placeholder(segments, ChatMathSegment(text.substring(i, end + 1), text.substring(i + 1, end), display = false))
+                    out.placeholder(segments, ChatMathSegment(text.substring(i, end + 1), unquoted(text, i, text.substring(i + 1, end)), display = false))
                     i = end + 1
                 } else {
                     out.append(c)
@@ -122,6 +124,15 @@ internal fun extractChatMath(text: String): ChatMathExtraction {
         }
     }
     return ChatMathExtraction(out.toString(), segments)
+}
+
+/** Drops the `>` markers a quote repeats on each line of multiline math that opens inside it. */
+private fun unquoted(text: String, open: Int, tex: String): String {
+    if ('\n' !in tex) return tex
+    val lineStart = text.lastIndexOf('\n', open - 1) + 1
+    if (QUOTE_PREFIX.find(text.substring(lineStart, open)) == null) return tex
+    return tex.lines().mapIndexed { index, line -> if (index == 0) line else line.replaceFirst(QUOTE_PREFIX, "") }
+        .joinToString("\n")
 }
 
 private fun StringBuilder.placeholder(segments: MutableList<ChatMathSegment>, segment: ChatMathSegment) {
@@ -140,7 +151,8 @@ private class MathDelimiters(private val text: String) {
     val parenClosers = positions { text[it] == '\\' && text.getOrNull(it + 1) == ')' }
     val bracketClosers = positions { text[it] == '\\' && text.getOrNull(it + 1) == ']' }
     private val singleDollars = positions { text[it] == '$' }
-    private val backticks = positions { text[it] == '`' }
+    // Backticks (inline code and backtick fences) and tilde fence lines: math never crosses code.
+    private val codeMarks = (positions { text[it] == '`' }.toList() + TILDE_FENCE.findAll(text).map { it.range.first }).sorted().toIntArray()
     private val inlineClose = IntArray(singleDollars.size).also { result ->
         for (k in singleDollars.indices.reversed()) {
             val j = singleDollars[k]
@@ -189,8 +201,8 @@ private class MathDelimiters(private val text: String) {
         return inlineClose[k].takeIf { it >= 0 && it < limit(open) && !crossesCode(open, it) } ?: -1
     }
 
-    /** Math never contains a backtick, so a closer past one belongs to later code, not this formula. */
-    private fun crossesCode(from: Int, end: Int): Boolean = backticks.firstAtOrAfter(from).let { it in 0 until end }
+    /** Math never contains code, so a closer past a backtick or fence belongs to later code, not this formula. */
+    private fun crossesCode(from: Int, end: Int): Boolean = codeMarks.firstAtOrAfter(from).let { it in 0 until end }
 
     private fun limit(from: Int): Int = minOf(paragraphEnd(from), from + MAX_CHAT_MATH_CHARS + 2)
 
