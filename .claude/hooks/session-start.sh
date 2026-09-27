@@ -15,12 +15,19 @@ fi
 # for, so the first turn already has them.
 android_cli=$(command -v android || echo "${ANDROID_HOME:-/opt/android-sdk}/cmdline-tools/latest/bin/android")
 if [ -x "$android_cli" ]; then
+  skill_pids=()
+  skill_names=()
   for skill in android-cli testing-setup edge-to-edge r8-analyzer android-intent-security android-permissions-security media3-cast-integration navigation-3; do
     [ -d "$HOME/.claude/skills/$skill" ] && continue
-    "$android_cli" skills add --agent=claude-code "$skill" >/dev/null 2>&1 \
-      || echo "android skill failed: $skill" >&2 &
+    "$android_cli" skills add --agent=claude-code "$skill" >/dev/null 2>&1 &
+    skill_pids+=("$!")
+    skill_names+=("$skill")
   done
-  wait
+  for i in "${!skill_pids[@]}"; do
+    if ! wait "${skill_pids[$i]}"; then
+      echo "android skill failed: ${skill_names[$i]}" >&2
+    fi
+  done
 fi
 
 git ls-files '*package-lock.json' | while read -r lock; do
