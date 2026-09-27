@@ -133,11 +133,34 @@ internal fun MacrobenchmarkScope.importBenchmarkConversationFixture() {
  * to the Downloads root where the fixture lives.
  */
 private fun MacrobenchmarkScope.openFixtureFromDocumentPicker() {
-    if (device.wait(Until.hasObject(By.text(BENCHMARK_FIXTURE_FILE)), UI_TIMEOUT_MS) != true) {
-        device.findObject(By.desc("Show roots"))?.let { clickFresh(By.desc("Show roots"), "Document picker roots") }
-        clickFresh(By.text("Downloads"), "Downloads root")
+    if (device.wait(Until.hasObject(By.text(BENCHMARK_FIXTURE_FILE)), UI_TIMEOUT_MS) == true) {
+        clickFresh(
+            By.text(BENCHMARK_FIXTURE_FILE),
+            "Benchmark chat fixture in the document picker",
+            UI_TIMEOUT_MS * 2
+        )
+        return
     }
-    clickFresh(By.text(BENCHMARK_FIXTURE_FILE), "Benchmark chat fixture in the document picker", UI_TIMEOUT_MS * 2)
+
+    // Files created by the benchmark shell are present in primary storage immediately, but the
+    // DownloadsProvider database can lag behind and show an empty Downloads root. Navigate through
+    // the raw primary-storage root instead so the picker reads the same filesystem path we wrote.
+    device.findObject(By.desc("Show roots"))
+        ?.let { clickFresh(By.desc("Show roots"), "Document picker roots") }
+
+    val deviceModel = device.executeShellCommand("getprop ro.product.model").trim()
+    val primaryRoot = when {
+        deviceModel.isNotEmpty() && device.findObject(By.text(deviceModel)) != null -> By.text(deviceModel)
+        device.findObject(By.text("Internal storage")) != null -> By.text("Internal storage")
+        else -> error("Primary storage root did not become available in the document picker")
+    }
+    clickFresh(primaryRoot, "Primary storage root")
+    clickFresh(By.text("Download"), "Download directory", UI_TIMEOUT_MS * 2)
+    clickFresh(
+        By.text(BENCHMARK_FIXTURE_FILE),
+        "Benchmark chat fixture in the document picker",
+        UI_TIMEOUT_MS * 2
+    )
 }
 
 /** The document picker redraws its drawer and list after they first appear, so re-find a node that went stale. */
