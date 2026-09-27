@@ -30,6 +30,23 @@ if [ -x "$android_cli" ]; then
   done
 fi
 
+# Gemini API skill from google-gemini/gemini-skills: current model names and
+# SDK usage for the Gemini provider. Sparse clone, so new reference files in
+# the skill come along; a fresh VM always gets the latest main.
+gemini_skill="$HOME/.claude/skills/gemini-api-dev"
+if [ ! -d "$gemini_skill" ]; then
+  tmp=$(mktemp -d)
+  if git clone -q --depth 1 --filter=blob:none --sparse \
+      https://github.com/google-gemini/gemini-skills "$tmp" \
+      && git -C "$tmp" sparse-checkout set skills/gemini-api-dev \
+      && [ -f "$tmp/skills/gemini-api-dev/SKILL.md" ]; then
+    mkdir -p "$HOME/.claude/skills" && cp -r "$tmp/skills/gemini-api-dev" "$gemini_skill"
+  else
+    echo "gemini-api-dev skill: install failed" >&2
+  fi
+  rm -rf "$tmp"
+fi
+
 git ls-files '*package-lock.json' | while read -r lock; do
   dir=$(dirname "$lock")
   [ "$dir/node_modules/.package-lock.json" -nt "$lock" ] && continue
