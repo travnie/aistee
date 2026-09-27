@@ -31,16 +31,25 @@ if [ -x "$android_cli" ]; then
 fi
 
 # Gemini API skill from google-gemini/gemini-skills: current model names and
-# SDK usage for the Gemini provider. Sparse clone, so new reference files in
-# the skill come along; a fresh VM always gets the latest main.
+# API usage for the Gemini provider. Pinned to a reviewed commit (bump the
+# SHA deliberately); staged in a temp dir and renamed into place, with the
+# pinned SHA as the completion marker, so a partial install is retried.
+gemini_ref=6fee1bec62d6a0ca92c1d0e34d62ff11f70c498a
 gemini_skill="$HOME/.claude/skills/gemini-api-dev"
-if [ ! -d "$gemini_skill" ]; then
+if [ "$(cat "$gemini_skill/.ref" 2>/dev/null)" != "$gemini_ref" ]; then
   tmp=$(mktemp -d)
-  if git clone -q --depth 1 --filter=blob:none --sparse \
-      https://github.com/google-gemini/gemini-skills "$tmp" \
+  if git -C "$tmp" init -q \
+      && git -C "$tmp" remote add origin https://github.com/google-gemini/gemini-skills \
       && git -C "$tmp" sparse-checkout set skills/gemini-api-dev \
+      && git -C "$tmp" fetch -q --depth 1 --filter=blob:none origin "$gemini_ref" \
+      && git -C "$tmp" checkout -q FETCH_HEAD \
       && [ -f "$tmp/skills/gemini-api-dev/SKILL.md" ]; then
-    mkdir -p "$HOME/.claude/skills" && cp -r "$tmp/skills/gemini-api-dev" "$gemini_skill"
+    mkdir -p "$HOME/.claude/skills"
+    rm -rf "$gemini_skill"
+    # /tmp may be another filesystem, so mv can degrade to copy: the marker
+    # is written last, only after the whole tree has landed.
+    mv "$tmp/skills/gemini-api-dev" "$gemini_skill" \
+      && echo "$gemini_ref" > "$gemini_skill/.ref"
   else
     echo "gemini-api-dev skill: install failed" >&2
   fi
