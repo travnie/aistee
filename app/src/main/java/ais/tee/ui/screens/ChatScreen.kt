@@ -280,7 +280,8 @@ private fun NativeChatDetailPane(
     val promptInput = uiState.nativeChatDraft
     // Tracks the caret for the user's own edits; when the draft changes elsewhere (a quote, an
     // imported draft, another chat), the caret moves to the end so typing continues below it.
-    var composerEdit by remember { mutableStateOf(TextFieldValue()) }
+    // Keyed by chat so switching to a chat with an identical draft does not inherit the caret.
+    var composerEdit by remember(uiState.activeNativeConversation?.id) { mutableStateOf(TextFieldValue()) }
     val composerValue = if (composerEdit.text == promptInput) {
         composerEdit
     } else {
