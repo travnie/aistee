@@ -1179,6 +1179,36 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         persistNativeChat()
     }
 
+    /**
+     * Continues the active chat from [messageId] in a new branch; the source stays untouched.
+     * Incognito chats are not branched because the branch would be persisted.
+     */
+    fun forkActiveNativeConversation(messageId: String): Boolean {
+        val state = _uiState.value
+        if (!state.isNativeConversationStoreReady || state.isChatGenerating || state.isActiveConversationIncognito) {
+            return false
+        }
+        val source = state.activeNativeConversation ?: return false
+        val branch = source.forkAt(
+            messageId = messageId,
+            newConversationId = UUID.randomUUID().toString(),
+            nowEpochMs = System.currentTimeMillis(),
+            newMessageId = { UUID.randomUUID().toString() },
+        ) ?: return false
+        _uiState.update { current ->
+            current.copy(
+                nativeChat = current.nativeChat.copy(
+                    activeConversationId = branch.id,
+                    conversations = listOf(branch) + current.nativeChat.conversations
+                )
+            )
+        }
+        persistNativeChat()
+        publishNativeConversationShortcut(branch.id)
+        showSnackbar("Branched to a new chat. Other providers start without the earlier turns.")
+        return true
+    }
+
     /** Starts a chat that lives only in memory; leaving it or process death discards it. */
     fun newIncognitoConversation() {
         if (!_uiState.value.isNativeConversationStoreReady) return

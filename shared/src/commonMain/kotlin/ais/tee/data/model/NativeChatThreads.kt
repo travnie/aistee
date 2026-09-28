@@ -22,10 +22,26 @@ data class NativeChatConversation(
     val includeSystemProfile: Boolean = true,
     val projectId: String = DEFAULT_PROJECT_ID,
     val replyEpoch: Long = 0L,
+    /** Set on a branch made from another local conversation; the source is never modified. */
+    val forkedFrom: NativeChatForkOrigin? = null,
 ) {
     override fun toString(): String =
         "NativeChatConversation(id=<redacted>, title=<redacted>, messages=${messages.size}, " +
-            "selectedProvider=${selectedProvider.id}, selectedModel=<redacted>, projectId=<redacted>)"
+            "selectedProvider=${selectedProvider.id}, selectedModel=<redacted>, projectId=<redacted>, " +
+            "forked=${forkedFrom != null})"
+}
+
+/** Where a branch came from: its first [inheritedMessageCount] messages are copies from the source. */
+@Serializable
+data class NativeChatForkOrigin(
+    val sourceConversationId: String,
+    val sourceMessageId: String,
+    val inheritedMessageCount: Int,
+    val forkedAtEpochMs: Long,
+) {
+    override fun toString(): String =
+        "NativeChatForkOrigin(sourceConversationId=<redacted>, sourceMessageId=<redacted>, " +
+            "inheritedMessageCount=$inheritedMessageCount)"
 }
 
 @Serializable
@@ -51,6 +67,63 @@ fun nativeConversationTitle(prompt: String): String {
     if (normalized.isEmpty()) return DEFAULT_NATIVE_CONVERSATION_TITLE
     if (normalized.length <= MAX_NATIVE_CONVERSATION_TITLE_CHARS) return normalized
     return normalized.take(MAX_NATIVE_CONVERSATION_TITLE_CHARS - 1).trimEnd() + "…"
+}
+
+/** Only a finished provider reply can start a branch. */
+fun ModelChatMessage.canStartNativeChatFork(): Boolean =
+    id != NATIVE_CHAT_WELCOME_MESSAGE_ID && isCompletedAssistantResponse()
+
+fun NativeChatConversation.canForkAt(messageId: String): Boolean =
+    messages.any { it.id == messageId && it.canStartNativeChatFork() }
+
+/**
+ * Branches this conversation at a completed assistant reply. The branch keeps every earlier turn,
+ * the reply's own prompt and that reply only (compare-mode siblings from the same turn are
+ * dropped), and continues with the reply's provider. Copied messages get fresh ids so the two
+ * conversations never share message identity; the welcome message keeps its well-known id.
+ * History replay stays provider-scoped, so switching the branch to another provider does not
+ * send it the inherited turns.
+ */
+fun NativeChatConversation.forkAt(
+    messageId: String,
+    newConversationId: String,
+    nowEpochMs: Long,
+    newMessageId: () -> String,
+): NativeChatConversation? {
+    if (!canForkAt(messageId)) return null
+    val targetIndex = messages.indexOfFirst { it.id == messageId }
+    val target = messages[targetIndex]
+    val provider = target.provider ?: return null
+    val promptIndex = messages.subList(0, targetIndex).indexOfLast { it.sender == CHAT_ROLE_USER }
+    val inherited = buildList {
+        if (promptIndex >= 0) addAll(messages.subList(0, promptIndex + 1))
+        add(target)
+    }.filterNot { it.isQueued }
+    val model = when {
+        selectedProvider == provider && selectedModel.isNotBlank() -> selectedModel
+        target.modelName in provider.availableModels -> target.modelName.orEmpty()
+        else -> provider.defaultModel
+    }
+    return copy(
+        id = newConversationId,
+        title = nativeConversationTitle("Branch: ${title.removePrefix("Branch: ")}"),
+        createdAtEpochMs = nowEpochMs,
+        updatedAtEpochMs = nowEpochMs,
+        messages = inherited.map { message ->
+            if (message.id == NATIVE_CHAT_WELCOME_MESSAGE_ID) message else message.copy(id = newMessageId())
+        },
+        draft = "",
+        selectedProvider = provider,
+        selectedModel = model,
+        apiProcessingMode = provider.normalizeApiProcessingMode(apiProcessingMode),
+        replyEpoch = 0L,
+        forkedFrom = NativeChatForkOrigin(
+            sourceConversationId = id,
+            sourceMessageId = messageId,
+            inheritedMessageCount = inherited.size,
+            forkedAtEpochMs = nowEpochMs,
+        ),
+    )
 }
 
 fun NativeChatArchive.normalized(): NativeChatArchive? {
