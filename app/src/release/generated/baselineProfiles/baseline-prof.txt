@@ -22156,3 +22156,17 @@ SPLais/tee/ui/screens/ComposableSingletons$ChatScreenKt;->getLambda$-1563905288$
 SPLais/tee/ui/screens/ComposableSingletons$ChatScreenKt;->getLambda$1181676067$app()Lkotlin/jvm/functions/Function2;
 SPLais/tee/ui/screens/ComposableSingletons$ChatScreenKt;->getLambda$1351089018$app()Lkotlin/jvm/functions/Function2;
 SPLais/tee/ui/screens/ComposableSingletons$ChatScreenKt;->getLambda$591515863$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/data/model/NativeChatTimelineKt;->nativeChatTimeline$default(Ljava/util/List;Ljava/util/Collection;IILjava/lang/Object;)Ljava/util/List;
+SPLais/tee/data/model/NativeChatTimelineKt;->nativeChatTimeline(Ljava/util/List;Ljava/util/Collection;I)Ljava/util/List;
+SPLais/tee/data/model/NativeChatTimelineKt;->spreadTimelineOffsets(Ljava/util/List;FF)Ljava/util/List;
+SPLais/tee/data/model/NativeChatTimelineKt;->thinNativeChatTimeline(Ljava/util/List;I)Ljava/util/List;
+SPLais/tee/data/model/NativeChatTimelineKt;->timelinePreview(Ljava/lang/String;)Ljava/lang/String;
+SPLais/tee/data/model/NativeChatTimelineMarker;-><init>(ILjava/lang/String;IZZLjava/lang/String;)V
+SPLais/tee/data/model/NativeChatTimelineMarker;->equals(Ljava/lang/Object;)Z
+SPLais/tee/data/model/NativeChatTimelineMarker;->getMessageId()Ljava/lang/String;
+SPLais/tee/data/model/NativeChatTimelineMarker;->getMessageIndex()I
+SPLais/tee/data/model/NativeChatTimelineMarker;->getTurnNumber()I
+SPLais/tee/data/model/NativeChatTimelineMarker;->hashCode()I
+SPLais/tee/data/model/NativeChatTimelineMarker;->isStarred()Z
+SPLais/tee/ui/screens/ChatScreenKt;-><clinit>()V
+SPLais/tee/ui/screens/ChatScreenKt;->NativeChatTimelineRail(Ljava/util/List;ILkotlin/jvm/functions/Function1;Landroidx/compose/ui/Modifier;Landroidx/compose/runtime/Composer;II)V
