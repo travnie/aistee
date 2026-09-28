@@ -1729,7 +1729,12 @@ fun ChatMessageItem(
                 }
                 SelectionContainer {
                     if (markdownBlocks != null) {
-                        ChatMarkdownContent(markdown = markdownBlocks, color = textColor)
+                        ChatMarkdownContent(
+                            markdown = markdownBlocks,
+                            color = textColor,
+                            // Same sensitive-clip copy as the message action, for one code block.
+                            onCopyCode = onCopyText,
+                        )
                     } else {
                         Text(
                             text = message.text,
