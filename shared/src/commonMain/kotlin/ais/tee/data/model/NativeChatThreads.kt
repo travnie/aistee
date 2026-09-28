@@ -127,18 +127,24 @@ fun NativeChatConversation.forkAt(
 }
 
 /**
- * This conversation's messages minus copies it inherited from a source that is also in
- * [conversations], so a feed across several chats shows each turn once. Copies are matched by
- * content rather than [NativeChatForkOrigin.inheritedMessageCount], which a clear or edit can
- * outdate. A branch shown on its own keeps its inherited turns.
+ * Messages per conversation id for a feed across every chat. A turn a branch inherited appears
+ * once, under the earliest-created chat that holds it, even after its direct source was deleted
+ * or when sibling branches share it. Copies are matched by content rather than
+ * [NativeChatForkOrigin.inheritedMessageCount], which a clear can outdate; only branches drop
+ * messages. A branch shown on its own (a one-conversation archive) keeps its inherited turns.
  */
-fun NativeChatConversation.messagesWithoutInheritedCopies(
-    conversations: List<NativeChatConversation>,
-): List<ModelChatMessage> {
-    val sourceId = forkedFrom?.sourceConversationId ?: return messages
-    val source = conversations.firstOrNull { it.id == sourceId && it.id != id } ?: return messages
-    val sourceKeys = source.messages.mapTo(HashSet()) { Triple(it.sender, it.timestamp, it.text) }
-    return messages.filterNot { Triple(it.sender, it.timestamp, it.text) in sourceKeys }
+fun NativeChatArchive.messagesForCrossChatFeed(): Map<String, List<ModelChatMessage>> {
+    if (conversations.none { it.forkedFrom != null }) return conversations.associate { it.id to it.messages }
+    val seen = HashSet<Triple<String, Long, String>>()
+    return conversations
+        .sortedWith(compareBy<NativeChatConversation> { it.createdAtEpochMs }.thenBy { it.id })
+        .associate { conversation ->
+            val isBranch = conversation.forkedFrom != null
+            conversation.id to conversation.messages.filter { message ->
+                val isNew = seen.add(Triple(message.sender, message.timestamp, message.text))
+                isNew || !isBranch
+            }
+        }
 }
 
 fun NativeChatArchive.normalized(): NativeChatArchive? {

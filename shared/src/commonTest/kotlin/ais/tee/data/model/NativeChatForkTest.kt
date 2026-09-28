@@ -203,21 +203,40 @@ class NativeChatForkTest {
     }
 
     @Test
-    fun crossChatFeedsSkipInheritedCopiesOnlyWhileTheSourceIsPresent() {
+    fun crossChatFeedShowsEachInheritedTurnOnce() {
         val source = compareConversation()
         val branch = assertNotNull(fork(source, "a1-claude")).let { forked ->
             forked.copy(messages = forked.messages + user("new-u").copy(timestamp = 30) + reply("new-a", AiProvider.CLAUDE).copy(timestamp = 40))
         }
+        val feed = NativeChatArchive(conversations = listOf(branch, source)).messagesForCrossChatFeed()
 
-        assertEquals(
-            listOf("new-u", "reply new-a"),
-            branch.messagesWithoutInheritedCopies(listOf(source, branch)).map { it.text }
-        )
-        // Shown alone, or after the source is deleted, the branch keeps its inherited turns.
-        assertEquals(branch.messages, branch.messagesWithoutInheritedCopies(listOf(branch)))
-        // Content matching still works after the count is outdated by a clear.
+        assertEquals(source.messages, feed.getValue(source.id))
+        assertEquals(listOf("new-u", "reply new-a"), feed.getValue(branch.id).map { it.text })
+        // Shown on its own, a branch keeps its inherited turns.
+        assertEquals(branch.messages, NativeChatArchive(conversations = listOf(branch)).messagesForCrossChatFeed().getValue(branch.id))
+        // Content matching still works after a clear outdates the inherited count.
         val cleared = branch.copy(messages = listOf(welcome, user("fresh").copy(timestamp = 50)))
-        assertEquals(cleared.messages.drop(1), cleared.messagesWithoutInheritedCopies(listOf(source, cleared)))
-        assertEquals(source.messages, source.messagesWithoutInheritedCopies(listOf(source, branch)))
+        assertEquals(
+            listOf("fresh"),
+            NativeChatArchive(conversations = listOf(source, cleared)).messagesForCrossChatFeed().getValue(cleared.id).map { it.text }
+        )
+    }
+
+    @Test
+    fun crossChatFeedDeduplicatesSiblingAndNestedBranchesAfterTheSourceIsDeleted() {
+        val source = compareConversation()
+        var next = 0
+        fun branchOf(parent: NativeChatConversation, messageId: String, id: String, at: Long) =
+            assertNotNull(parent.forkAt(messageId, newConversationId = id, nowEpochMs = at) { "$id-m${next++}" })
+        val first = branchOf(source, "a1-claude", "first", at = 100)
+        val second = branchOf(source, "a1-gemini", "second", at = 200)
+        val nested = branchOf(first, first.messages.last().id, "nested", at = 300)
+
+        // Source deleted: the earliest branch keeps the shared turns, later ones drop their copies.
+        val feed = NativeChatArchive(conversations = listOf(nested, second, first)).messagesForCrossChatFeed()
+
+        assertEquals(first.messages, feed.getValue("first"))
+        assertEquals(listOf("reply a1-gemini"), feed.getValue("second").map { it.text })
+        assertTrue(feed.getValue("nested").isEmpty())
     }
 }
