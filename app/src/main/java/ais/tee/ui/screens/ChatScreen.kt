@@ -435,9 +435,19 @@ private fun NativeChatDetailPane(
     val starredMessageIds = uiState.activeNativeConversation?.starredMessageIds.orEmpty().toSet()
     val starredMessages = uiState.activeNativeConversation?.starredMessages.orEmpty()
     val starredIdList = uiState.activeNativeConversation?.starredMessageIds.orEmpty()
-    // Keyed on the archive's own lists, so streaming recompositions reuse the markers.
-    val timelineMarkers = remember(uiState.chatMessages, starredIdList) {
-        nativeChatTimeline(uiState.chatMessages, starredIdList)
+    // Streaming only appends text to the newest reply in place, which never changes marker positions
+    // or user-turn previews, so key on list shape instead of the text-bearing message list.
+    val timelineMessages = uiState.chatMessages
+    val timelineMarkers = remember(
+        uiState.activeNativeConversation?.id,
+        timelineMessages.size,
+        timelineMessages.lastOrNull()?.id,
+        starredIdList,
+    ) {
+        nativeChatTimeline(timelineMessages, starredIdList)
+    }
+    val timelineUserTurns = remember(timelineMarkers) {
+        timelineMessages.count { it.sender == CHAT_ROLE_USER }
     }
     val canOpenChatAsMarkdown =
         !isIncognito &&
@@ -1261,7 +1271,7 @@ private fun NativeChatDetailPane(
                 }
             }
 
-            if (timelineMarkers.count { it.isUserTurn } >= NATIVE_CHAT_TIMELINE_MIN_TURNS) {
+            if (timelineMarkers.isNotEmpty() && timelineUserTurns >= NATIVE_CHAT_TIMELINE_MIN_TURNS) {
                 NativeChatTimelineRail(
                     markers = timelineMarkers,
                     messageCount = uiState.chatMessages.size,

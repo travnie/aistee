@@ -45,7 +45,7 @@ fun nativeChatTimeline(
                     turnNumber = turn.coerceAtLeast(1),
                     isUserTurn = isUser,
                     isStarred = isStarred,
-                    preview = message.text.trim().replace(Regex("\\s+"), " ").take(TIMELINE_PREVIEW_CHARS),
+                    preview = timelinePreview(message.text),
                 )
             )
         }
@@ -63,3 +63,8 @@ fun nativeChatTimeline(
     }
     return (keptStarred + sampled).sortedBy { it.messageIndex }
 }
+
+/** Normalizes only a bounded prefix, so huge prompts do not cost a full-text regex pass. */
+private fun timelinePreview(text: String): String =
+    text.trimStart().take(TIMELINE_PREVIEW_CHARS * 4).trim()
+        .replace(Regex("\\s+"), " ").take(TIMELINE_PREVIEW_CHARS)
