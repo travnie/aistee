@@ -1205,7 +1205,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         persistNativeChat()
         publishNativeConversationShortcut(branch.id)
-        showSnackbar("Branched to a new chat. Other providers start without the earlier turns.")
+        showSnackbar("Branched to a new chat. Each provider only sees turns it answered.")
         return true
     }
 

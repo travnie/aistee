@@ -69,9 +69,9 @@ fun nativeConversationTitle(prompt: String): String {
     return normalized.take(MAX_NATIVE_CONVERSATION_TITLE_CHARS - 1).trimEnd() + "…"
 }
 
-/** Only a finished provider reply can start a branch. */
+/** Only a finished real provider reply can start a branch; simulated replies are never replayed. */
 fun ModelChatMessage.canStartNativeChatFork(): Boolean =
-    id != NATIVE_CHAT_WELCOME_MESSAGE_ID && isCompletedAssistantResponse()
+    id != NATIVE_CHAT_WELCOME_MESSAGE_ID && !isSimulated && isCompletedAssistantResponse()
 
 fun NativeChatConversation.canForkAt(messageId: String): Boolean =
     messages.any { it.id == messageId && it.canStartNativeChatFork() }
@@ -81,8 +81,8 @@ fun NativeChatConversation.canForkAt(messageId: String): Boolean =
  * the reply's own prompt and that reply only (compare-mode siblings from the same turn are
  * dropped), and continues with the reply's provider. Copied messages get fresh ids so the two
  * conversations never share message identity; the welcome message keeps its well-known id.
- * History replay stays provider-scoped, so switching the branch to another provider does not
- * send it the inherited turns.
+ * History replay stays provider-scoped: whichever provider the branch uses replays only the
+ * inherited turns that provider itself answered, so branching discloses nothing new.
  */
 fun NativeChatConversation.forkAt(
     messageId: String,

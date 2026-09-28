@@ -143,11 +143,12 @@ class NativeChatForkTest {
                 messages = conversation.messages + listOf(
                     reply("partial", AiProvider.CLAUDE).copy(isPartial = true),
                     reply("error", AiProvider.CLAUDE).copy(isError = true),
+                    reply("simulated", AiProvider.CLAUDE).copy(isSimulated = true),
                 )
             )
         }
 
-        listOf(NATIVE_CHAT_WELCOME_MESSAGE_ID, "u1", "partial", "error", "missing").forEach { id ->
+        listOf(NATIVE_CHAT_WELCOME_MESSAGE_ID, "u1", "partial", "error", "simulated", "missing").forEach { id ->
             assertFalse(source.canForkAt(id), id)
             assertNull(fork(source, id), id)
         }
