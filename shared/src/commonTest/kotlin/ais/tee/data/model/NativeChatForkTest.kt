@@ -26,6 +26,7 @@ class NativeChatForkTest {
         sender = CHAT_ROLE_ASSISTANT,
         provider = AiProvider.ALL,
         text = "Welcome",
+        timestamp = 1,
     )
 
     private fun compareConversation() = NativeChatConversation(
@@ -238,5 +239,19 @@ class NativeChatForkTest {
         assertEquals(first.messages, feed.getValue("first"))
         assertEquals(listOf("reply a1-gemini"), feed.getValue("second").map { it.text })
         assertTrue(feed.getValue("nested").isEmpty())
+    }
+
+    @Test
+    fun crossChatFeedKeepsBranchTurnsWrittenAfterTheForkEvenWhenTheyMatchAnotherChat() {
+        val source = compareConversation()
+        val branch = assertNotNull(fork(source, "a1-claude"))
+        // Same sender, millisecond and text as a later turn elsewhere, but written in the branch.
+        val collision = reply("elsewhere", AiProvider.CLAUDE).copy(timestamp = 150)
+        val other = NativeChatConversation(id = "other", createdAtEpochMs = 50, messages = listOf(collision))
+        val withTurn = branch.copy(messages = branch.messages + collision.copy(id = "own"))
+
+        val feed = NativeChatArchive(conversations = listOf(source, other, withTurn)).messagesForCrossChatFeed()
+
+        assertEquals(listOf("own"), feed.getValue(withTurn.id).map { it.id })
     }
 }

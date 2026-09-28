@@ -130,8 +130,8 @@ fun NativeChatConversation.forkAt(
  * Messages per conversation id for a feed across every chat. A turn a branch inherited appears
  * once, under the earliest-created chat that holds it, even after its direct source was deleted
  * or when sibling branches share it. Copies are matched by content rather than
- * [NativeChatForkOrigin.inheritedMessageCount], which a clear can outdate; only branches drop
- * messages. A branch shown on its own (a one-conversation archive) keeps its inherited turns.
+ * [NativeChatForkOrigin.inheritedMessageCount], which a clear can outdate; only a branch's
+ * messages from before its fork time can be dropped. A branch shown on its own (a one-conversation archive) keeps its inherited turns.
  */
 fun NativeChatArchive.messagesForCrossChatFeed(): Map<String, List<ModelChatMessage>> {
     if (conversations.none { it.forkedFrom != null }) return conversations.associate { it.id to it.messages }
@@ -139,10 +139,12 @@ fun NativeChatArchive.messagesForCrossChatFeed(): Map<String, List<ModelChatMess
     return conversations
         .sortedWith(compareBy<NativeChatConversation> { it.createdAtEpochMs }.thenBy { it.id })
         .associate { conversation ->
-            val isBranch = conversation.forkedFrom != null
+            // Copies keep their source timestamps, so only messages from before the fork can be
+            // inherited; turns written in the branch afterwards are always its own.
+            val forkedAt = conversation.forkedFrom?.forkedAtEpochMs
             conversation.id to conversation.messages.filter { message ->
                 val isNew = seen.add(Triple(message.sender, message.timestamp, message.text))
-                isNew || !isBranch
+                isNew || forkedAt == null || message.timestamp > forkedAt
             }
         }
 }
