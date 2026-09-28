@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -291,6 +292,8 @@ private fun ChatMarkdownBlockView(
             modifier = Modifier.fillMaxWidth().testTag("chat_markdown_math"),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Mirror the trailing copy button so the formula stays centered in the bubble.
+            if (onCopySource != null) Spacer(Modifier.width(MATH_COPY_BUTTON_SIZE))
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 Text(
                     text = remember(block, codeBackground) { buildAnnotatedString { appendMath(block.tex, codeBackground, math) } },
@@ -305,7 +308,9 @@ private fun ChatMarkdownBlockView(
                 // Copies the TeX source (without $$ delimiters), not the rendered approximation.
                 IconButton(
                     onClick = { onCopySource(block.tex) },
-                    modifier = Modifier.testTag("btn_copy_math_tex"),
+                    modifier = Modifier
+                        .size(MATH_COPY_BUTTON_SIZE)
+                        .testTag("btn_copy_math_tex"),
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.ContentCopy,
@@ -319,6 +324,8 @@ private fun ChatMarkdownBlockView(
         ChatMarkdownBlock.Rule -> HorizontalDivider(color = color.copy(alpha = 0.25f))
     }
 }
+
+private val MATH_COPY_BUTTON_SIZE = 48.dp
 
 @Composable
 private fun headingStyle(level: Int): TextStyle = when (level) {
