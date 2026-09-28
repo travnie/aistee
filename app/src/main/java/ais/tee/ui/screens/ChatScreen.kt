@@ -71,7 +71,9 @@ import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatConversation
 import ais.tee.data.model.ProjectLibraryArchive
 import ais.tee.data.model.ProjectLibraryAsset
+import ais.tee.data.model.canBeStarred
 import ais.tee.data.model.canStartNativeChatFork
+import ais.tee.data.model.starredMessages
 import ais.tee.data.model.renderChatMarkdown
 import ais.tee.data.model.isCompletedAssistantResponse
 import ais.tee.data.model.supportedApiProcessingModes
@@ -306,6 +308,7 @@ private fun NativeChatDetailPane(
         }
     }
     var viewingTable by remember { mutableStateOf<MarkdownTable?>(null) }
+    var showStarredMessages by remember { mutableStateOf(false) }
     var pendingCsvExport by remember { mutableStateOf<String?>(null) }
 
     val csvExportLauncher = rememberLauncherForActivityResult(
@@ -425,6 +428,8 @@ private fun NativeChatDetailPane(
     val isIncognito = uiState.isActiveConversationIncognito
     val canBranchNativeChat =
         !isIncognito && !uiState.isChatGenerating && uiState.isNativeConversationStoreReady
+    val starredMessageIds = uiState.activeNativeConversation?.starredMessageIds.orEmpty().toSet()
+    val starredMessages = uiState.activeNativeConversation?.starredMessages.orEmpty()
     val canOpenChatAsMarkdown =
         !isIncognito &&
             !uiState.isChatGenerating &&
@@ -509,6 +514,18 @@ private fun NativeChatDetailPane(
                 }
             },
             onDismiss = { showProjectLibrary = false },
+        )
+    }
+
+    if (showStarredMessages) {
+        StarredMessagesDialog(
+            messages = starredMessages,
+            onJump = { message ->
+                showStarredMessages = false
+                val index = uiState.chatMessages.indexOfFirst { it.id == message.id }
+                if (index >= 0) scope.launch { listState.animateScrollToItem(index) }
+            },
+            onDismiss = { showStarredMessages = false },
         )
     }
 
@@ -700,6 +717,18 @@ private fun NativeChatDetailPane(
                                     expanded = showChatActionsMenu,
                                     onDismissRequest = { showChatActionsMenu = false }
                                 ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Starred messages (${starredMessages.size})") },
+                                        leadingIcon = {
+                                            Icon(Icons.Outlined.StarBorder, contentDescription = null)
+                                        },
+                                        enabled = starredMessages.isNotEmpty(),
+                                        onClick = {
+                                            showChatActionsMenu = false
+                                            showStarredMessages = true
+                                        },
+                                        modifier = Modifier.testTag("btn_starred_messages")
+                                    )
                                     DropdownMenuItem(
                                         text = { Text("Use Markdown draft as prompt") },
                                         leadingIcon = {
@@ -1206,7 +1235,13 @@ private fun NativeChatDetailPane(
                         onCancelQueued = { viewModel.cancelQueuedNativeMessage(message.id, moveToDraft = false) },
                         onViewTable = { table -> viewingTable = table },
                         canBranch = canBranchNativeChat && message.canStartNativeChatFork(),
-                        onBranch = { viewModel.forkActiveNativeConversation(message.id) }
+                        onBranch = { viewModel.forkActiveNativeConversation(message.id) },
+                        isStarred = message.id in starredMessageIds,
+                        onToggleStar = if (message.canBeStarred()) {
+                            { viewModel.toggleNativeMessageStar(message.id) }
+                        } else {
+                            null
+                        }
                     )
                 }
 
@@ -1456,7 +1491,9 @@ fun ChatMessageItem(
     onEditQueued: () -> Unit = {},
     onCancelQueued: () -> Unit = {},
     canBranch: Boolean = false,
-    onBranch: () -> Unit = {}
+    onBranch: () -> Unit = {},
+    isStarred: Boolean = false,
+    onToggleStar: (() -> Unit)? = null
 ) {
     val isUser = message.sender == "user"
     val tables = remember(message.id, message.text, message.isPartial, message.isError) {
@@ -1537,6 +1574,21 @@ fun ChatMessageItem(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(14.dp)
                 )
+            }
+            if (onToggleStar != null) {
+                IconButton(
+                    onClick = onToggleStar,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .testTag("btn_star_${message.id}")
+                ) {
+                    Icon(
+                        imageVector = if (isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = if (isStarred) "Unstar message" else "Star message",
+                        tint = if (isStarred) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
             }
         }
 
@@ -2225,4 +2277,56 @@ internal fun ChatContextWarningBanner(
             }
         }
     }
+}
+
+@Composable
+private fun StarredMessagesDialog(
+    messages: List<ModelChatMessage>,
+    onJump: (ModelChatMessage) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Starred messages") },
+        text = {
+            if (messages.isEmpty()) {
+                Text("No starred messages in this chat.")
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.testTag("starred_messages_list")
+                ) {
+                    items(messages, key = { it.id }) { message ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(MaterialTheme.shapes.small)
+                                .clickable { onJump(message) }
+                                .padding(8.dp)
+                                .testTag("starred_message_${message.id}")
+                        ) {
+                            Text(
+                                text = if (message.sender == CHAT_ROLE_USER) {
+                                    "You"
+                                } else {
+                                    message.provider?.shortName ?: "Assistant"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = message.text.trim(),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
 }

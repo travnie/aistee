@@ -1209,6 +1209,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         return true
     }
 
+    /** Stars or unstars a message in the active native chat. */
+    fun toggleNativeMessageStar(messageId: String) {
+        if (!_uiState.value.isNativeConversationStoreReady) return
+        updateActiveNativeConversation { it.withStarToggled(messageId) }
+    }
+
     /** Starts a chat that lives only in memory; leaving it or process death discards it. */
     fun newIncognitoConversation() {
         if (!_uiState.value.isNativeConversationStoreReady) return
@@ -1428,6 +1434,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 replyEpoch = maxOf(now, conversation.replyEpoch + 1),
                 // A cleared branch no longer holds anything inherited from its source.
                 forkedFrom = null,
+                starredMessageIds = emptyList(),
             )
         }
         NativeChatNotificationPublisher.cancelConversation(getApplication(), conversationId)
