@@ -80,10 +80,11 @@ class AisteeWidgetTest {
     @Test
     fun widgetRowLimitGrowsWithHeightAndStaysBounded() {
         assertEquals(1, widgetRowLimitForHeightDp(112f))
-        assertEquals(1, widgetRowLimitForHeightDp(167f))
-        assertEquals(2, widgetRowLimitForHeightDp(168f))
-        assertEquals(3, widgetRowLimitForHeightDp(224f))
-        assertEquals(8, widgetRowLimitForHeightDp(504f))
+        assertEquals(1, widgetRowLimitForHeightDp(180f))
+        assertEquals(1, widgetRowLimitForHeightDp(235f))
+        assertEquals(2, widgetRowLimitForHeightDp(236f))
+        assertEquals(3, widgetRowLimitForHeightDp(292f))
+        assertEquals(8, widgetRowLimitForHeightDp(572f))
         assertEquals(8, widgetRowLimitForHeightDp(900f))
         assertEquals(1, widgetRowLimitForHeightDp(Float.NaN))
     }
