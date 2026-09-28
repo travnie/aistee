@@ -53,6 +53,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -277,6 +278,14 @@ private fun NativeChatDetailPane(
         MarkdownWorkspaceRecoveryStore(context.noBackupFilesDir)
     }
     val promptInput = uiState.nativeChatDraft
+    // Tracks the caret for the user's own edits; when the draft changes elsewhere (a quote, an
+    // imported draft, another chat), the caret moves to the end so typing continues below it.
+    var composerEdit by remember { mutableStateOf(TextFieldValue()) }
+    val composerValue = if (composerEdit.text == promptInput) {
+        composerEdit
+    } else {
+        TextFieldValue(promptInput, TextRange(promptInput.length))
+    }
     var showModelMenu by remember { mutableStateOf(false) }
     var showApiModeMenu by remember { mutableStateOf(false) }
     var showChatActionsMenu by remember { mutableStateOf(false) }
@@ -1183,8 +1192,11 @@ private fun NativeChatDetailPane(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         OutlinedTextField(
-                            value = promptInput,
-                            onValueChange = viewModel::updateNativeConversationDraft,
+                            value = composerValue,
+                            onValueChange = { changed ->
+                                composerEdit = changed
+                                viewModel.updateNativeConversationDraft(changed.text)
+                            },
                             placeholder = {
                                 val destination = when (uiState.selectedChatProvider) {
                                     AiProvider.ALL -> "Ask Gemini, ChatGPT, Claude, DeepSeek & Kimi..."
