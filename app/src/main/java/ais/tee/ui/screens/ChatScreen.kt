@@ -44,6 +44,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -71,7 +73,9 @@ import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatConversation
 import ais.tee.data.model.ProjectLibraryArchive
 import ais.tee.data.model.ProjectLibraryAsset
+import ais.tee.data.model.NativeChatTimelineMarker
 import ais.tee.data.model.canBeStarred
+import ais.tee.data.model.nativeChatTimeline
 import ais.tee.data.model.canStartNativeChatFork
 import ais.tee.data.model.starredMessages
 import ais.tee.data.model.renderChatMarkdown
@@ -430,6 +434,11 @@ private fun NativeChatDetailPane(
         !isIncognito && !uiState.isChatGenerating && uiState.isNativeConversationStoreReady
     val starredMessageIds = uiState.activeNativeConversation?.starredMessageIds.orEmpty().toSet()
     val starredMessages = uiState.activeNativeConversation?.starredMessages.orEmpty()
+    val starredIdList = uiState.activeNativeConversation?.starredMessageIds.orEmpty()
+    // Keyed on the archive's own lists, so streaming recompositions reuse the markers.
+    val timelineMarkers = remember(uiState.chatMessages, starredIdList) {
+        nativeChatTimeline(uiState.chatMessages, starredIdList)
+    }
     val canOpenChatAsMarkdown =
         !isIncognito &&
             !uiState.isChatGenerating &&
@@ -1252,6 +1261,20 @@ private fun NativeChatDetailPane(
                 }
             }
 
+            if (timelineMarkers.count { it.isUserTurn } >= NATIVE_CHAT_TIMELINE_MIN_TURNS) {
+                NativeChatTimelineRail(
+                    markers = timelineMarkers,
+                    messageCount = uiState.chatMessages.size,
+                    onJump = { marker -> scope.launch { listState.animateScrollToItem(marker.messageIndex) } },
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(
+                            top = innerPadding.calculateTopPadding() + 24.dp,
+                            bottom = innerPadding.calculateBottomPadding() + 72.dp
+                        )
+                )
+            }
+
             AnimatedVisibility(
                 visible = showJumpToLatest,
                 enter = fadeIn(),
@@ -1541,7 +1564,11 @@ fun ChatMessageItem(
                         text = "• $model",
                         style = MaterialTheme.typography.labelSmall,
                         fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        // Long gateway model ids must not squeeze the star button off the row.
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                 }
                 if (message.isSimulated) {
@@ -2329,4 +2356,60 @@ private fun StarredMessagesDialog(
             TextButton(onClick = onDismiss) { Text("Close") }
         }
     )
+}
+
+private const val NATIVE_CHAT_TIMELINE_MIN_TURNS = 4
+
+/** A thin rail of jump targets for long native chats: user turns as dots, starred messages as stars. */
+@Composable
+private fun NativeChatTimelineRail(
+    markers: List<NativeChatTimelineMarker>,
+    messageCount: Int,
+    onJump: (NativeChatTimelineMarker) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val lastIndex = (messageCount - 1).coerceAtLeast(1)
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(20.dp)
+            .testTag("native_chat_timeline")
+    ) {
+        val markerSize = 20.dp
+        val travel = (maxHeight - markerSize).coerceAtLeast(0.dp)
+        markers.forEach { marker ->
+            val fraction = marker.messageIndex.toFloat() / lastIndex
+            val description = when {
+                marker.isStarred && marker.isUserTurn -> "Jump to starred turn ${marker.turnNumber}"
+                marker.isStarred -> "Jump to starred reply in turn ${marker.turnNumber}"
+                else -> "Jump to turn ${marker.turnNumber}"
+            }
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .offset(y = travel * fraction)
+                    .size(markerSize)
+                    .clip(CircleShape)
+                    .clickable(onClickLabel = description) { onJump(marker) }
+                    .semantics { contentDescription = description }
+                    .testTag("timeline_marker_${marker.messageId}")
+            ) {
+                if (marker.isStarred) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(12.dp)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f))
+                    )
+                }
+            }
+        }
+    }
 }
