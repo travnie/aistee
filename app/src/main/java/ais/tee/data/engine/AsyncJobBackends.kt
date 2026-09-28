@@ -48,7 +48,8 @@ internal interface AsyncJobBackend {
 }
 
 internal object AsyncJobBackends {
-    val all: List<AsyncJobBackend> = listOf(OpenAiBackgroundJobBackend, ClaudeBatchJobBackend)
+    val all: List<AsyncJobBackend> =
+        listOf(OpenAiBackgroundJobBackend, ClaudeBatchJobBackend, GeminiBatchJobBackend)
 
     fun forJob(job: AsyncProviderJob): AsyncJobBackend? = all.firstOrNull { it.handles(job) }
 
@@ -121,6 +122,60 @@ internal object ClaudeBatchJobBackend : AsyncJobBackend {
     override suspend fun cancel(context: Context, jobId: String, service: AiChatService) =
         cancelClaudeBatchJob(context, jobId, service)
 
-    override fun schedulePolling(context: Context, jobId: String) = ClaudeBatchJobWork.enqueue(context, jobId)
-    override fun cancelPolling(context: Context, jobId: String) = ClaudeBatchJobWork.cancel(context, jobId)
+    override fun schedulePolling(context: Context, jobId: String) =
+        BatchJobWork.enqueue(
+            context = context,
+            jobId = jobId,
+            workNamePrefix = CLAUDE_BATCH_WORK_NAME_PREFIX,
+            maxAutomaticPollAttempts = CLAUDE_BATCH_MAX_POLL_ATTEMPTS,
+        )
+
+    override fun cancelPolling(context: Context, jobId: String) =
+        BatchJobWork.cancel(context, jobId, CLAUDE_BATCH_WORK_NAME_PREFIX)
+}
+
+internal object GeminiBatchJobBackend : AsyncJobBackend {
+    override val provider = AiProvider.GEMINI
+    override val kind = AsyncProviderJobKind.BATCH
+    override val label = "Gemini batch"
+    override val description =
+        "Gemini Batch runs non-urgent GenerateContent work at 50% of the standard interactive cost, with a 24-hour target. " +
+            "Aistee polls in the background. Jobs can expire after 48 hours, and Google keeps batch results for 6 weeks."
+    override val promptLabel = "Standalone batch prompt"
+    override val startLabel = "Start batch job"
+    override val missingKeyMessage = "Add a Gemini API key from native chat settings before starting a job."
+
+    override fun apiKey(config: ApiKeyConfig): String = config.geminiKey
+
+    override suspend fun start(service: AiChatService, prompt: String, model: String, apiKey: String): StartedAsyncJob {
+        val snapshot = service.createGeminiBatch(prompt, model, apiKey)
+        return StartedAsyncJob(
+            remoteId = snapshot.remoteId,
+            model = model,
+            state = snapshot.state,
+            errorMessage = snapshot.errorMessage,
+            afterStored = { context, job -> persistGeminiBatchState(context, job, snapshot) },
+        )
+    }
+
+    override suspend fun cancelRemote(service: AiChatService, remoteId: String, apiKey: String) {
+        service.cancelGeminiBatch(remoteId, apiKey)
+    }
+
+    override suspend fun refresh(context: Context, jobId: String, service: AiChatService) =
+        refreshGeminiBatchJob(context, jobId, service)
+
+    override suspend fun cancel(context: Context, jobId: String, service: AiChatService) =
+        cancelGeminiBatchJob(context, jobId, service)
+
+    override fun schedulePolling(context: Context, jobId: String) =
+        BatchJobWork.enqueue(
+            context = context,
+            jobId = jobId,
+            workNamePrefix = GEMINI_BATCH_WORK_NAME_PREFIX,
+            maxAutomaticPollAttempts = GEMINI_BATCH_MAX_POLL_ATTEMPTS,
+        )
+
+    override fun cancelPolling(context: Context, jobId: String) =
+        BatchJobWork.cancel(context, jobId, GEMINI_BATCH_WORK_NAME_PREFIX)
 }

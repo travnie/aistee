@@ -73,8 +73,11 @@ internal fun AsyncJobsPanel(
             fontWeight = FontWeight.Bold,
         )
         val backend = AsyncJobBackends.forProvider(provider) ?: AsyncJobBackends.all.first()
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AsyncJobBackends.all.forEach { option ->
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(AsyncJobBackends.all, key = { it.provider.id }) { option ->
                 FilterChip(
                     selected = backend == option,
                     onClick = {
