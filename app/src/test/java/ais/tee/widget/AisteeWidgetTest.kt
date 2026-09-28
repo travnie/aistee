@@ -426,7 +426,7 @@ class AisteeWidgetTest {
             latestNativeMessagesForWidget(archive).map { it.messageId },
         )
         assertEquals(
-            listOf("fork-copy-1", "fork-copy-0"),
+            listOf("fork-copy-1/a", "fork-copy-0/q"),
             latestNativeMessagesForWidget(archive.copy(conversations = listOf(branch))).map { it.messageId },
         )
     }

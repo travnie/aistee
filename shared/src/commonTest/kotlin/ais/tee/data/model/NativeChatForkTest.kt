@@ -87,7 +87,8 @@ class NativeChatForkTest {
 
         assertEquals(NATIVE_CHAT_WELCOME_MESSAGE_ID, branch.messages.first().id)
         val copiedIds = branch.messages.drop(1).map { it.id }
-        assertEquals(listOf("fork-m0", "fork-m1"), copiedIds)
+        assertEquals(listOf("fork-m0/u1", "fork-m1/a1-claude"), copiedIds)
+        assertEquals(listOf("u1", "a1-claude"), branch.messages.drop(1).map { it.forkRootMessageId() })
         assertTrue(copiedIds.none { id -> source.messages.any { it.id == id } })
     }
 
@@ -268,5 +269,26 @@ class NativeChatForkTest {
 
         assertEquals(source.messages, feed.getValue(source.id))
         assertTrue(feed.getValue(branch.id).none { it.id.startsWith(NATIVE_CHAT_FORK_COPY_ID_PREFIX) })
+    }
+
+    @Test
+    fun crossChatFeedKeepsDistinctCopiesThatLookIdentical() {
+        // Two providers answered with the same text in the same millisecond.
+        val twin = reply("claude-twin", AiProvider.CLAUDE).copy(timestamp = 20, text = "same")
+        val source = NativeChatConversation(
+            id = "source",
+            createdAtEpochMs = 1,
+            messages = listOf(user("u1"), twin, twin.copy(id = "gemini-twin", provider = AiProvider.GEMINI)),
+        )
+        val first = assertNotNull(fork(source, "claude-twin")).copy(id = "first", createdAtEpochMs = 2)
+        val second = assertNotNull(fork(source, "gemini-twin")).copy(id = "second", createdAtEpochMs = 3)
+        val nested = assertNotNull(fork(first, first.messages.last().id)).copy(id = "nested", createdAtEpochMs = 4)
+
+        // Source deleted: each twin still shows once, and the nested copy of the first one is dropped.
+        val feed = NativeChatArchive(conversations = listOf(first, second, nested)).messagesForCrossChatFeed()
+
+        assertEquals(listOf("u1", "claude-twin"), feed.getValue("first").map { it.forkRootMessageId() })
+        assertEquals(listOf("gemini-twin"), feed.getValue("second").map { it.forkRootMessageId() })
+        assertTrue(feed.getValue("nested").isEmpty())
     }
 }
