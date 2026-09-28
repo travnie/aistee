@@ -43,7 +43,10 @@ private const val MAX_WIDGET_ROWS = 8
 private const val MAX_WIDGET_CONVERSATIONS = MAX_WIDGET_ROWS
 private const val MAX_WIDGET_MESSAGES = MAX_WIDGET_ROWS
 private const val MAX_WIDGET_MESSAGE_PREVIEW_CHARS = 180
-private const val MIN_WIDGET_HEIGHT_DP = 112f
+// Outer padding, app title, quick actions, section title and their spacing consume most of a
+// compact widget. Keep the first row budget conservative so "more rows" means actually visible
+// rows rather than merely a longer scrollable LazyColumn viewport.
+private const val WIDGET_HEIGHT_FOR_ONE_ROW_DP = 180f
 private const val WIDGET_ROW_HEIGHT_STEP_DP = 56f
 
 internal data class NativeChatWidgetConversation(
@@ -81,10 +84,9 @@ internal fun privacySafeWidgetMessagePreview(
 
 internal fun widgetRowLimitForHeightDp(heightDp: Float): Int {
     if (!heightDp.isFinite()) return 1
-    val normalizedHeight = heightDp.coerceAtLeast(MIN_WIDGET_HEIGHT_DP)
-    return (
-        ((normalizedHeight - MIN_WIDGET_HEIGHT_DP) / WIDGET_ROW_HEIGHT_STEP_DP).toInt() + 1
-    ).coerceIn(1, MAX_WIDGET_ROWS)
+    val extraHeight = (heightDp - WIDGET_HEIGHT_FOR_ONE_ROW_DP).coerceAtLeast(0f)
+    return (1 + (extraHeight / WIDGET_ROW_HEIGHT_STEP_DP).toInt())
+        .coerceIn(1, MAX_WIDGET_ROWS)
 }
 
 internal fun recentNativeConversationsForWidget(
