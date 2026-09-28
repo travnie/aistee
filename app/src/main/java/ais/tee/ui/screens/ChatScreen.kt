@@ -338,7 +338,8 @@ private fun NativeChatDetailPane(
         }
     }
     var viewingTable by remember { mutableStateOf<MarkdownTable?>(null) }
-    var selectingMessage by remember { mutableStateOf<ModelChatMessage?>(null) }
+    // Keyed by chat so a quote can never land in a different conversation's draft.
+    var selectingMessage by remember(uiState.activeNativeConversation?.id) { mutableStateOf<ModelChatMessage?>(null) }
     var showStarredMessages by remember { mutableStateOf(false) }
     var pendingCsvExport by remember { mutableStateOf<String?>(null) }
 
