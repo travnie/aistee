@@ -6,9 +6,11 @@ import androidx.compose.ui.unit.dp
 import androidx.glance.Button
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.LocalSize
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.lazy.LazyColumn
 import androidx.glance.appwidget.lazy.items
@@ -37,9 +39,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicReference
 
-private const val MAX_WIDGET_CONVERSATIONS = 3
-private const val MAX_WIDGET_MESSAGES = 3
+private const val MAX_WIDGET_ROWS = 8
+private const val MAX_WIDGET_CONVERSATIONS = MAX_WIDGET_ROWS
+private const val MAX_WIDGET_MESSAGES = MAX_WIDGET_ROWS
 private const val MAX_WIDGET_MESSAGE_PREVIEW_CHARS = 180
+private const val MIN_WIDGET_HEIGHT_DP = 112f
+private const val WIDGET_ROW_HEIGHT_STEP_DP = 56f
 
 internal data class NativeChatWidgetConversation(
     val id: String,
@@ -59,6 +64,7 @@ internal data class NativeChatWidgetArchiveFingerprint(
     val recentConversations: List<NativeChatWidgetConversation>,
     val conversationDirectory: List<NativeChatWidgetConversation>,
     val latestMessages: List<NativeChatWidgetMessage>,
+    val pinnedConversationMessages: List<NativeChatWidgetMessage>,
 )
 
 internal fun privacySafeWidgetConversationTitle(
@@ -72,6 +78,14 @@ internal fun privacySafeWidgetMessagePreview(
     hiddenText: String,
     showMessagePreviews: Boolean,
 ): String = if (showMessagePreviews) text else hiddenText
+
+internal fun widgetRowLimitForHeightDp(heightDp: Float): Int {
+    if (!heightDp.isFinite()) return 1
+    val normalizedHeight = heightDp.coerceAtLeast(MIN_WIDGET_HEIGHT_DP)
+    return (
+        ((normalizedHeight - MIN_WIDGET_HEIGHT_DP) / WIDGET_ROW_HEIGHT_STEP_DP).toInt() + 1
+    ).coerceIn(1, MAX_WIDGET_ROWS)
+}
 
 internal fun recentNativeConversationsForWidget(
     archive: NativeChatArchive,
@@ -166,13 +180,23 @@ internal fun nativeChatWidgetArchiveFingerprint(
                 )
             }
             .sortedBy { it.id },
-        latestMessages = archive.conversations
-            .mapNotNull(::latestNativeMessageForConversationForWidget)
+        latestMessages = latestNativeMessagesForWidget(archive),
+        pinnedConversationMessages = archive.conversations
+            .asSequence()
+            .flatMap { conversation ->
+                latestNativeMessagesForWidget(
+                    NativeChatArchive(
+                        activeConversationId = conversation.id,
+                        conversations = listOf(conversation),
+                    )
+                ).asSequence()
+            }
             .sortedWith(
-                compareByDescending<NativeChatWidgetMessage> { it.timestamp }
-                    .thenBy { it.conversationId }
+                compareBy<NativeChatWidgetMessage> { it.conversationId }
+                    .thenByDescending { it.timestamp }
                     .thenBy { it.messageId }
-            ),
+            )
+            .toList(),
     )
 
 private data class NativeChatWidgetRow(
@@ -196,6 +220,8 @@ internal object NativeChatWidgetUpdater {
 }
 
 class AisteeWidget : GlanceAppWidget() {
+    override val sizeMode: SizeMode = SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val appWidgetId = GlanceAppWidgetManager(context).getAppWidgetId(id)
         val (archive, preferences, quickPrivacyEnabled) = withContext(Dispatchers.IO) {
@@ -344,6 +370,8 @@ class AisteeWidget : GlanceAppWidget() {
         emptyText: String,
         rows: List<NativeChatWidgetRow>,
     ) {
+        val visibleRows = rows.take(widgetRowLimitForHeightDp(LocalSize.current.height.value))
+
         Column(
             modifier = GlanceModifier.fillMaxSize().padding(12.dp),
             verticalAlignment = Alignment.Top,
@@ -362,7 +390,7 @@ class AisteeWidget : GlanceAppWidget() {
                 text = sectionTitle,
                 modifier = GlanceModifier.fillMaxWidth().padding(top = 8.dp),
             )
-            if (rows.isEmpty()) {
+            if (visibleRows.isEmpty()) {
                 Text(
                     text = emptyText,
                     modifier = GlanceModifier.fillMaxWidth().padding(top = 4.dp),
@@ -372,7 +400,7 @@ class AisteeWidget : GlanceAppWidget() {
                     modifier = GlanceModifier.fillMaxWidth().padding(top = 4.dp),
                 ) {
                     items(
-                        items = rows,
+                        items = visibleRows,
                         itemId = { row -> widgetItemId(row.id) },
                     ) { row ->
                         Button(

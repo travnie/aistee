@@ -55,8 +55,37 @@ class AisteeWidgetTest {
                 NativeChatWidgetConversation("middle", "Middle"),
                 NativeChatWidgetConversation("old", "Old"),
             ),
-            recentNativeConversationsForWidget(archive),
+            recentNativeConversationsForWidget(archive, limit = 3),
         )
+    }
+
+    @Test
+    fun defaultRecentCapacityFeedsTallWidgetsBeyondThreeRows() {
+        val archive = NativeChatArchive(
+            activeConversationId = "old",
+            conversations = listOf(
+                oldConversation,
+                newestConversation,
+                middleConversation,
+                fourthConversation,
+            ),
+        )
+
+        assertEquals(
+            listOf("newest", "middle", "old", "fourth"),
+            recentNativeConversationsForWidget(archive).map { it.id },
+        )
+    }
+
+    @Test
+    fun widgetRowLimitGrowsWithHeightAndStaysBounded() {
+        assertEquals(1, widgetRowLimitForHeightDp(112f))
+        assertEquals(1, widgetRowLimitForHeightDp(167f))
+        assertEquals(2, widgetRowLimitForHeightDp(168f))
+        assertEquals(3, widgetRowLimitForHeightDp(224f))
+        assertEquals(8, widgetRowLimitForHeightDp(504f))
+        assertEquals(8, widgetRowLimitForHeightDp(900f))
+        assertEquals(1, widgetRowLimitForHeightDp(Float.NaN))
     }
 
     @Test
@@ -76,18 +105,27 @@ class AisteeWidgetTest {
 
     @Test
     fun widgetRefreshFingerprintTracksPinnedCandidatesOutsideRecentList() {
+        val visible = (1..8).map { index ->
+            NativeChatConversation(
+                id = "recent-$index",
+                title = "Recent $index",
+                createdAtEpochMs = 100L - index,
+                updatedAtEpochMs = 100L - index,
+            )
+        }
+        val outside = NativeChatConversation(
+            id = "outside",
+            title = "Outside recent rows",
+            createdAtEpochMs = 1L,
+            updatedAtEpochMs = 1L,
+        )
         val archive = NativeChatArchive(
-            activeConversationId = "newest",
-            conversations = listOf(
-                oldConversation,
-                newestConversation,
-                middleConversation,
-                fourthConversation,
-            ),
+            activeConversationId = visible.first().id,
+            conversations = visible + outside,
         )
         val renamedArchive = archive.copy(
             conversations = archive.conversations.map { conversation ->
-                if (conversation.id == "fourth") {
+                if (conversation.id == outside.id) {
                     conversation.copy(title = "Renamed pinned chat")
                 } else {
                     conversation
@@ -252,7 +290,7 @@ class AisteeWidgetTest {
     }
 
     @Test
-    fun widgetFingerprintTracksPinnedCandidateMessagesOutsideGlobalTopThree() {
+    fun widgetFingerprintTracksPinnedMessagesOutsideGlobalRows() {
         fun conversation(id: String, timestamp: Long) = NativeChatConversation(
             id = id,
             title = id,
@@ -268,15 +306,12 @@ class AisteeWidgetTest {
             ),
         )
 
+        val visible = (1..8).map { index ->
+            conversation("visible-$index", 900L - index)
+        }
         val archive = NativeChatArchive(
-            activeConversationId = "newest",
-            conversations = listOf(
-                conversation("pinned", 1L),
-                conversation("newest", 500L),
-                conversation("second", 400L),
-                conversation("third", 300L),
-                conversation("fourth", 200L),
-            ),
+            activeConversationId = visible.first().id,
+            conversations = listOf(conversation("pinned", 1L)) + visible,
         )
         val updated = archive.copy(
             conversations = archive.conversations.map { conversation ->
@@ -297,14 +332,11 @@ class AisteeWidgetTest {
             }
         )
 
-        assertNotEquals(
-            nativeChatWidgetArchiveFingerprint(archive).latestMessages,
-            nativeChatWidgetArchiveFingerprint(updated).latestMessages,
-        )
-        assertNotEquals(
-            nativeChatWidgetArchiveFingerprint(archive),
-            nativeChatWidgetArchiveFingerprint(updated),
-        )
+        val before = nativeChatWidgetArchiveFingerprint(archive)
+        val after = nativeChatWidgetArchiveFingerprint(updated)
+        assertEquals(before.latestMessages, after.latestMessages)
+        assertNotEquals(before.pinnedConversationMessages, after.pinnedConversationMessages)
+        assertNotEquals(before, after)
     }
 
     @Test
