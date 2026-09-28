@@ -21,7 +21,7 @@ data class NativeChatTimelineMarker(
 /**
  * Timeline markers for a locally owned native chat: every user turn, plus starred replies. Derived
  * from the archive only; nothing is fetched or scraped. Long chats are thinned to [maxMarkers],
- * keeping starred messages first and spreading the remaining user turns evenly.
+ * always keeping both ends, then starred messages, then spreading the remaining user turns evenly.
  */
 fun nativeChatTimeline(
     messages: List<ModelChatMessage>,
@@ -51,17 +51,19 @@ fun nativeChatTimeline(
         }
     }
     if (all.size <= maxMarkers) return all
-    val (starredMarkers, others) = all.partition { it.isStarred }
-    val keptStarred = starredMarkers.take(maxMarkers)
-    val slots = maxMarkers - keptStarred.size
+    // Both ends of the conversation are reserved first, then stars, then evenly spread turns.
+    val endpoints = listOf(all.first(), all.last()).distinct().take(maxMarkers)
+    val endpointIndexes = endpoints.map { it.messageIndex }.toSet()
+    val budget = maxMarkers - endpoints.size
+    val keptStarred = all.filter { it.isStarred && it.messageIndex !in endpointIndexes }.take(budget)
+    val slots = budget - keptStarred.size
+    val others = all.filter { !it.isStarred && it.messageIndex !in endpointIndexes }
     val sampled = if (slots <= 0 || others.isEmpty()) {
         emptyList()
-    } else if (slots == 1) {
-        listOf(others.first())
     } else {
-        (0 until slots).map { slot -> others[slot * (others.size - 1) / (slots - 1)] }.distinct()
+        (0 until slots).map { slot -> others[(2 * slot + 1) * others.size / (2 * slots)] }.distinct()
     }
-    return (keptStarred + sampled).sortedBy { it.messageIndex }
+    return (endpoints + keptStarred + sampled).sortedBy { it.messageIndex }
 }
 
 /** Normalizes only a bounded prefix, so huge prompts do not cost a full-text regex pass. */

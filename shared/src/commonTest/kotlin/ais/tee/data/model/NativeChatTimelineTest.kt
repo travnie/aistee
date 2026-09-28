@@ -60,6 +60,19 @@ class NativeChatTimelineTest {
     }
 
     @Test
+    fun starsCannotCrowdOutEitherEnd() {
+        val messages = (1..100).flatMap { listOf(user("u$it"), reply("a$it")) }
+        val starred = (10..50).map { "a$it" }.toSet()
+
+        val markers = nativeChatTimeline(messages, starred, maxMarkers = 32)
+
+        assertEquals(32, markers.size)
+        assertEquals("u1", markers.first().messageId)
+        assertEquals("u100", markers.last().messageId)
+        assertEquals(30, markers.count { it.isStarred })
+    }
+
+    @Test
     fun emptyOrDisabledTimelines() {
         assertTrue(nativeChatTimeline(emptyList(), emptySet()).isEmpty())
         assertTrue(nativeChatTimeline(listOf(user("u1")), emptySet(), maxMarkers = 0).isEmpty())
