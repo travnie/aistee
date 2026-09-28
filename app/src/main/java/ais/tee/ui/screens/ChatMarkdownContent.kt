@@ -19,6 +19,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -167,8 +172,13 @@ private fun mathRunStyle(run: ChatMathRun): SpanStyle {
 }
 
 @Composable
-internal fun ChatMarkdownContent(markdown: ChatMarkdownRender, color: Color, modifier: Modifier = Modifier) {
-    ChatMarkdownContent(markdown.blocks, color, modifier, markdown.math)
+internal fun ChatMarkdownContent(
+    markdown: ChatMarkdownRender,
+    color: Color,
+    modifier: Modifier = Modifier,
+    onCopyCode: ((String) -> Unit)? = null,
+) {
+    ChatMarkdownContent(markdown.blocks, color, modifier, markdown.math, onCopyCode)
 }
 
 @Composable
@@ -177,17 +187,23 @@ internal fun ChatMarkdownContent(
     color: Color,
     modifier: Modifier = Modifier,
     math: Map<String, List<ChatMathRun>?> = emptyMap(),
+    onCopyCode: ((String) -> Unit)? = null,
 ) {
     Column(
         modifier = modifier.testTag("chat_markdown_content"),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        blocks.forEach { block -> ChatMarkdownBlockView(block, color, math) }
+        blocks.forEach { block -> ChatMarkdownBlockView(block, color, math, onCopyCode) }
     }
 }
 
 @Composable
-private fun ChatMarkdownBlockView(block: ChatMarkdownBlock, color: Color, math: Map<String, List<ChatMathRun>?>) {
+private fun ChatMarkdownBlockView(
+    block: ChatMarkdownBlock,
+    color: Color,
+    math: Map<String, List<ChatMathRun>?>,
+    onCopyCode: ((String) -> Unit)?,
+) {
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     val bodyStyle = MaterialTheme.typography.bodyMedium.copy(color = color, lineHeight = 21.sp)
@@ -206,14 +222,40 @@ private fun ChatMarkdownBlockView(block: ChatMarkdownBlock, color: Color, math: 
             shape = MaterialTheme.shapes.small,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(
-                text = block.code,
-                style = bodyStyle.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 18.sp),
-                softWrap = false,
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(10.dp),
-            )
+            Column {
+                if (onCopyCode != null) {
+                    // One-tap copy of the block's source, without the fences.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = block.language?.takeIf { it.isNotBlank() } ?: "code",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = color.copy(alpha = 0.7f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 10.dp),
+                        )
+                        IconButton(
+                            onClick = { onCopyCode(block.code) },
+                            modifier = Modifier.testTag("btn_copy_code_block"),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.ContentCopy,
+                                contentDescription = "Copy code",
+                                tint = color.copy(alpha = 0.7f),
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
+                }
+                Text(
+                    text = block.code,
+                    style = bodyStyle.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 18.sp),
+                    softWrap = false,
+                    modifier = Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(start = 10.dp, end = 10.dp, bottom = 10.dp, top = if (onCopyCode != null) 0.dp else 10.dp),
+                )
+            }
         }
         is ChatMarkdownBlock.Quote -> Row(modifier = Modifier.height(IntrinsicSize.Min)) {
             Box(
@@ -226,7 +268,7 @@ private fun ChatMarkdownBlockView(block: ChatMarkdownBlock, color: Color, math: 
                 modifier = Modifier.padding(start = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                block.blocks.forEach { ChatMarkdownBlockView(it, color.copy(alpha = 0.85f), math) }
+                block.blocks.forEach { ChatMarkdownBlockView(it, color.copy(alpha = 0.85f), math, onCopyCode) }
             }
         }
         is ChatMarkdownBlock.ListBlock -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -238,7 +280,7 @@ private fun ChatMarkdownBlockView(block: ChatMarkdownBlock, color: Color, math: 
                         modifier = Modifier.width(if (block.ordered) 28.dp else 18.dp),
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        item.forEach { ChatMarkdownBlockView(it, color, math) }
+                        item.forEach { ChatMarkdownBlockView(it, color, math, onCopyCode) }
                     }
                 }
             }
