@@ -30,7 +30,7 @@ class ChatMarkdownCodeCopyTest {
     fun codeBlockCopiesItsSourceWithoutFences() {
         val copied = mutableListOf<String>()
         composeRule.setContent {
-            ChatMarkdownContent(markdown = markdown, color = Color.Black, onCopyCode = { copied += it })
+            ChatMarkdownContent(markdown = markdown, color = Color.Black, onCopySource = { copied += it })
         }
 
         composeRule.onNodeWithText("kotlin").assertIsDisplayed()

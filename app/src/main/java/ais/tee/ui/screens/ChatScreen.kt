@@ -1732,8 +1732,8 @@ fun ChatMessageItem(
                         ChatMarkdownContent(
                             markdown = markdownBlocks,
                             color = textColor,
-                            // Same sensitive-clip copy as the message action, for one code block.
-                            onCopyCode = onCopyText,
+                            // Same sensitive-clip copy as the message action, for one code or math block.
+                            onCopySource = onCopyText,
                         )
                     } else {
                         Text(

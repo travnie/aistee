@@ -176,9 +176,9 @@ internal fun ChatMarkdownContent(
     markdown: ChatMarkdownRender,
     color: Color,
     modifier: Modifier = Modifier,
-    onCopyCode: ((String) -> Unit)? = null,
+    onCopySource: ((String) -> Unit)? = null,
 ) {
-    ChatMarkdownContent(markdown.blocks, color, modifier, markdown.math, onCopyCode)
+    ChatMarkdownContent(markdown.blocks, color, modifier, markdown.math, onCopySource)
 }
 
 @Composable
@@ -187,13 +187,13 @@ internal fun ChatMarkdownContent(
     color: Color,
     modifier: Modifier = Modifier,
     math: Map<String, List<ChatMathRun>?> = emptyMap(),
-    onCopyCode: ((String) -> Unit)? = null,
+    onCopySource: ((String) -> Unit)? = null,
 ) {
     Column(
         modifier = modifier.testTag("chat_markdown_content"),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        blocks.forEach { block -> ChatMarkdownBlockView(block, color, math, onCopyCode) }
+        blocks.forEach { block -> ChatMarkdownBlockView(block, color, math, onCopySource) }
     }
 }
 
@@ -202,7 +202,7 @@ private fun ChatMarkdownBlockView(
     block: ChatMarkdownBlock,
     color: Color,
     math: Map<String, List<ChatMathRun>?>,
-    onCopyCode: ((String) -> Unit)?,
+    onCopySource: ((String) -> Unit)?,
 ) {
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
@@ -223,8 +223,8 @@ private fun ChatMarkdownBlockView(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column {
-                if (onCopyCode != null) {
-                    // One-tap copy of the block's source, without the fences.
+                if (onCopySource != null) {
+                    // One-tap copy of the code block's source, without the fences.
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = block.language?.takeIf { it.isNotBlank() } ?: "code",
@@ -235,7 +235,7 @@ private fun ChatMarkdownBlockView(
                                 .padding(start = 10.dp),
                         )
                         IconButton(
-                            onClick = { onCopyCode(block.code) },
+                            onClick = { onCopySource(block.code) },
                             modifier = Modifier.testTag("btn_copy_code_block"),
                         ) {
                             Icon(
@@ -253,7 +253,7 @@ private fun ChatMarkdownBlockView(
                     softWrap = false,
                     modifier = Modifier
                         .horizontalScroll(rememberScrollState())
-                        .padding(start = 10.dp, end = 10.dp, bottom = 10.dp, top = if (onCopyCode != null) 0.dp else 10.dp),
+                        .padding(start = 10.dp, end = 10.dp, bottom = 10.dp, top = if (onCopySource != null) 0.dp else 10.dp),
                 )
             }
         }
@@ -268,7 +268,7 @@ private fun ChatMarkdownBlockView(
                 modifier = Modifier.padding(start = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                block.blocks.forEach { ChatMarkdownBlockView(it, color.copy(alpha = 0.85f), math, onCopyCode) }
+                block.blocks.forEach { ChatMarkdownBlockView(it, color.copy(alpha = 0.85f), math, onCopySource) }
             }
         }
         is ChatMarkdownBlock.ListBlock -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -280,25 +280,41 @@ private fun ChatMarkdownBlockView(
                         modifier = Modifier.width(if (block.ordered) 28.dp else 18.dp),
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        item.forEach { ChatMarkdownBlockView(it, color, math, onCopyCode) }
+                        item.forEach { ChatMarkdownBlockView(it, color, math, onCopySource) }
                     }
                 }
             }
         }
         is ChatMarkdownBlock.Table -> ChatMarkdownTable(block.table, color)
         // Centered when it fits, scrolls sideways when it does not.
-        is ChatMarkdownBlock.Math -> Box(
+        is ChatMarkdownBlock.Math -> Row(
             modifier = Modifier.fillMaxWidth().testTag("chat_markdown_math"),
-            contentAlignment = Alignment.Center,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = remember(block, codeBackground) { buildAnnotatedString { appendMath(block.tex, codeBackground, math) } },
-                style = bodyStyle.copy(fontSize = 17.sp, lineHeight = 26.sp, textAlign = TextAlign.Center),
-                softWrap = false,
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(vertical = 4.dp),
-            )
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Text(
+                    text = remember(block, codeBackground) { buildAnnotatedString { appendMath(block.tex, codeBackground, math) } },
+                    style = bodyStyle.copy(fontSize = 17.sp, lineHeight = 26.sp, textAlign = TextAlign.Center),
+                    softWrap = false,
+                    modifier = Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(vertical = 4.dp),
+                )
+            }
+            if (onCopySource != null) {
+                // Copies the TeX source (without $$ delimiters), not the rendered approximation.
+                IconButton(
+                    onClick = { onCopySource(block.tex) },
+                    modifier = Modifier.testTag("btn_copy_math_tex"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.ContentCopy,
+                        contentDescription = "Copy TeX",
+                        tint = color.copy(alpha = 0.7f),
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
         }
         ChatMarkdownBlock.Rule -> HorizontalDivider(color = color.copy(alpha = 0.25f))
     }
