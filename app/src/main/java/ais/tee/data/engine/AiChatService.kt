@@ -109,6 +109,7 @@ private const val JSON_TO_KEY = "to"
 private const val JSON_MEDIA_TYPE = "application/json"
 private const val HEADER_AUTHORIZATION = "Authorization"
 private const val HEADER_CONTENT_TYPE = "Content-Type"
+private const val HEADER_GOOG_API_KEY = "x-goog-api-key"
 private const val HEADER_CONTENT_TYPE_LOWER = "content-type"
 private const val SSE_DATA_PREFIX = "data:"
 private const val SSE_DONE = "[DONE]"
@@ -156,6 +157,17 @@ internal data class OpenAiBackgroundResponseSnapshot(
     val remoteId: String,
     val state: AsyncProviderJobState,
     val model: String,
+    val outputText: String?,
+    val errorMessage: String?,
+)
+
+private const val GEMINI_BATCH_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+/** Aistee Gemini batches hold one inline request, matched by this metadata key. */
+internal const val GEMINI_BATCH_REQUEST_KEY = "aistee-job"
+
+internal data class GeminiBatchSnapshot(
+    val remoteId: String,
+    val state: AsyncProviderJobState,
     val outputText: String?,
     val errorMessage: String?,
 )
@@ -343,6 +355,193 @@ class AiChatService {
         parseOpenAiBackgroundResponse(
             executeCancellableJson(request, "Empty OpenAI background cancellation response")
         )
+    }
+
+    /** Starts one inline GenerateContent request through Gemini Batch at batch pricing. */
+    internal suspend fun createGeminiBatch(
+        prompt: String,
+        model: String,
+        apiKey: String,
+    ): GeminiBatchSnapshot = withContext(Dispatchers.IO) {
+        require(prompt.isNotBlank()) { "Batch prompt cannot be blank" }
+        require(model.isNotBlank()) { "Gemini model is required" }
+        require(apiKey.isNotBlank()) { "Gemini API key is required" }
+
+        val url = GEMINI_BATCH_API_BASE_URL.toHttpUrl().newBuilder()
+            .addPathSegment("models")
+            .addPathSegment("${model.trim()}:batchGenerateContent")
+            .build()
+        val request = Request.Builder()
+            .url(url)
+            .addHeader(HEADER_GOOG_API_KEY, apiKey.trim())
+            .addHeader(HEADER_CONTENT_TYPE, JSON_MEDIA_TYPE)
+            .post(
+                buildGeminiBatchRequestPayload(prompt, model)
+                    .toString()
+                    .toRequestBody(JSON_MEDIA_TYPE.toMediaType())
+            )
+            .build()
+        parseGeminiBatch(executeCancellableJson(request, "Empty response from Gemini batch request"))
+    }
+
+    internal suspend fun retrieveGeminiBatch(batchName: String, apiKey: String): GeminiBatchSnapshot =
+        withContext(Dispatchers.IO) {
+            val request = geminiBatchRequest(geminiBatchUrl(batchName), apiKey).get().build()
+            parseGeminiBatch(executeCancellableJson(request, "Empty Gemini batch status response"))
+        }
+
+    internal suspend fun cancelGeminiBatch(batchName: String, apiKey: String) =
+        withContext(Dispatchers.IO) {
+            val request = geminiBatchRequest(geminiBatchUrl(batchName, cancel = true), apiKey)
+                .addHeader(HEADER_CONTENT_TYPE, JSON_MEDIA_TYPE)
+                .post("{}".toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
+                .build()
+            executeCancellableJson(request, "Empty Gemini batch cancellation response")
+        }
+
+    internal fun buildGeminiBatchRequestPayload(prompt: String, model: String): JsonObject {
+        require(prompt.isNotBlank()) { "Batch prompt cannot be blank" }
+        require(model.isNotBlank()) { "Gemini model is required" }
+        return buildJsonObject {
+            putJsonObject("batch") {
+                put("display_name", "Aistee batch job")
+                putJsonObject("input_config") {
+                    putJsonObject("requests") {
+                        putJsonArray("requests") {
+                            addJsonObject {
+                                putJsonObject("request") {
+                                    put(
+                                        "contents",
+                                        buildGeminiContents(
+                                            prompt = prompt,
+                                            conversationHistory = emptyList(),
+                                            modelName = model,
+                                        )
+                                    )
+                                }
+                                putJsonObject("metadata") {
+                                    put("key", GEMINI_BATCH_REQUEST_KEY)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    internal fun parseGeminiBatch(rawJson: String): GeminiBatchSnapshot {
+        val parsed = json.parseToJsonElement(rawJson).jsonObject
+        val remoteId = parsed["name"]?.jsonPrimitive?.contentOrNull
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?: throw IOException("Gemini batch response is missing name")
+        val metadata = parsed["metadata"] as? JsonObject
+        val rawState = metadata?.get("state")?.jsonPrimitive?.contentOrNull
+        val done = parsed["done"]?.jsonPrimitive?.booleanOrNull == true
+        val operationError = parsed["error"] as? JsonObject
+        var state = mapGeminiBatchState(rawState, done, operationError)
+        var errorMessage = operationError?.get("message")?.jsonPrimitive?.contentOrNull
+        if (
+            state == AsyncProviderJobState.INCOMPLETE &&
+            errorMessage == null &&
+            !rawState.isNullOrBlank()
+        ) {
+            errorMessage = "Gemini returned an unknown terminal batch state: ${rawState.trim()}."
+        }
+        var outputText: String? = null
+
+        if (state == AsyncProviderJobState.SUCCEEDED) {
+            val ownResponse = geminiBatchInlineResponses(parsed).firstOrNull { item ->
+                ((item["metadata"] as? JsonObject)?.get("key") as? JsonPrimitive)
+                    ?.contentOrNull == GEMINI_BATCH_REQUEST_KEY
+            }
+            if (ownResponse == null) {
+                state = AsyncProviderJobState.INCOMPLETE
+                errorMessage = "Gemini finished the batch without the Aistee result."
+            } else {
+                val requestError = ownResponse["error"] as? JsonObject
+                if (requestError != null) {
+                    state = AsyncProviderJobState.FAILED
+                    errorMessage = requestError["message"]?.jsonPrimitive?.contentOrNull
+                        ?: "Gemini could not process the batch request."
+                } else {
+                    outputText = (ownResponse["response"] as? JsonObject)?.let(::extractGeminiStreamText)
+                    if (outputText.isNullOrBlank()) {
+                        state = AsyncProviderJobState.INCOMPLETE
+                        errorMessage = "Gemini finished the batch without text output."
+                    }
+                }
+            }
+        }
+
+        return GeminiBatchSnapshot(
+            remoteId = remoteId,
+            state = state,
+            outputText = outputText,
+            errorMessage = errorMessage,
+        )
+    }
+
+    private fun geminiBatchInlineResponses(operation: JsonObject): List<JsonObject> {
+        val response = operation["response"] as? JsonObject
+        val output = response?.get("output") as? JsonObject
+        val dest = operation["dest"] as? JsonObject
+        return sequenceOf(
+            response?.get("inlinedResponses"),
+            output?.get("inlinedResponses"),
+            dest?.get("inlinedResponses"),
+        ).mapNotNull { value ->
+            when (value) {
+                is JsonArray -> value
+                is JsonObject -> value["inlinedResponses"] as? JsonArray
+                else -> null
+            }
+        }.firstOrNull()
+            .orEmpty()
+            .mapNotNull { it as? JsonObject }
+    }
+
+    private fun mapGeminiBatchState(
+        rawState: String?,
+        done: Boolean,
+        operationError: JsonObject?,
+    ): AsyncProviderJobState {
+        return when (rawState?.trim()?.uppercase()) {
+            "JOB_STATE_PENDING", "BATCH_STATE_PENDING" -> AsyncProviderJobState.QUEUED
+            "JOB_STATE_RUNNING", "BATCH_STATE_RUNNING" -> AsyncProviderJobState.RUNNING
+            "JOB_STATE_SUCCEEDED", "BATCH_STATE_SUCCEEDED" -> AsyncProviderJobState.SUCCEEDED
+            "JOB_STATE_FAILED", "BATCH_STATE_FAILED" -> AsyncProviderJobState.FAILED
+            "JOB_STATE_CANCELLED", "JOB_STATE_CANCELED",
+            "BATCH_STATE_CANCELLED", "BATCH_STATE_CANCELED" -> AsyncProviderJobState.CANCELLED
+            "JOB_STATE_EXPIRED", "BATCH_STATE_EXPIRED" -> AsyncProviderJobState.EXPIRED
+            else -> when {
+                operationError?.get("code")?.jsonPrimitive?.intOrNull == 1 -> AsyncProviderJobState.CANCELLED
+                operationError != null -> AsyncProviderJobState.FAILED
+                !done -> AsyncProviderJobState.RUNNING
+                rawState.isNullOrBlank() -> AsyncProviderJobState.SUCCEEDED
+                else -> AsyncProviderJobState.INCOMPLETE
+            }
+        }
+    }
+
+    private fun geminiBatchUrl(batchName: String, cancel: Boolean = false): okhttp3.HttpUrl {
+        val name = batchName.trim()
+        require(name.startsWith("batches/")) { "Gemini batch name must start with batches/" }
+        val batchId = name.removePrefix("batches/")
+        require(
+            batchId.isNotEmpty() &&
+                batchId.all { it.isLetterOrDigit() || it == '-' || it == '_' }
+        ) { "Invalid Gemini batch name" }
+        val suffix = if (cancel) ":cancel" else ""
+        return "$GEMINI_BATCH_API_BASE_URL/batches/$batchId$suffix".toHttpUrl()
+    }
+
+    private fun geminiBatchRequest(url: okhttp3.HttpUrl, apiKey: String): Request.Builder {
+        require(apiKey.isNotBlank()) { "Gemini API key is required" }
+        return Request.Builder()
+            .url(url)
+            .addHeader(HEADER_GOOG_API_KEY, apiKey.trim())
     }
 
     /** Starts a one-request Message Batch (50% of the normal price, results within 24 hours). */
