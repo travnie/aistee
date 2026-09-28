@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -70,6 +71,7 @@ import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatConversation
 import ais.tee.data.model.ProjectLibraryArchive
 import ais.tee.data.model.ProjectLibraryAsset
+import ais.tee.data.model.canStartNativeChatFork
 import ais.tee.data.model.renderChatMarkdown
 import ais.tee.data.model.isCompletedAssistantResponse
 import ais.tee.data.model.supportedApiProcessingModes
@@ -421,6 +423,8 @@ private fun NativeChatDetailPane(
     }
 
     val isIncognito = uiState.isActiveConversationIncognito
+    val canBranchNativeChat =
+        !isIncognito && !uiState.isChatGenerating && uiState.isNativeConversationStoreReady
     val canOpenChatAsMarkdown =
         !isIncognito &&
             !uiState.isChatGenerating &&
@@ -1200,7 +1204,9 @@ private fun NativeChatDetailPane(
                         onRetryPrompt = { prompt -> viewModel.sendChatMessage(prompt) },
                         onEditQueued = { viewModel.cancelQueuedNativeMessage(message.id, moveToDraft = true) },
                         onCancelQueued = { viewModel.cancelQueuedNativeMessage(message.id, moveToDraft = false) },
-                        onViewTable = { table -> viewingTable = table }
+                        onViewTable = { table -> viewingTable = table },
+                        canBranch = canBranchNativeChat && message.canStartNativeChatFork(),
+                        onBranch = { viewModel.forkActiveNativeConversation(message.id) }
                     )
                 }
 
@@ -1448,7 +1454,9 @@ fun ChatMessageItem(
     onRetryPrompt: (String) -> Unit,
     onViewTable: (MarkdownTable) -> Unit = {},
     onEditQueued: () -> Unit = {},
-    onCancelQueued: () -> Unit = {}
+    onCancelQueued: () -> Unit = {},
+    canBranch: Boolean = false,
+    onBranch: () -> Unit = {}
 ) {
     val isUser = message.sender == "user"
     val tables = remember(message.id, message.text, message.isPartial, message.isError) {
@@ -1689,6 +1697,21 @@ fun ChatMessageItem(
                                 contentDescription = "Open response as Markdown",
                                 modifier = Modifier.size(15.dp)
                             )
+                        }
+                        if (canBranch) {
+                            IconButton(
+                                onClick = onBranch,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .testTag("btn_branch_from_${message.id}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Outlined.CallSplit,
+                                    contentDescription = "Branch from this reply",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
                         }
                         IconButton(
                             onClick = { onCopyText(message.text) },

@@ -1,10 +1,12 @@
 package ais.tee.widget
 
+import ais.tee.data.model.AiProvider
 import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatArchive
 import ais.tee.data.model.NativeChatConversation
 import ais.tee.data.model.NATIVE_CHAT_WELCOME_MESSAGE_ID
+import ais.tee.data.model.forkAt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -399,5 +401,33 @@ class AisteeWidgetTest {
 
         assertEquals(listOf(NativeChatWidgetConversation("chat", "Safe title")), summary)
         assertTrue(recentNativeConversationsForWidget(NativeChatArchive(), limit = 0).isEmpty())
+    }
+
+    @Test
+    fun messagesFeedShowsBranchedTurnsOnceButPinnedBranchKeepsThem() {
+        val source = oldConversation.copy(
+            messages = listOf(
+                ModelChatMessage(id = "q", sender = "user", text = "Question", timestamp = 100L),
+                ModelChatMessage(
+                    id = "a",
+                    sender = CHAT_ROLE_ASSISTANT,
+                    provider = AiProvider.CLAUDE,
+                    text = "Answer",
+                    timestamp = 200L,
+                ),
+            )
+        )
+        var nextId = 0
+        val branch = source.forkAt("a", newConversationId = "branch", nowEpochMs = 300L) { "copy-${nextId++}" }!!
+        val archive = NativeChatArchive(activeConversationId = branch.id, conversations = listOf(branch, source))
+
+        assertEquals(
+            listOf("a", "q"),
+            latestNativeMessagesForWidget(archive).map { it.messageId },
+        )
+        assertEquals(
+            listOf("fork-copy-1/a", "fork-copy-0/q"),
+            latestNativeMessagesForWidget(archive.copy(conversations = listOf(branch))).map { it.messageId },
+        )
     }
 }
