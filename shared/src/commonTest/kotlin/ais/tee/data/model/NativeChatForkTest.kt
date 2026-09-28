@@ -291,4 +291,16 @@ class NativeChatForkTest {
         assertEquals(listOf("gemini-twin"), feed.getValue("second").map { it.forkRootMessageId() })
         assertTrue(feed.getValue("nested").isEmpty())
     }
+
+    @Test
+    fun clearingABranchDropsItsProvenanceThroughAMerge() {
+        val branch = assertNotNull(fork(compareConversation(), "a1-claude"))
+        val base = NativeChatArchive(activeConversationId = branch.id, conversations = listOf(branch))
+        val cleared = branch.copy(messages = listOf(welcome), replyEpoch = branch.replyEpoch + 1, forkedFrom = null)
+        val incoming = base.copy(conversations = listOf(cleared))
+
+        val merged = mergeNativeChatChanges(base, incoming, current = base)
+
+        assertNull(merged.conversations.single().forkedFrom)
+    }
 }

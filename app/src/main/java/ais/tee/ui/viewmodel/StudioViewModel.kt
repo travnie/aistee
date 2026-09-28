@@ -1426,6 +1426,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 updatedAtEpochMs = now,
                 messages = welcomeChatMessages(),
                 replyEpoch = maxOf(now, conversation.replyEpoch + 1),
+                // A cleared branch no longer holds anything inherited from its source.
+                forkedFrom = null,
             )
         }
         NativeChatNotificationPublisher.cancelConversation(getApplication(), conversationId)
