@@ -126,6 +126,21 @@ fun NativeChatConversation.forkAt(
     )
 }
 
+/**
+ * This conversation's messages minus copies it inherited from a source that is also in
+ * [conversations], so a feed across several chats shows each turn once. Copies are matched by
+ * content rather than [NativeChatForkOrigin.inheritedMessageCount], which a clear or edit can
+ * outdate. A branch shown on its own keeps its inherited turns.
+ */
+fun NativeChatConversation.messagesWithoutInheritedCopies(
+    conversations: List<NativeChatConversation>,
+): List<ModelChatMessage> {
+    val sourceId = forkedFrom?.sourceConversationId ?: return messages
+    val source = conversations.firstOrNull { it.id == sourceId && it.id != id } ?: return messages
+    val sourceKeys = source.messages.mapTo(HashSet()) { Triple(it.sender, it.timestamp, it.text) }
+    return messages.filterNot { Triple(it.sender, it.timestamp, it.text) in sourceKeys }
+}
+
 fun NativeChatArchive.normalized(): NativeChatArchive? {
     if (version != NATIVE_CHAT_ARCHIVE_VERSION) return null
     val seenIds = mutableSetOf<String>()

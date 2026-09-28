@@ -201,4 +201,23 @@ class NativeChatForkTest {
         assertFalse(text.contains("a1-claude"))
         assertFalse(text.contains("Trip plan"))
     }
+
+    @Test
+    fun crossChatFeedsSkipInheritedCopiesOnlyWhileTheSourceIsPresent() {
+        val source = compareConversation()
+        val branch = assertNotNull(fork(source, "a1-claude")).let { forked ->
+            forked.copy(messages = forked.messages + user("new-u").copy(timestamp = 30) + reply("new-a", AiProvider.CLAUDE).copy(timestamp = 40))
+        }
+
+        assertEquals(
+            listOf("new-u", "reply new-a"),
+            branch.messagesWithoutInheritedCopies(listOf(source, branch)).map { it.text }
+        )
+        // Shown alone, or after the source is deleted, the branch keeps its inherited turns.
+        assertEquals(branch.messages, branch.messagesWithoutInheritedCopies(listOf(branch)))
+        // Content matching still works after the count is outdated by a clear.
+        val cleared = branch.copy(messages = listOf(welcome, user("fresh").copy(timestamp = 50)))
+        assertEquals(cleared.messages.drop(1), cleared.messagesWithoutInheritedCopies(listOf(source, cleared)))
+        assertEquals(source.messages, source.messagesWithoutInheritedCopies(listOf(source, branch)))
+    }
 }
