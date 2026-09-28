@@ -44,6 +44,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalTextToolbar
@@ -2509,6 +2516,9 @@ private fun NativeChatTimelineRail(
     }
 }
 
+private fun KeyEvent.isCopyShortcut(): Boolean =
+    key == Key.Copy || (isCtrlPressed && (key == Key.C || key == Key.Insert))
+
 /** Toolbar that never shows, so selected chat text can only leave through the sensitive-clip Copy button. */
 private object NoTextToolbar : TextToolbar {
     override val status: TextToolbarStatus = TextToolbarStatus.Hidden
@@ -2552,6 +2562,15 @@ internal fun SelectMessageTextDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 360.dp)
+                        // Hardware-keyboard copy bypasses the toolbar; send it through the sensitive clip.
+                        .onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown && event.isCopyShortcut()) {
+                                if (excerpt.isNotEmpty()) onCopy(excerpt)
+                                true
+                            } else {
+                                false
+                            }
+                        }
                         .testTag("select_text_field")
                 )
             }
