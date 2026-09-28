@@ -51,6 +51,9 @@ class NativeChatForkTest {
         replyEpoch = 7,
     )
 
+    // The welcome message keeps its well-known id in every chat; widgets skip it separately.
+    private fun List<ModelChatMessage>.withoutWelcome() = filterNot { it.id == NATIVE_CHAT_WELCOME_MESSAGE_ID }
+
     private fun fork(source: NativeChatConversation, messageId: String): NativeChatConversation? {
         var next = 0
         return source.forkAt(messageId, newConversationId = "branch", nowEpochMs = 99) { "m${next++}" }
@@ -84,7 +87,7 @@ class NativeChatForkTest {
 
         assertEquals(NATIVE_CHAT_WELCOME_MESSAGE_ID, branch.messages.first().id)
         val copiedIds = branch.messages.drop(1).map { it.id }
-        assertEquals(listOf("m0", "m1"), copiedIds)
+        assertEquals(listOf("fork-m0", "fork-m1"), copiedIds)
         assertTrue(copiedIds.none { id -> source.messages.any { it.id == id } })
     }
 
@@ -212,14 +215,14 @@ class NativeChatForkTest {
         val feed = NativeChatArchive(conversations = listOf(branch, source)).messagesForCrossChatFeed()
 
         assertEquals(source.messages, feed.getValue(source.id))
-        assertEquals(listOf("new-u", "reply new-a"), feed.getValue(branch.id).map { it.text })
+        assertEquals(listOf("new-u", "reply new-a"), feed.getValue(branch.id).withoutWelcome().map { it.text })
         // Shown on its own, a branch keeps its inherited turns.
         assertEquals(branch.messages, NativeChatArchive(conversations = listOf(branch)).messagesForCrossChatFeed().getValue(branch.id))
         // Content matching still works after a clear outdates the inherited count.
         val cleared = branch.copy(messages = listOf(welcome, user("fresh").copy(timestamp = 50)))
         assertEquals(
             listOf("fresh"),
-            NativeChatArchive(conversations = listOf(source, cleared)).messagesForCrossChatFeed().getValue(cleared.id).map { it.text }
+            NativeChatArchive(conversations = listOf(source, cleared)).messagesForCrossChatFeed().getValue(cleared.id).withoutWelcome().map { it.text }
         )
     }
 
@@ -237,8 +240,8 @@ class NativeChatForkTest {
         val feed = NativeChatArchive(conversations = listOf(nested, second, first)).messagesForCrossChatFeed()
 
         assertEquals(first.messages, feed.getValue("first"))
-        assertEquals(listOf("reply a1-gemini"), feed.getValue("second").map { it.text })
-        assertTrue(feed.getValue("nested").isEmpty())
+        assertEquals(listOf("reply a1-gemini"), feed.getValue("second").withoutWelcome().map { it.text })
+        assertTrue(feed.getValue("nested").withoutWelcome().isEmpty())
     }
 
     @Test
@@ -252,6 +255,18 @@ class NativeChatForkTest {
 
         val feed = NativeChatArchive(conversations = listOf(source, other, withTurn)).messagesForCrossChatFeed()
 
-        assertEquals(listOf("own"), feed.getValue(withTurn.id).map { it.id })
+        assertEquals(listOf("own"), feed.getValue(withTurn.id).withoutWelcome().map { it.id })
+    }
+
+    @Test
+    fun crossChatFeedDoesNotDependOnClockOrder() {
+        val source = compareConversation().copy(createdAtEpochMs = 500)
+        // The clock went backwards: the branch looks older than its source.
+        val branch = assertNotNull(fork(source, "a1-claude")).copy(createdAtEpochMs = 10)
+
+        val feed = NativeChatArchive(conversations = listOf(source, branch)).messagesForCrossChatFeed()
+
+        assertEquals(source.messages, feed.getValue(source.id))
+        assertTrue(feed.getValue(branch.id).none { it.id.startsWith(NATIVE_CHAT_FORK_COPY_ID_PREFIX) })
     }
 }

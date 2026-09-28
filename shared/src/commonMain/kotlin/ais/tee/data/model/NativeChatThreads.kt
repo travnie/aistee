@@ -6,6 +6,8 @@ import kotlinx.serialization.json.Json
 const val NATIVE_CHAT_ARCHIVE_VERSION = 1
 const val DEFAULT_NATIVE_CONVERSATION_TITLE = "New conversation"
 const val NATIVE_CHAT_WELCOME_MESSAGE_ID = "welcome_assistant_intro"
+/** Marks a message a branch copied from its source, so feeds can tell copies from the branch's own turns. */
+const val NATIVE_CHAT_FORK_COPY_ID_PREFIX = "fork-"
 private const val MAX_NATIVE_CONVERSATION_TITLE_CHARS = 56
 
 @Serializable
@@ -110,7 +112,7 @@ fun NativeChatConversation.forkAt(
         createdAtEpochMs = nowEpochMs,
         updatedAtEpochMs = nowEpochMs,
         messages = inherited.map { message ->
-            if (message.id == NATIVE_CHAT_WELCOME_MESSAGE_ID) message else message.copy(id = newMessageId())
+            if (message.id == NATIVE_CHAT_WELCOME_MESSAGE_ID) message else message.copy(id = NATIVE_CHAT_FORK_COPY_ID_PREFIX + newMessageId())
         },
         draft = "",
         selectedProvider = provider,
@@ -128,23 +130,26 @@ fun NativeChatConversation.forkAt(
 
 /**
  * Messages per conversation id for a feed across every chat. A turn a branch inherited appears
- * once, under the earliest-created chat that holds it, even after its direct source was deleted
- * or when sibling branches share it. Copies are matched by content rather than
- * [NativeChatForkOrigin.inheritedMessageCount], which a clear can outdate; only a branch's
- * messages from before its fork time can be dropped. A branch shown on its own (a one-conversation archive) keeps its inherited turns.
+ * once: a copy (id prefixed with [NATIVE_CHAT_FORK_COPY_ID_PREFIX]) is dropped when its original
+ * is still in the archive or an earlier copy was already kept, so sibling branches and branches
+ * of a deleted source show it once. Turns written in a branch are never copies and always stay.
+ * This does not depend on clock order. A branch shown on its own keeps its inherited turns.
  */
 fun NativeChatArchive.messagesForCrossChatFeed(): Map<String, List<ModelChatMessage>> {
-    if (conversations.none { it.forkedFrom != null }) return conversations.associate { it.id to it.messages }
-    val seen = HashSet<Triple<String, Long, String>>()
+    val prefix = NATIVE_CHAT_FORK_COPY_ID_PREFIX
+    if (conversations.none { conversation -> conversation.messages.any { it.id.startsWith(prefix) } }) {
+        return conversations.associate { it.id to it.messages }
+    }
+    val originals = conversations.flatMapTo(HashSet()) { conversation ->
+        conversation.messages.filterNot { it.id.startsWith(prefix) }.map { Triple(it.sender, it.timestamp, it.text) }
+    }
+    val keptCopies = HashSet<Triple<String, Long, String>>()
     return conversations
         .sortedWith(compareBy<NativeChatConversation> { it.createdAtEpochMs }.thenBy { it.id })
         .associate { conversation ->
-            // Copies keep their source timestamps, so only messages from before the fork can be
-            // inherited; turns written in the branch afterwards are always its own.
-            val forkedAt = conversation.forkedFrom?.forkedAtEpochMs
             conversation.id to conversation.messages.filter { message ->
-                val isNew = seen.add(Triple(message.sender, message.timestamp, message.text))
-                isNew || forkedAt == null || message.timestamp > forkedAt
+                val key = Triple(message.sender, message.timestamp, message.text)
+                !message.id.startsWith(prefix) || (key !in originals && keptCopies.add(key))
             }
         }
 }
