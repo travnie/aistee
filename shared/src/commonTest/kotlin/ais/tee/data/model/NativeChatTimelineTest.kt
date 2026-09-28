@@ -73,6 +73,27 @@ class NativeChatTimelineTest {
     }
 
     @Test
+    fun spreadOffsetsNeverOverlapAndStayOnTheRail() {
+        val offsets = spreadTimelineOffsets(listOf(0f, 1f, 2f, 50f, 99f, 100f), minGap = 10f, extent = 110f)
+
+        assertEquals(listOf(0f, 10f, 20f, 50f, 90f, 100f), offsets)
+        assertTrue(offsets.zipWithNext().all { (a, b) -> b - a >= 10f })
+        assertTrue(spreadTimelineOffsets(emptyList(), 10f, 100f).isEmpty())
+    }
+
+    @Test
+    fun thinningToRailCapacityKeepsBothEnds() {
+        val messages = (1..40).flatMap { listOf(user("u$it"), reply("a$it")) }
+        val markers = nativeChatTimeline(messages, setOf("a20"))
+
+        val shown = thinNativeChatTimeline(markers, 5)
+
+        assertEquals(5, shown.size)
+        assertEquals(listOf("u1", "u40"), listOf(shown.first().messageId, shown.last().messageId))
+        assertTrue(shown.any { it.messageId == "a20" })
+    }
+
+    @Test
     fun emptyOrDisabledTimelines() {
         assertTrue(nativeChatTimeline(emptyList(), emptySet()).isEmpty())
         assertTrue(nativeChatTimeline(listOf(user("u1")), emptySet(), maxMarkers = 0).isEmpty())

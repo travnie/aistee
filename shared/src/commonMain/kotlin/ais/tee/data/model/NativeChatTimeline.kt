@@ -50,6 +50,18 @@ fun nativeChatTimeline(
             )
         }
     }
+    return thinNativeChatTimeline(all, maxMarkers)
+}
+
+/**
+ * Thins [all] (sorted by message index) to at most [maxMarkers]: both ends of the conversation
+ * first, then starred messages, then the remaining user turns spread evenly.
+ */
+fun thinNativeChatTimeline(
+    all: List<NativeChatTimelineMarker>,
+    maxMarkers: Int,
+): List<NativeChatTimelineMarker> {
+    if (maxMarkers <= 0) return emptyList()
     if (all.size <= maxMarkers) return all
     // Both ends of the conversation are reserved first, then stars, then evenly spread turns.
     val endpoints = listOf(all.first(), all.last()).distinct().take(maxMarkers)
@@ -70,3 +82,22 @@ fun nativeChatTimeline(
 private fun timelinePreview(text: String): String =
     text.trimStart().take(TIMELINE_PREVIEW_CHARS * 4).trim()
         .replace(Regex("\\s+"), " ").take(TIMELINE_PREVIEW_CHARS)
+
+/**
+ * Pixel offsets for timeline markers of size [minGap] on a rail [extent] long. Each marker stays as
+ * close to its [ideal] offset (ascending) as possible while no two markers overlap, so every jump
+ * target keeps a full-size tap area. Callers bound the marker count to `extent / minGap`.
+ */
+fun spreadTimelineOffsets(ideal: List<Float>, minGap: Float, extent: Float): List<Float> {
+    if (ideal.isEmpty()) return emptyList()
+    val maxOffset = (extent - minGap).coerceAtLeast(0f)
+    val offsets = ideal.map { it.coerceIn(0f, maxOffset) }.toMutableList()
+    for (i in 1 until offsets.size) {
+        offsets[i] = maxOf(offsets[i], offsets[i - 1] + minGap)
+    }
+    offsets[offsets.lastIndex] = minOf(offsets.last(), maxOffset)
+    for (i in offsets.lastIndex - 1 downTo 0) {
+        offsets[i] = minOf(offsets[i], offsets[i + 1] - minGap)
+    }
+    return offsets.map { it.coerceAtLeast(0f) }
+}

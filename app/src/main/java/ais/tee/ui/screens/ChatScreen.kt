@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
@@ -76,6 +77,8 @@ import ais.tee.data.model.ProjectLibraryAsset
 import ais.tee.data.model.NativeChatTimelineMarker
 import ais.tee.data.model.canBeStarred
 import ais.tee.data.model.nativeChatTimeline
+import ais.tee.data.model.spreadTimelineOffsets
+import ais.tee.data.model.thinNativeChatTimeline
 import ais.tee.data.model.canStartNativeChatFork
 import ais.tee.data.model.starredMessages
 import ais.tee.data.model.renderChatMarkdown
@@ -2386,9 +2389,21 @@ private fun NativeChatTimelineRail(
             .testTag("native_chat_timeline")
     ) {
         val markerSize = 20.dp
-        val travel = (maxHeight - markerSize).coerceAtLeast(0.dp)
-        markers.forEach { marker ->
-            val fraction = marker.messageIndex.toFloat() / lastIndex
+        val density = LocalDensity.current
+        val railPx = with(density) { maxHeight.toPx() }
+        val markerPx = with(density) { markerSize.toPx() }
+        // Never more markers than fit without overlapping, so each keeps a full tap target.
+        val capacity = (railPx / markerPx).toInt().coerceAtLeast(1)
+        val shown = remember(markers, capacity) { thinNativeChatTimeline(markers, capacity) }
+        val offsets = remember(shown, lastIndex, railPx, markerPx) {
+            spreadTimelineOffsets(
+                ideal = shown.map { (railPx - markerPx) * it.messageIndex / lastIndex },
+                minGap = markerPx,
+                extent = railPx,
+            )
+        }
+        shown.forEachIndexed { position, marker ->
+            val offsetY = with(density) { offsets[position].toDp() }
             val description = when {
                 marker.isStarred && marker.isUserTurn -> "Jump to starred turn ${marker.turnNumber}"
                 marker.isStarred -> "Jump to starred reply in turn ${marker.turnNumber}"
@@ -2397,7 +2412,7 @@ private fun NativeChatTimelineRail(
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .offset(y = travel * fraction)
+                    .offset(y = offsetY)
                     .size(markerSize)
                     .clip(CircleShape)
                     .clickable(onClickLabel = description) { onJump(marker) }
