@@ -35,11 +35,13 @@ data class NativeChatConversation(
     val replyEpoch: Long = 0L,
     /** Set on a branch made from another local conversation; the source is never modified. */
     val forkedFrom: NativeChatForkOrigin? = null,
+    /** Local bookmarks on this chat's own messages, in the order they were starred. */
+    val starredMessageIds: List<String> = emptyList(),
 ) {
     override fun toString(): String =
         "NativeChatConversation(id=<redacted>, title=<redacted>, messages=${messages.size}, " +
             "selectedProvider=${selectedProvider.id}, selectedModel=<redacted>, projectId=<redacted>, " +
-            "forked=${forkedFrom != null})"
+            "forked=${forkedFrom != null}, starred=${starredMessageIds.size})"
 }
 
 /** Where a branch came from: its first [inheritedMessageCount] messages are copies from the source. */
@@ -115,17 +117,20 @@ fun NativeChatConversation.forkAt(
         target.modelName in provider.availableModels -> target.modelName.orEmpty()
         else -> provider.defaultModel
     }
+    val copies = inherited.map { message ->
+        if (message.id == NATIVE_CHAT_WELCOME_MESSAGE_ID) message else message.copy(
+            id = NATIVE_CHAT_FORK_COPY_ID_PREFIX + newMessageId() + NATIVE_CHAT_FORK_COPY_ROOT_SEPARATOR +
+                message.forkRootMessageId()
+        )
+    }
+    val copyIds = inherited.map { it.id }.zip(copies.map { it.id }).toMap()
     return copy(
         id = newConversationId,
         title = nativeConversationTitle("Branch: ${title.removePrefix("Branch: ")}"),
         createdAtEpochMs = nowEpochMs,
         updatedAtEpochMs = nowEpochMs,
-        messages = inherited.map { message ->
-            if (message.id == NATIVE_CHAT_WELCOME_MESSAGE_ID) message else message.copy(
-                id = NATIVE_CHAT_FORK_COPY_ID_PREFIX + newMessageId() + NATIVE_CHAT_FORK_COPY_ROOT_SEPARATOR +
-                    message.forkRootMessageId()
-            )
-        },
+        messages = copies,
+        starredMessageIds = starredMessageIds.mapNotNull(copyIds::get),
         draft = "",
         selectedProvider = provider,
         selectedModel = model,
@@ -167,6 +172,25 @@ fun NativeChatArchive.messagesForCrossChatFeed(): Map<String, List<ModelChatMess
         }
 }
 
+/** Whether [message] can be starred: any real turn in the chat, not the welcome message or a queued send. */
+fun ModelChatMessage.canBeStarred(): Boolean =
+    id != NATIVE_CHAT_WELCOME_MESSAGE_ID && !isQueued && !isPartial
+
+/** Stars or unstars one of this chat's messages; unknown ids leave the chat unchanged. */
+fun NativeChatConversation.withStarToggled(messageId: String): NativeChatConversation {
+    if (messageId in starredMessageIds) return copy(starredMessageIds = starredMessageIds - messageId)
+    if (messages.none { it.id == messageId && it.canBeStarred() }) return this
+    return copy(starredMessageIds = starredMessageIds + messageId)
+}
+
+/** Starred messages in conversation order, for a jump list. */
+val NativeChatConversation.starredMessages: List<ModelChatMessage>
+    get() {
+        if (starredMessageIds.isEmpty()) return emptyList()
+        val starred = starredMessageIds.toSet()
+        return messages.filter { it.id in starred }
+    }
+
 fun NativeChatArchive.normalized(): NativeChatArchive? {
     if (version != NATIVE_CHAT_ARCHIVE_VERSION) return null
     val seenIds = mutableSetOf<String>()
@@ -183,7 +207,13 @@ fun NativeChatArchive.normalized(): NativeChatArchive? {
                 else -> provider.defaultModel
             },
             apiProcessingMode = provider.normalizeApiProcessingMode(conversation.apiProcessingMode),
-            projectId = conversation.projectId.trim().ifEmpty { DEFAULT_PROJECT_ID }
+            projectId = conversation.projectId.trim().ifEmpty { DEFAULT_PROJECT_ID },
+            starredMessageIds = if (conversation.starredMessageIds.isEmpty()) {
+                conversation.starredMessageIds
+            } else {
+                val ids = conversation.messages.mapTo(HashSet()) { it.id }
+                conversation.starredMessageIds.distinct().filter { it in ids }
+            },
         )
     }
     if (retained.isEmpty()) return copy(activeConversationId = "", conversations = emptyList())
