@@ -2372,6 +2372,7 @@ private fun StarredMessagesDialog(
 }
 
 private const val NATIVE_CHAT_TIMELINE_MIN_TURNS = 4
+private val NATIVE_CHAT_TIMELINE_TARGET_WIDTH = 32.dp
 
 /** A thin rail of jump targets for long native chats: user turns as dots, starred messages as stars. */
 @Composable
@@ -2385,14 +2386,16 @@ private fun NativeChatTimelineRail(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxHeight()
-            .width(20.dp)
+            .width(NATIVE_CHAT_TIMELINE_TARGET_WIDTH)
             .testTag("native_chat_timeline")
     ) {
-        val markerSize = 20.dp
+        // Each marker owns a 48dp-tall, non-overlapping tap row; the rail stays narrow so it
+        // covers little of the message bubbles underneath.
+        val markerSize = 48.dp
         val density = LocalDensity.current
         val railPx = with(density) { maxHeight.toPx() }
         val markerPx = with(density) { markerSize.toPx() }
-        // Never more markers than fit without overlapping, so each keeps a full tap target.
+        // Never more markers than fit without overlapping, so each keeps a full-height tap target.
         val capacity = (railPx / markerPx).toInt().coerceAtLeast(1)
         val shown = remember(markers, capacity) { thinNativeChatTimeline(markers, capacity) }
         val offsets = remember(shown, lastIndex, railPx, markerPx) {
@@ -2413,8 +2416,7 @@ private fun NativeChatTimelineRail(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .offset(y = offsetY)
-                    .size(markerSize)
-                    .clip(CircleShape)
+                    .size(width = NATIVE_CHAT_TIMELINE_TARGET_WIDTH, height = markerSize)
                     .clickable(onClickLabel = description) { onJump(marker) }
                     .semantics { contentDescription = description }
                     .testTag("timeline_marker_${marker.messageId}")
