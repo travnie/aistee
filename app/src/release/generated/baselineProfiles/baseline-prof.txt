@@ -22195,3 +22195,5 @@ SPLais/tee/ui/screens/ChatScreenKt;->ChatMessageItem-zjVUmAM(Lais/tee/data/model
 SPLais/tee/ui/screens/ComposableSingletons$ChatScreenKt;->getLambda$-1163625129$app()Lkotlin/jvm/functions/Function2;
 SPLais/tee/ui/screens/ComposableSingletons$ChatScreenKt;->getLambda$1568605678$app()Lkotlin/jvm/functions/Function2;
 SPLais/tee/ui/screens/ComposableSingletons$ChatScreenKt;->getLambda$269719675$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/widget/NativeChatWidgetArchiveFingerprint;-><init>(Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;)V
+PLais/tee/widget/NativeChatWidgetMessage;->getConversationId()Ljava/lang/String;
