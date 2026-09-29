@@ -103,7 +103,9 @@ class AiChatServiceTest {
     fun parsesClaudeReportedMaxTokensAndRejectsInvalidMetadata() {
         val service = AiChatService()
         assertEquals(TEST_CLAUDE_MAX_TOKENS, service.parseClaudeModelMaxTokens("""{"max_tokens":128000}"""))
+        assertEquals(1_000_000, service.parseClaudeModelMaxInputTokens("""{"max_input_tokens":1000000}"""))
         assertEquals(null, service.parseClaudeModelMaxTokens("""{"max_tokens":0}"""))
+        assertEquals(null, service.parseClaudeModelMaxInputTokens("""{"max_input_tokens":0}"""))
         assertEquals(null, service.parseClaudeModelMaxTokens("""{"id":"claude-sonnet-5"}"""))
         assertEquals(null, service.parseClaudeModelMaxTokens("not json"))
     }
@@ -127,9 +129,16 @@ class AiChatServiceTest {
         val capabilities = ClaudeReasoningCapabilities(supportsEnabled = true)
 
         val metadata = service.rememberClaudeMetadata(
-            alias, concrete, apiKey, TEST_CLAUDE_MAX_TOKENS, capabilities, now
+            alias,
+            concrete,
+            apiKey,
+            TEST_CLAUDE_MAX_TOKENS,
+            1_000_000,
+            capabilities,
+            now,
         )
         assertEquals(concrete, metadata.resolvedModel)
+        assertEquals(1_000_000, metadata.maxInputTokens)
         assertEquals(
             concrete,
             service.readClaudeMetadataCache(alias, apiKey, now + 1)?.resolvedModel
@@ -142,6 +151,7 @@ class AiChatServiceTest {
 
         val failure = service.rememberClaudeMetadataFailure(TEST_CLAUDE_OUTAGE_MODEL, TEST_BAD_API_KEY, now)
         assertEquals(2048, failure.maxTokens)
+        assertEquals(null, failure.maxInputTokens)
         assertEquals(ClaudeReasoningCapabilities(), failure.reasoningCapabilities)
         assertEquals(
             2048,
@@ -153,6 +163,49 @@ class AiChatServiceTest {
         )
         assertEquals(concrete, service.parseClaudeModelId("""{"id":"$concrete"}"""))
         assertEquals(null, service.parseClaudeModelId("""{"model":"$concrete"}"""))
+    }
+
+    @Test
+    fun claudeInputBudgetPayloadMatchesSendInputAndParsesProviderEstimate() {
+        val service = AiChatService()
+        val messages = Json.parseToJsonElement(TEST_CLAUDE_USER_MESSAGES_JSON).jsonArray
+        val tools = Json.parseToJsonElement(
+            """[{"name":"inspect_text","description":"Inspect","input_schema":{"type":"object"}}]"""
+        ).jsonArray
+        val capabilities = ClaudeReasoningCapabilities(
+            supportsAdaptive = true,
+            supportsHighEffort = true,
+        )
+        val input = service.buildClaudeInputPayload(
+            model = TEST_CLAUDE_MODEL,
+            maxTokens = TEST_CLAUDE_MAX_TOKENS,
+            systemInstruction = SYSTEM_PROMPT,
+            messages = messages,
+            reasoningCapabilities = capabilities,
+            toolDefinitions = tools,
+        )
+        val send = service.buildClaudeRequestPayload(
+            model = TEST_CLAUDE_MODEL,
+            maxTokens = TEST_CLAUDE_MAX_TOKENS,
+            stream = false,
+            systemInstruction = SYSTEM_PROMPT,
+            messages = messages,
+            reasoningCapabilities = capabilities,
+            toolDefinitions = tools,
+        )
+
+        assertEquals(TEST_CLAUDE_MODEL, input.getValue("model").jsonPrimitive.content)
+        assertEquals(SYSTEM_PROMPT, input.getValue("system").jsonPrimitive.content)
+        assertEquals(messages, input.getValue("messages").jsonArray)
+        assertEquals(tools, input.getValue("tools").jsonArray)
+        assertEquals(input.getValue("thinking"), send.getValue("thinking"))
+        assertEquals(input.getValue("output_config"), send.getValue("output_config"))
+        assertEquals(input.getValue("messages"), send.getValue("messages"))
+        assertEquals(input.getValue("tools"), send.getValue("tools"))
+        assertFalse("max_tokens" in input)
+        assertFalse("stream" in input)
+        assertEquals(321, service.parseClaudeCountTokens("""{"input_tokens":321}"""))
+        assertTrue(runCatching { service.parseClaudeCountTokens("{}") }.isFailure)
     }
 
     @Test
