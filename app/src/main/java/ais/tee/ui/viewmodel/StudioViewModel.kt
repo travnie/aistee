@@ -1738,25 +1738,30 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /**
-     * Sends the current Gemini draft to countTokens only after this explicit user action. The
-     * assembled request mirrors Send: bounded provider history, profile/skills instruction and the
-     * currently enabled native tool declarations.
+     * Sends the current Gemini or Claude draft to the selected provider token counter only after
+     * this explicit user action. The assembled input mirrors Send: bounded provider history,
+     * profile/skills instruction and the currently enabled native tool declarations.
      */
-    fun checkGeminiInputBudget(prompt: String): Boolean {
+    fun checkInputBudget(prompt: String): Boolean {
         val trimmed = prompt.trim()
         val origin = _uiState.value
+        val provider = origin.selectedChatProvider
         if (
             !origin.isNativeConversationStoreReady ||
             origin.isChatGenerating ||
             origin.isInputBudgetPreflightRunning ||
             trimmed.isBlank() ||
-            origin.selectedChatProvider != AiProvider.GEMINI
+            provider !in setOf(AiProvider.GEMINI, AiProvider.CLAUDE)
         ) return false
 
-        val apiKey = origin.apiKeyConfig.geminiKey.trim()
+        val apiKey = when (provider) {
+            AiProvider.GEMINI -> origin.apiKeyConfig.geminiKey
+            AiProvider.CLAUDE -> origin.apiKeyConfig.claudeKey
+            else -> ""
+        }.trim()
         if (apiKey.isBlank()) {
             _uiState.update { it.copy(showApiKeyDialog = true) }
-            showSnackbar("Add a Gemini API key to check the exact input budget.")
+            showSnackbar("Add a ${provider.shortName} API key to check the input budget.")
             return false
         }
 
@@ -1770,15 +1775,26 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 val promptContext = prepareNativeChatPromptContext(origin) ?: return@launch
-                val toolDefinitions = prepareGeminiInputBudgetToolDefinitions(origin)
-                val result = aiChatService.countGeminiInputBudget(
-                    prompt = trimmed,
-                    model = origin.selectedChatModel,
-                    apiKey = apiKey,
-                    systemInstruction = promptContext.systemPrompt,
-                    conversationHistory = origin.chatMessages,
-                    tools = toolDefinitions,
-                )
+                val toolDefinitions = prepareInputBudgetToolDefinitions(origin)
+                val result = when (provider) {
+                    AiProvider.GEMINI -> aiChatService.countGeminiInputBudget(
+                        prompt = trimmed,
+                        model = origin.selectedChatModel,
+                        apiKey = apiKey,
+                        systemInstruction = promptContext.systemPrompt,
+                        conversationHistory = origin.chatMessages,
+                        tools = toolDefinitions,
+                    )
+                    AiProvider.CLAUDE -> aiChatService.countClaudeInputBudget(
+                        prompt = trimmed,
+                        model = origin.selectedChatModel,
+                        apiKey = apiKey,
+                        systemInstruction = promptContext.systemPrompt,
+                        conversationHistory = origin.chatMessages,
+                        tools = toolDefinitions,
+                    )
+                    else -> return@launch
+                }
                 val current = _uiState.value
                 val sameConversationInput =
                     isSameChatTarget(origin, current) &&
@@ -1790,7 +1806,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 }
 
                 val currentPromptContext = prepareNativeChatPromptContext(current) ?: return@launch
-                val currentToolDefinitions = prepareGeminiInputBudgetToolDefinitions(current)
+                val currentToolDefinitions = prepareInputBudgetToolDefinitions(current)
 
                 // Both reads above can suspend. Re-read the UI state after them so a change that
                 // happened during disk access cannot publish a count for an older request shape.
@@ -1835,7 +1851,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                showSnackbar(error.message ?: "Could not check the Gemini input budget.")
+                showSnackbar(error.message ?: "Could not check the provider input budget.")
             } finally {
                 if (inputBudgetPreflightId.get() == preflightId) {
                     _uiState.update { it.copy(isInputBudgetPreflightRunning = false) }
@@ -1849,7 +1865,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update { it.copy(inputBudgetPreflight = null) }
     }
 
-    private suspend fun prepareGeminiInputBudgetToolDefinitions(
+    private suspend fun prepareInputBudgetToolDefinitions(
         state: StudioUiState,
     ): List<NativeToolDefinition> {
         val activeProjectId = state.activeNativeConversation?.projectId ?: DEFAULT_PROJECT_ID
