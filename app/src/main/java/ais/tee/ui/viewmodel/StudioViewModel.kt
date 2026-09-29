@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import ais.tee.data.engine.AiChatService
+import ais.tee.data.engine.GeminiInputBudgetPreflight
 import ais.tee.data.engine.AsyncJobBackends
 import ais.tee.data.engine.InstructionRenderer
 import ais.tee.data.engine.ActiveSkillChatAnswer
@@ -173,6 +174,9 @@ data class StudioUiState(
     val incognitoConversationId: String? = null,
     /** Send held back because the chat context does not fit the model; cleared on send or dismiss. */
     val pendingChatContextWarning: PendingChatContextWarning? = null,
+    /** Explicit provider-exact Gemini draft preflight; never persisted with the conversation. */
+    val geminiInputBudgetPreflight: GeminiInputBudgetPreflight? = null,
+    val isGeminiInputBudgetPreflightRunning: Boolean = false,
     /** Model-initiated skill call waiting for Allow/Deny; cleared when answered or the reply stops. */
     val pendingActiveSkillPrompt: PendingActiveSkillPrompt? = null,
 ) {
@@ -1705,6 +1709,79 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             systemPrompt = composeLocalSkillSystemInstruction(profileSystemPrompt, enabledLocalSkills),
             activeProfile = state.mergedProfile.takeIf { state.includeSystemProfileInChat }
         )
+    }
+
+    /**
+     * Sends the current Gemini draft to countTokens only after this explicit user action. The
+     * assembled request mirrors Send: bounded provider history, profile/skills instruction and the
+     * currently enabled native tool declarations.
+     */
+    fun checkGeminiInputBudget(prompt: String): Boolean {
+        val trimmed = prompt.trim()
+        val origin = _uiState.value
+        if (
+            !origin.isNativeConversationStoreReady ||
+            origin.isChatGenerating ||
+            origin.isGeminiInputBudgetPreflightRunning ||
+            trimmed.isBlank() ||
+            origin.selectedChatProvider != AiProvider.GEMINI
+        ) return false
+
+        val apiKey = origin.apiKeyConfig.geminiKey.trim()
+        if (apiKey.isBlank()) {
+            _uiState.update { it.copy(showApiKeyDialog = true) }
+            showSnackbar("Add a Gemini API key to check the exact input budget.")
+            return false
+        }
+
+        _uiState.update {
+            it.copy(
+                isGeminiInputBudgetPreflightRunning = true,
+                geminiInputBudgetPreflight = null,
+            )
+        }
+        viewModelScope.launch {
+            try {
+                val promptContext = prepareNativeChatPromptContext(origin) ?: return@launch
+                val activeProjectId = origin.activeNativeConversation?.projectId ?: DEFAULT_PROJECT_ID
+                val benchTools = NativeBenchChatTools(
+                    context = getApplication(),
+                    projectId = activeProjectId,
+                )
+                val skillTools = if (!origin.isActiveConversationIncognito) {
+                    NativeActiveSkillChatTools(
+                        getApplication(),
+                        localSkillStore,
+                        ask = { _, _ -> ActiveSkillChatAnswer.Declined },
+                    )
+                } else {
+                    null
+                }
+                val toolDefinitions = benchTools.definitions() + skillTools?.definitions().orEmpty()
+                val result = aiChatService.countGeminiInputBudget(
+                    prompt = trimmed,
+                    model = origin.selectedChatModel,
+                    apiKey = apiKey,
+                    systemInstruction = promptContext.systemPrompt,
+                    conversationHistory = origin.chatMessages,
+                    tools = toolDefinitions,
+                )
+                if (isSameChatTarget(origin, _uiState.value)) {
+                    _uiState.update { it.copy(geminiInputBudgetPreflight = result) }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                showSnackbar(error.message ?: "Could not check the Gemini input budget.")
+            } finally {
+                _uiState.update { it.copy(isGeminiInputBudgetPreflightRunning = false) }
+            }
+        }
+        return true
+    }
+
+    fun dismissGeminiInputBudgetPreflight() {
+        _uiState.update { it.copy(geminiInputBudgetPreflight = null) }
     }
 
     /** Sends the prompt held back by the context warning without checking the budget again. */
