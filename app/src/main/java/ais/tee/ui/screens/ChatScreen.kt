@@ -808,7 +808,7 @@ private fun NativeChatDetailPane(
                                             text = {
                                                 Column {
                                                     Text(
-                                                        if (uiState.isGeminiInputBudgetPreflightRunning) {
+                                                        if (uiState.isInputBudgetPreflightRunning) {
                                                             "Checking exact input budget…"
                                                         } else {
                                                             "Check exact input budget"
@@ -822,7 +822,7 @@ private fun NativeChatDetailPane(
                                                 }
                                             },
                                             leadingIcon = {
-                                                if (uiState.isGeminiInputBudgetPreflightRunning) {
+                                                if (uiState.isInputBudgetPreflightRunning) {
                                                     CircularProgressIndicator(
                                                         modifier = Modifier.size(18.dp),
                                                         strokeWidth = 2.dp,
@@ -833,7 +833,7 @@ private fun NativeChatDetailPane(
                                             },
                                             enabled = promptInput.isNotBlank() &&
                                                 !uiState.isChatGenerating &&
-                                                !uiState.isGeminiInputBudgetPreflightRunning,
+                                                !uiState.isInputBudgetPreflightRunning,
                                             onClick = {
                                                 showChatActionsMenu = false
                                                 viewModel.checkGeminiInputBudget(promptInput)
@@ -1458,14 +1458,14 @@ private fun NativeChatDetailPane(
         )
     }
 
-    uiState.geminiInputBudgetPreflight?.let { preflight ->
+    uiState.inputBudgetPreflight?.let { preflight ->
         val remainingLine = if (preflight.fits) {
             "Remaining: ${preflight.remainingTokens} tokens"
         } else {
             "Over limit by: ${-preflight.remainingTokens} tokens"
         }
         AlertDialog(
-            onDismissRequest = viewModel::dismissGeminiInputBudgetPreflight,
+            onDismissRequest = viewModel::dismissInputBudgetPreflight,
             title = { Text("Gemini input budget") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1490,7 +1490,7 @@ private fun NativeChatDetailPane(
                 }
             },
             confirmButton = {
-                TextButton(onClick = viewModel::dismissGeminiInputBudgetPreflight) {
+                TextButton(onClick = viewModel::dismissInputBudgetPreflight) {
                     Text("Done")
                 }
             },
