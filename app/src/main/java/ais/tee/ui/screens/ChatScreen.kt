@@ -803,19 +803,27 @@ private fun NativeChatDetailPane(
                                         },
                                         modifier = Modifier.testTag("btn_starred_messages")
                                     )
-                                    if (uiState.selectedChatProvider == AiProvider.GEMINI) {
+                                    if (
+                                        uiState.selectedChatProvider == AiProvider.GEMINI ||
+                                        uiState.selectedChatProvider == AiProvider.CLAUDE
+                                    ) {
+                                        val inputBudgetProvider = uiState.selectedChatProvider
                                         DropdownMenuItem(
                                             text = {
                                                 Column {
                                                     Text(
                                                         if (uiState.isInputBudgetPreflightRunning) {
-                                                            "Checking exact input budget…"
+                                                            "Checking input budget…"
                                                         } else {
-                                                            "Check exact input budget"
+                                                            "Check input budget"
                                                         }
                                                     )
                                                     Text(
-                                                        "Gemini countTokens",
+                                                        when (inputBudgetProvider) {
+                                                            AiProvider.GEMINI -> "Gemini countTokens · exact"
+                                                            AiProvider.CLAUDE -> "Claude messages/count_tokens · estimate"
+                                                            else -> ""
+                                                        },
                                                         style = MaterialTheme.typography.labelSmall,
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     )
@@ -836,9 +844,11 @@ private fun NativeChatDetailPane(
                                                 !uiState.isInputBudgetPreflightRunning,
                                             onClick = {
                                                 showChatActionsMenu = false
-                                                viewModel.checkGeminiInputBudget(promptInput)
+                                                viewModel.checkInputBudget(promptInput)
                                             },
-                                            modifier = Modifier.testTag("btn_gemini_input_budget")
+                                            modifier = Modifier.testTag(
+                                                "btn_${inputBudgetProvider.id}_input_budget"
+                                            )
                                         )
                                     }
                                     DropdownMenuItem(
@@ -1459,18 +1469,28 @@ private fun NativeChatDetailPane(
     }
 
     uiState.inputBudgetPreflight?.let { preflight ->
+        val isEstimate = preflight.provider == AiProvider.CLAUDE
+        val remainingLabel = if (isEstimate) "Estimated remaining" else "Remaining"
         val remainingLine = if (preflight.fits) {
-            "Remaining: ${preflight.remainingTokens} tokens"
+            "$remainingLabel: ${preflight.remainingTokens} tokens"
+        } else if (isEstimate) {
+            "Estimated overage: ${-preflight.remainingTokens} tokens"
         } else {
             "Over limit by: ${-preflight.remainingTokens} tokens"
         }
         AlertDialog(
             onDismissRequest = viewModel::dismissInputBudgetPreflight,
-            title = { Text("Gemini input budget") },
+            title = { Text("${preflight.provider.shortName} input budget") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Model: ${preflight.model}")
-                    Text("Exact input: ${preflight.inputTokens} tokens")
+                    Text(
+                        if (isEstimate) {
+                            "Provider estimate: ${preflight.inputTokens} tokens"
+                        } else {
+                            "Exact input: ${preflight.inputTokens} tokens"
+                        }
+                    )
                     Text("Input limit: ${preflight.inputTokenLimit} tokens")
                     Text(
                         text = remainingLine,
@@ -1481,9 +1501,18 @@ private fun NativeChatDetailPane(
                         },
                     )
                     Text(
-                        "Source: Gemini models.countTokens + model metadata. " +
-                            "The counted request includes bounded chat history, the active " +
-                            "system instruction, and enabled native tool declarations.",
+                        when (preflight.provider) {
+                            AiProvider.GEMINI ->
+                                "Source: Gemini models.countTokens + model metadata. " +
+                                    "The counted request includes bounded chat history, the active " +
+                                    "system instruction, and enabled native tool declarations."
+                            AiProvider.CLAUDE ->
+                                "Source: Anthropic messages/count_tokens + model metadata. " +
+                                    "Anthropic documents token counting as an estimate; the request " +
+                                    "includes bounded chat history, the active system instruction, " +
+                                    "reasoning settings, and enabled native tool declarations."
+                            else -> "Source: provider token-count API."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1494,7 +1523,7 @@ private fun NativeChatDetailPane(
                     Text("Done")
                 }
             },
-            modifier = Modifier.testTag("dialog_gemini_input_budget"),
+            modifier = Modifier.testTag("dialog_${preflight.provider.id}_input_budget"),
         )
     }
 
