@@ -6,6 +6,7 @@ import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ClaudeReasoningCapabilities
 import ais.tee.data.model.ModelChatMessage
+import ais.tee.data.model.ProviderInputBudgetPreflight
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -461,7 +462,12 @@ class AiChatServiceTest {
         assertTrue(runCatching { service.parseGeminiCountTokens("{}") }.isFailure)
         assertTrue(runCatching { service.parseGeminiInputTokenLimit("""{"inputTokenLimit":0}""") }.isFailure)
 
-        val result = GeminiInputBudgetPreflight(TEST_GEMINI_MODEL, 900, 1_000)
+        val result = ProviderInputBudgetPreflight(
+            provider = AiProvider.GEMINI,
+            model = TEST_GEMINI_MODEL,
+            inputTokens = 900,
+            inputTokenLimit = 1_000,
+        )
         assertEquals(100, result.remainingTokens)
         assertTrue(result.fits)
         assertEquals(

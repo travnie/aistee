@@ -18,6 +18,7 @@ import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
 import ais.tee.data.model.runtimeCapabilities
 import ais.tee.data.model.ProviderUsage
+import ais.tee.data.model.ProviderInputBudgetPreflight
 import ais.tee.data.model.buildBoundedProviderTextTurns
 import ais.tee.data.model.gatewayModelOptions
 import ais.tee.data.model.Profile
@@ -173,16 +174,6 @@ internal data class GeminiBatchSnapshot(
     val errorMessage: String?,
 )
 
-/** Provider-exact size of one assembled Gemini native-chat input. */
-data class GeminiInputBudgetPreflight(
-    val model: String,
-    val inputTokens: Int,
-    val inputTokenLimit: Int,
-) {
-    val remainingTokens: Int get() = inputTokenLimit - inputTokens
-    val fits: Boolean get() = remainingTokens >= 0
-}
-
 private const val CLAUDE_BATCHES_API_URL = "https://api.anthropic.com/v1/messages/batches"
 /** Aistee batches hold exactly one request, matched in the results by this ID. */
 internal const val CLAUDE_BATCH_CUSTOM_ID = "aistee-job"
@@ -313,7 +304,7 @@ class AiChatService {
         systemInstruction: String?,
         conversationHistory: List<ModelChatMessage>,
         tools: List<NativeToolDefinition>,
-    ): GeminiInputBudgetPreflight = withContext(Dispatchers.IO) {
+    ): ProviderInputBudgetPreflight = withContext(Dispatchers.IO) {
         val normalizedPrompt = prompt.trim()
         val normalizedModel = resolveEffectiveModel(AiProvider.GEMINI, model)
         val normalizedKey = apiKey.trim()
@@ -367,7 +358,8 @@ class AiChatService {
         val inputTokenLimit = parseGeminiInputTokenLimit(
             executeCancellableJson(modelRequest, "Empty Gemini model-metadata response")
         )
-        GeminiInputBudgetPreflight(
+        ProviderInputBudgetPreflight(
+            provider = AiProvider.GEMINI,
             model = normalizedModel,
             inputTokens = inputTokens,
             inputTokenLimit = inputTokenLimit,

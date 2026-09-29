@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import ais.tee.data.engine.AiChatService
-import ais.tee.data.engine.GeminiInputBudgetPreflight
 import ais.tee.data.engine.AsyncJobBackends
 import ais.tee.data.engine.InstructionRenderer
 import ais.tee.data.engine.ActiveSkillChatAnswer
@@ -176,8 +175,8 @@ data class StudioUiState(
     /** Send held back because the chat context does not fit the model; cleared on send or dismiss. */
     val pendingChatContextWarning: PendingChatContextWarning? = null,
     /** Explicit provider-exact Gemini draft preflight; never persisted with the conversation. */
-    val geminiInputBudgetPreflight: GeminiInputBudgetPreflight? = null,
-    val isGeminiInputBudgetPreflightRunning: Boolean = false,
+    val geminiInputBudgetPreflight: ProviderInputBudgetPreflight? = null,
+    val isProviderInputBudgetPreflightRunning: Boolean = false,
     /** Model-initiated skill call waiting for Allow/Deny; cleared when answered or the reply stops. */
     val pendingActiveSkillPrompt: PendingActiveSkillPrompt? = null,
 ) {
@@ -1747,7 +1746,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (
             !origin.isNativeConversationStoreReady ||
             origin.isChatGenerating ||
-            origin.isGeminiInputBudgetPreflightRunning ||
+            origin.isProviderInputBudgetPreflightRunning ||
             trimmed.isBlank() ||
             origin.selectedChatProvider != AiProvider.GEMINI
         ) return false
@@ -1761,7 +1760,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
         _uiState.update {
             it.copy(
-                isGeminiInputBudgetPreflightRunning = true,
+                isProviderInputBudgetPreflightRunning = true,
                 geminiInputBudgetPreflight = null,
             )
         }
@@ -1794,6 +1793,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 // happened during disk access cannot publish a count for an older request shape.
                 val latest = _uiState.value
                 val stateStillMatches =
+                    !latest.isChatGenerating &&
                     isSameChatTarget(current, latest) &&
                         latest.nativeChatDraft == current.nativeChatDraft &&
                         latest.chatMessages == current.chatMessages &&
@@ -1809,6 +1809,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 ) {
                     _uiState.update { state ->
                         if (
+                            !state.isChatGenerating &&
                             isSameChatTarget(latest, state) &&
                             state.nativeChatDraft == latest.nativeChatDraft &&
                             state.chatMessages == latest.chatMessages &&
@@ -1831,13 +1832,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             } catch (error: Exception) {
                 showSnackbar(error.message ?: "Could not check the Gemini input budget.")
             } finally {
-                _uiState.update { it.copy(isGeminiInputBudgetPreflightRunning = false) }
+                _uiState.update { it.copy(isProviderInputBudgetPreflightRunning = false) }
             }
         }
         return true
     }
 
-    fun dismissGeminiInputBudgetPreflight() {
+    fun dismissProviderInputBudgetPreflight() {
         _uiState.update { it.copy(geminiInputBudgetPreflight = null) }
     }
 
@@ -1956,7 +1957,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update {
             it.copy(
                 isChatGenerating = true,
-                activeGeneratingProviders = emptySet()
+                activeGeneratingProviders = emptySet(),
+                geminiInputBudgetPreflight = null,
             )
         }
 
