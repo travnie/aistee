@@ -1765,11 +1765,37 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
                 val currentPromptContext = prepareNativeChatPromptContext(current) ?: return@launch
                 val currentToolDefinitions = prepareGeminiInputBudgetToolDefinitions(current)
+
+                // Both reads above can suspend. Re-read the UI state after them so a change that
+                // happened during disk access cannot publish a count for an older request shape.
+                val latest = _uiState.value
+                val stateStillMatches =
+                    isSameChatTarget(current, latest) &&
+                        latest.nativeChatDraft == current.nativeChatDraft &&
+                        latest.chatMessages == current.chatMessages &&
+                        latest.includeSystemProfileInChat == current.includeSystemProfileInChat &&
+                        latest.renderedInstructions == current.renderedInstructions &&
+                        latest.activeNativeConversation?.projectId ==
+                            current.activeNativeConversation?.projectId &&
+                        latest.isActiveConversationIncognito == current.isActiveConversationIncognito
                 if (
+                    stateStillMatches &&
                     currentPromptContext.systemPrompt == promptContext.systemPrompt &&
                     currentToolDefinitions == toolDefinitions
                 ) {
-                    _uiState.update { it.copy(geminiInputBudgetPreflight = result) }
+                    _uiState.update { state ->
+                        if (
+                            isSameChatTarget(latest, state) &&
+                            state.nativeChatDraft == latest.nativeChatDraft &&
+                            state.chatMessages == latest.chatMessages &&
+                            state.includeSystemProfileInChat == latest.includeSystemProfileInChat &&
+                            state.renderedInstructions == latest.renderedInstructions
+                        ) {
+                            state.copy(geminiInputBudgetPreflight = result)
+                        } else {
+                            state
+                        }
+                    }
                 } else {
                     showSnackbar("The chat context or enabled tools changed. Check the input budget again.")
                 }
