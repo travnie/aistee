@@ -1743,21 +1743,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 val promptContext = prepareNativeChatPromptContext(origin) ?: return@launch
-                val activeProjectId = origin.activeNativeConversation?.projectId ?: DEFAULT_PROJECT_ID
-                val benchTools = NativeBenchChatTools(
-                    context = getApplication(),
-                    projectId = activeProjectId,
-                )
-                val skillTools = if (!origin.isActiveConversationIncognito) {
-                    NativeActiveSkillChatTools(
-                        getApplication(),
-                        localSkillStore,
-                        ask = { _, _ -> ActiveSkillChatAnswer.Declined },
-                    )
-                } else {
-                    null
-                }
-                val toolDefinitions = benchTools.definitions() + skillTools?.definitions().orEmpty()
+                val toolDefinitions = prepareGeminiInputBudgetToolDefinitions(origin)
                 val result = aiChatService.countGeminiInputBudget(
                     prompt = trimmed,
                     model = origin.selectedChatModel,
@@ -1767,10 +1753,24 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     tools = toolDefinitions,
                 )
                 val current = _uiState.value
-                if (isSameChatTarget(origin, current) && current.nativeChatDraft.trim() == trimmed) {
+                val sameConversationInput =
+                    isSameChatTarget(origin, current) &&
+                        current.nativeChatDraft.trim() == trimmed &&
+                        current.chatMessages == origin.chatMessages
+                if (!sameConversationInput) {
+                    showSnackbar("The chat, model, or draft changed. Check the input budget again.")
+                    return@launch
+                }
+
+                val currentPromptContext = prepareNativeChatPromptContext(current) ?: return@launch
+                val currentToolDefinitions = prepareGeminiInputBudgetToolDefinitions(current)
+                if (
+                    currentPromptContext.systemPrompt == promptContext.systemPrompt &&
+                    currentToolDefinitions == toolDefinitions
+                ) {
                     _uiState.update { it.copy(geminiInputBudgetPreflight = result) }
                 } else {
-                    showSnackbar("The chat, model, or draft changed. Check the input budget again.")
+                    showSnackbar("The chat context or enabled tools changed. Check the input budget again.")
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -1785,6 +1785,26 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun dismissGeminiInputBudgetPreflight() {
         _uiState.update { it.copy(geminiInputBudgetPreflight = null) }
+    }
+
+    private suspend fun prepareGeminiInputBudgetToolDefinitions(
+        state: StudioUiState,
+    ): List<NativeToolDefinition> {
+        val activeProjectId = state.activeNativeConversation?.projectId ?: DEFAULT_PROJECT_ID
+        val benchTools = NativeBenchChatTools(
+            context = getApplication(),
+            projectId = activeProjectId,
+        )
+        val skillTools = if (!state.isActiveConversationIncognito) {
+            NativeActiveSkillChatTools(
+                getApplication(),
+                localSkillStore,
+                ask = { _, _ -> ActiveSkillChatAnswer.Declined },
+            )
+        } else {
+            null
+        }
+        return benchTools.definitions() + skillTools?.definitions().orEmpty()
     }
 
     /** Sends the prompt held back by the context warning without checking the budget again. */
