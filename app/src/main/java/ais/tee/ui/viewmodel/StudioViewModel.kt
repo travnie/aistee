@@ -1789,7 +1789,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             state.nativeChatDraft == latest.nativeChatDraft &&
                             state.chatMessages == latest.chatMessages &&
                             state.includeSystemProfileInChat == latest.includeSystemProfileInChat &&
-                            state.renderedInstructions == latest.renderedInstructions
+                            state.renderedInstructions == latest.renderedInstructions &&
+                            state.activeNativeConversation?.projectId ==
+                                latest.activeNativeConversation?.projectId &&
+                            state.isActiveConversationIncognito == latest.isActiveConversationIncognito
                         ) {
                             state.copy(geminiInputBudgetPreflight = result)
                         } else {
