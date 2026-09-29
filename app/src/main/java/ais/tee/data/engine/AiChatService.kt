@@ -329,7 +329,11 @@ class AiChatService {
                 systemInstruction = systemInstruction,
             ),
             systemInstruction = systemInstruction,
-            toolDefinitions = buildGeminiToolDefinitions(tools),
+            toolDefinitions = if (tools.isEmpty()) {
+                JsonArray(emptyList())
+            } else {
+                buildGeminiToolDefinitions(tools)
+            },
         )
         val countRequest = Request.Builder()
             .url(
