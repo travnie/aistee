@@ -1724,33 +1724,62 @@ class AiChatService {
         }
     }
 
+    private suspend fun fetchClaudeMetadata(
+        model: String,
+        apiKey: String,
+    ): ClaudeRuntimeMetadata {
+        val request = buildClaudeModelMetadataRequest(model, apiKey)
+        val responseBody = executeCancellableJson(
+            request,
+            httpErrorContext = "Anthropic model metadata",
+            client = claudeMetadataHttpClient
+        )
+        val resolvedModel = parseClaudeModelId(responseBody) ?: model
+        return rememberClaudeMetadata(
+            requestedModel = model,
+            resolvedModel = resolvedModel,
+            apiKey = apiKey,
+            reportedMaxTokens = parseClaudeModelMaxTokens(responseBody),
+            reportedMaxInputTokens = parseClaudeModelMaxInputTokens(responseBody),
+            reportedReasoning = parseClaudeReasoningCapabilities(responseBody)
+        )
+    }
+
     private suspend fun resolveClaudeMetadata(model: String, apiKey: String): ClaudeRuntimeMetadata {
         readClaudeMetadataCache(model, apiKey)?.let { return it }
         claudeMetadataMutex.lock()
         try {
             readClaudeMetadataCache(model, apiKey)?.let { return it }
             return try {
-                val request = buildClaudeModelMetadataRequest(model, apiKey)
-                val responseBody = executeCancellableJson(
-                    request,
-                    httpErrorContext = "Anthropic model metadata",
-                    client = claudeMetadataHttpClient
-                )
-                val resolvedModel = parseClaudeModelId(responseBody) ?: model
-                rememberClaudeMetadata(
-                    requestedModel = model,
-                    resolvedModel = resolvedModel,
-                    apiKey = apiKey,
-                    reportedMaxTokens = parseClaudeModelMaxTokens(responseBody),
-                    reportedMaxInputTokens = parseClaudeModelMaxInputTokens(responseBody),
-                    reportedReasoning = parseClaudeReasoningCapabilities(responseBody)
-                )
+                fetchClaudeMetadata(model, apiKey)
             } catch (_: IOException) {
                 rememberClaudeMetadataFailure(model, apiKey)
             }
         } finally {
             claudeMetadataMutex.unlock()
         }
+    }
+
+    /**
+     * Input preflight cannot use the short-lived generation fallback because it has no verified
+     * input limit. Retry metadata once immediately; transport failures stay distinct from a model
+     * response that genuinely omits max_input_tokens.
+     */
+    private suspend fun resolveClaudeInputBudgetMetadata(
+        model: String,
+        apiKey: String,
+    ): ClaudeRuntimeMetadata {
+        val metadata = resolveClaudeMetadata(model, apiKey)
+        if (metadata.maxInputTokens != null) return metadata
+
+        invalidateClaudeMetadata(apiKey, model, metadata.resolvedModel)
+        val refreshed = fetchClaudeMetadata(model, apiKey)
+        if (refreshed.maxInputTokens == null) {
+            throw IOException(
+                "Anthropic model metadata for ${refreshed.resolvedModel} does not report max_input_tokens"
+            )
+        }
+        return refreshed
     }
 
     internal fun buildClaudeInputPayload(
@@ -1827,9 +1856,8 @@ class AiChatService {
         require(normalizedPrompt.isNotEmpty()) { "Claude prompt is required" }
         require(normalizedKey.isNotEmpty()) { "Claude API key is required" }
 
-        val metadata = resolveClaudeMetadata(normalizedModel, normalizedKey)
-        val inputTokenLimit = metadata.maxInputTokens
-            ?: throw IOException("Anthropic model metadata is missing max_input_tokens")
+        val metadata = resolveClaudeInputBudgetMetadata(normalizedModel, normalizedKey)
+        val inputTokenLimit = checkNotNull(metadata.maxInputTokens)
         val messages = buildClaudeMessages(
             prompt = normalizedPrompt,
             conversationHistory = conversationHistory,
