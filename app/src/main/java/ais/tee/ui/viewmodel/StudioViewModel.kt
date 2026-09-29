@@ -1766,8 +1766,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     conversationHistory = origin.chatMessages,
                     tools = toolDefinitions,
                 )
-                if (isSameChatTarget(origin, _uiState.value)) {
+                val current = _uiState.value
+                if (isSameChatTarget(origin, current) && current.nativeChatDraft.trim() == trimmed) {
                     _uiState.update { it.copy(geminiInputBudgetPreflight = result) }
+                } else {
+                    showSnackbar("The chat, model, or draft changed. Check the input budget again.")
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
