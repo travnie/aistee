@@ -1,7 +1,8 @@
 package ais.tee.data.model
 
 /**
- * Provider-exact size of one assembled native-chat input and the selected model's input limit.
+ * Provider-reported size of one assembled native-chat input and the selected model's input limit.
+ * Accuracy follows each provider's counting contract; some providers explicitly return estimates.
  *
  * Transport-specific counting stays in the platform module; these budget semantics are portable.
  */
