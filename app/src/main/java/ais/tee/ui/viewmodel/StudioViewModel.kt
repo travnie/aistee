@@ -568,7 +568,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             conversation
                         }
                     }
-                )
+                ),
+                inputBudgetPreflight = null,
             )
         }
         persistNativeChat()
