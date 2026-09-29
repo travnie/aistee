@@ -420,7 +420,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             val persisted = state.nativeChat.withoutIncognito(state.incognitoConversationId)
             val refreshed = nativeChatWriter.enqueue(persisted, nativePersistenceBase)
             val visible = refreshed.withIncognitoFrom(state.nativeChat, state.incognitoConversationId)
-            if (_uiState.compareAndSet(state, state.copy(nativeChat = visible))) {
+            if (
+                _uiState.compareAndSet(
+                    state,
+                    state.copy(
+                        nativeChat = visible,
+                        geminiInputBudgetPreflight = null,
+                    )
+                )
+            ) {
                 nativePersistenceBase = refreshed
             } else {
                 nativePersistenceBase = persisted
@@ -902,7 +910,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         transform: (NativeChatConversation) -> NativeChatConversation
     ) {
         _uiState.update { state ->
-            state.copy(nativeChat = state.nativeChat.updateActiveConversation(transform))
+            state.copy(
+                nativeChat = state.nativeChat.updateActiveConversation(transform),
+                geminiInputBudgetPreflight = null,
+            )
         }
         if (persist) persistNativeChat()
     }
@@ -1149,7 +1160,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 nativeChat = state.nativeChat.copy(
                     activeConversationId = conversation.id,
                     conversations = listOf(conversation) + state.nativeChat.conversations,
-                )
+                ),
+                geminiInputBudgetPreflight = null,
             )
         }
         persistNativeChat()
@@ -1177,7 +1189,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     nativeChat = current.nativeChat.copy(
                         activeConversationId = conversation.id,
                         conversations = listOf(conversation) + current.nativeChat.conversations
-                    )
+                    ),
+                    geminiInputBudgetPreflight = null,
                 )
             }
         }
@@ -1205,7 +1218,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 nativeChat = current.nativeChat.copy(
                     activeConversationId = branch.id,
                     conversations = listOf(branch) + current.nativeChat.conversations
-                )
+                ),
+                geminiInputBudgetPreflight = null,
             )
         }
         persistNativeChat()
@@ -1233,7 +1247,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         activeConversationId = conversation.id,
                         conversations = listOf(conversation) + current.nativeChat.conversations
                     ),
-                    incognitoConversationId = conversation.id
+                    incognitoConversationId = conversation.id,
+                    geminiInputBudgetPreflight = null,
                 )
             }
         }
@@ -1242,7 +1257,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     /** Explicit conversion: the incognito chat becomes a normal, persisted conversation. */
     fun saveIncognitoAsNormalConversation() {
         if (_uiState.value.incognitoConversationId == null) return
-        _uiState.update { it.copy(incognitoConversationId = null) }
+        _uiState.update {
+            it.copy(
+                incognitoConversationId = null,
+                geminiInputBudgetPreflight = null,
+            )
+        }
         persistNativeChat()
         showSnackbar("Saved as a normal chat.")
     }
@@ -1258,7 +1278,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             } else {
                 current.withoutIncognitoConversation()
             }
-            remaining.copy(nativeChat = remaining.nativeChat.copy(activeConversationId = conversationId))
+            remaining.copy(
+                nativeChat = remaining.nativeChat.copy(activeConversationId = conversationId),
+                geminiInputBudgetPreflight = null,
+            )
         }
         persistNativeChat()
         publishNativeConversationShortcut(conversationId)
@@ -1287,7 +1310,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 nativeChat = current.nativeChat.copy(
                     activeConversationId = activeId,
                     conversations = conversations
-                )
+                ),
+                geminiInputBudgetPreflight = null,
             )
         }
         persistNativeChat()

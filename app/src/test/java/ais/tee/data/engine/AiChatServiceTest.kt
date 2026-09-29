@@ -464,6 +464,18 @@ class AiChatServiceTest {
         val result = GeminiInputBudgetPreflight(TEST_GEMINI_MODEL, 900, 1_000)
         assertEquals(100, result.remainingTokens)
         assertTrue(result.fits)
+        assertEquals(
+            AiProvider.GEMINI.defaultModel,
+            service.resolveEffectiveModel(AiProvider.GEMINI, "all")
+        )
+        assertEquals(
+            AiProvider.GEMINI.defaultModel,
+            service.resolveEffectiveModel(AiProvider.GEMINI, "   ")
+        )
+        assertEquals(
+            TEST_GEMINI_MODEL,
+            service.resolveEffectiveModel(AiProvider.GEMINI, "  $TEST_GEMINI_MODEL  ")
+        )
     }
 
     @Test

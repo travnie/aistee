@@ -315,7 +315,7 @@ class AiChatService {
         tools: List<NativeToolDefinition>,
     ): GeminiInputBudgetPreflight = withContext(Dispatchers.IO) {
         val normalizedPrompt = prompt.trim()
-        val normalizedModel = model.trim()
+        val normalizedModel = resolveEffectiveModel(AiProvider.GEMINI, model)
         val normalizedKey = apiKey.trim()
         require(normalizedPrompt.isNotEmpty()) { "Gemini prompt is required" }
         require(normalizedModel.isNotEmpty()) { "Gemini model is required" }
@@ -989,6 +989,11 @@ class AiChatService {
 
     private fun bearerToken(apiKey: String): String = "Bearer $apiKey"
 
+    internal fun resolveEffectiveModel(provider: AiProvider, modelName: String): String {
+        val normalized = modelName.trim()
+        return if (normalized.isEmpty() || normalized == "all") provider.defaultModel else normalized
+    }
+
     suspend fun generateResponse(
         prompt: String,
         provider: AiProvider,
@@ -1012,7 +1017,7 @@ class AiChatService {
             }
         }
         val startTime = System.currentTimeMillis()
-        val effectiveModel = if (modelName == "all" || modelName.isBlank()) provider.defaultModel else modelName
+        val effectiveModel = resolveEffectiveModel(provider, modelName)
         var resolvedModel = effectiveModel
         var providerReplayState: String? = null
         var providerUsage: ProviderUsage? = null
