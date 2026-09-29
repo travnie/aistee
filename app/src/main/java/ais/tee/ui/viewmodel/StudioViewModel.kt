@@ -53,6 +53,7 @@ import ais.tee.notifications.nativeChatConversationIdForShortcut
 import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.widget.NativeChatWidgetUpdater
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
