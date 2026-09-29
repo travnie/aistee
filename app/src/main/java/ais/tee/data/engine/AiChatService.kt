@@ -89,6 +89,7 @@ private const val JSON_FINISH_REASON_KEY = "finish_reason"
 private const val JSON_SYSTEM_KEY = "system"
 private const val JSON_MESSAGES_KEY = "messages"
 private const val JSON_MAX_TOKENS_KEY = "max_tokens"
+private const val JSON_MAX_INPUT_TOKENS_KEY = "max_input_tokens"
 private const val JSON_STOP_REASON_KEY = "stop_reason"
 private const val JSON_STORE_KEY = "store"
 private const val JSON_STREAM_KEY = "stream"
@@ -144,6 +145,7 @@ private const val CLAUDE_STOP_MAX_TOKENS = "max_tokens"
 private const val CLAUDE_STOP_CONTEXT_WINDOW_EXCEEDED = "model_context_window_exceeded"
 private const val MALFORMED_STREAM_EVENT = "Malformed streaming event"
 private const val CLAUDE_MESSAGES_API_URL = "https://api.anthropic.com/v1/messages"
+private const val CLAUDE_COUNT_TOKENS_API_URL = "$CLAUDE_MESSAGES_API_URL/count_tokens"
 private const val CLAUDE_MODELS_API_URL = "https://api.anthropic.com/v1/models"
 private const val CLAUDE_MAX_TOKENS_COMPAT_FALLBACK = 2048
 private const val HEADER_ANTHROPIC_API_KEY = "x-api-key"
@@ -227,6 +229,7 @@ class AiChatService {
 
     internal data class ClaudeRuntimeMetadata(
         val maxTokens: Int,
+        val maxInputTokens: Int?,
         val reasoningCapabilities: ClaudeReasoningCapabilities,
         val resolvedModel: String
     )
@@ -1621,6 +1624,16 @@ class AiChatService {
         json.parseToJsonElement(rawJson).jsonObject[JSON_MAX_TOKENS_KEY]?.jsonPrimitive?.intOrNull
     }.getOrNull()?.takeIf { it > 0 }
 
+    internal fun parseClaudeModelMaxInputTokens(rawJson: String): Int? = runCatching {
+        json.parseToJsonElement(rawJson).jsonObject[JSON_MAX_INPUT_TOKENS_KEY]?.jsonPrimitive?.intOrNull
+    }.getOrNull()?.takeIf { it > 0 }
+
+    internal fun parseClaudeCountTokens(rawJson: String): Int =
+        json.parseToJsonElement(rawJson).jsonObject[JSON_INPUT_TOKENS_KEY]
+            ?.jsonPrimitive?.intOrNull
+            ?.takeIf { it >= 0 }
+            ?: throw IOException("Claude token-count response is missing input_tokens")
+
     internal fun buildClaudeModelMetadataRequest(
         model: String,
         apiKey: String
@@ -1663,15 +1676,18 @@ class AiChatService {
         resolvedModel: String,
         apiKey: String,
         reportedMaxTokens: Int?,
+        reportedMaxInputTokens: Int?,
         reportedReasoning: ClaudeReasoningCapabilities?,
         nowMillis: Long = System.currentTimeMillis()
     ): ClaudeRuntimeMetadata {
         val metadata = ClaudeRuntimeMetadata(
             maxTokens = reportedMaxTokens?.takeIf { it > 0 } ?: CLAUDE_MAX_TOKENS_COMPAT_FALLBACK,
+            maxInputTokens = reportedMaxInputTokens?.takeIf { it > 0 },
             reasoningCapabilities = reportedReasoning ?: ClaudeReasoningCapabilities(),
             resolvedModel = resolvedModel
         )
-        val metadataIncomplete = reportedMaxTokens == null || reportedReasoning == null
+        val metadataIncomplete =
+            reportedMaxTokens == null || reportedMaxInputTokens == null || reportedReasoning == null
         val concreteExpiry = if (metadataIncomplete) nowMillis + CLAUDE_METADATA_FAILURE_TTL_MILLIS else null
         claudeMetadataByModelAndCredential[claudeMetadataCacheKey(resolvedModel, apiKey)] =
             ClaudeMetadataCacheEntry(metadata, concreteExpiry)
@@ -1693,6 +1709,7 @@ class AiChatService {
     ): ClaudeRuntimeMetadata {
         val metadata = ClaudeRuntimeMetadata(
             maxTokens = CLAUDE_MAX_TOKENS_COMPAT_FALLBACK,
+            maxInputTokens = null,
             reasoningCapabilities = ClaudeReasoningCapabilities(),
             resolvedModel = model
         )
@@ -1725,6 +1742,7 @@ class AiChatService {
                     resolvedModel = resolvedModel,
                     apiKey = apiKey,
                     reportedMaxTokens = parseClaudeModelMaxTokens(responseBody),
+                    reportedMaxInputTokens = parseClaudeModelMaxInputTokens(responseBody),
                     reportedReasoning = parseClaudeReasoningCapabilities(responseBody)
                 )
             } catch (_: IOException) {
@@ -1735,17 +1753,15 @@ class AiChatService {
         }
     }
 
-    internal fun buildClaudeRequestPayload(
+    internal fun buildClaudeInputPayload(
         model: String,
         maxTokens: Int,
-        stream: Boolean,
         systemInstruction: String?,
         messages: JsonArray,
-        reasoningCapabilities: ClaudeReasoningCapabilities
+        reasoningCapabilities: ClaudeReasoningCapabilities,
+        toolDefinitions: JsonArray = JsonArray(emptyList()),
     ): JsonObject = buildJsonObject {
         put(JSON_MODEL_KEY, model)
-        put(JSON_MAX_TOKENS_KEY, maxTokens)
-        if (stream) put(JSON_STREAM_KEY, true)
         if (!systemInstruction.isNullOrBlank()) put(JSON_SYSTEM_KEY, systemInstruction)
         when {
             reasoningCapabilities.supportsAdaptive -> {
@@ -1765,7 +1781,90 @@ class AiChatService {
                 }
             }
         }
+        if (toolDefinitions.isNotEmpty()) put("tools", toolDefinitions)
         put(JSON_MESSAGES_KEY, messages)
+    }
+
+    internal fun buildClaudeRequestPayload(
+        model: String,
+        maxTokens: Int,
+        stream: Boolean,
+        systemInstruction: String?,
+        messages: JsonArray,
+        reasoningCapabilities: ClaudeReasoningCapabilities,
+        toolDefinitions: JsonArray = JsonArray(emptyList()),
+    ): JsonObject {
+        val inputPayload = buildClaudeInputPayload(
+            model = model,
+            maxTokens = maxTokens,
+            systemInstruction = systemInstruction,
+            messages = messages,
+            reasoningCapabilities = reasoningCapabilities,
+            toolDefinitions = toolDefinitions,
+        )
+        return buildJsonObject {
+            inputPayload.forEach { (key, value) -> put(key, value) }
+            put(JSON_MAX_TOKENS_KEY, maxTokens)
+            if (stream) put(JSON_STREAM_KEY, true)
+        }
+    }
+
+    /**
+     * Deliberate Anthropic token-count request for the same provider input assembled by Send.
+     * Anthropic documents this count as an estimate, so callers must not label it exact.
+     */
+    internal suspend fun countClaudeInputBudget(
+        prompt: String,
+        model: String,
+        apiKey: String,
+        systemInstruction: String?,
+        conversationHistory: List<ModelChatMessage>,
+        tools: List<NativeToolDefinition>,
+    ): ProviderInputBudgetPreflight = withContext(Dispatchers.IO) {
+        val normalizedPrompt = prompt.trim()
+        val normalizedModel = resolveEffectiveModel(AiProvider.CLAUDE, model)
+        val normalizedKey = apiKey.trim()
+        require(normalizedPrompt.isNotEmpty()) { "Claude prompt is required" }
+        require(normalizedKey.isNotEmpty()) { "Claude API key is required" }
+
+        val metadata = resolveClaudeMetadata(normalizedModel, normalizedKey)
+        val inputTokenLimit = metadata.maxInputTokens
+            ?: throw IOException("Anthropic model metadata is missing max_input_tokens")
+        val messages = buildClaudeMessages(
+            prompt = normalizedPrompt,
+            conversationHistory = conversationHistory,
+            systemInstruction = systemInstruction,
+            modelName = metadata.resolvedModel,
+        )
+        val toolDefinitions = if (tools.isEmpty()) {
+            JsonArray(emptyList())
+        } else {
+            buildClaudeToolDefinitions(tools)
+        }
+        val requestPayload = buildClaudeInputPayload(
+            model = metadata.resolvedModel,
+            maxTokens = metadata.maxTokens,
+            systemInstruction = systemInstruction,
+            messages = messages,
+            reasoningCapabilities = metadata.reasoningCapabilities,
+            toolDefinitions = toolDefinitions,
+        )
+        val request = Request.Builder()
+            .url(CLAUDE_COUNT_TOKENS_API_URL)
+            .addHeader(HEADER_ANTHROPIC_API_KEY, normalizedKey)
+            .addHeader(HEADER_ANTHROPIC_VERSION, ANTHROPIC_API_VERSION)
+            .addHeader(HEADER_CONTENT_TYPE_LOWER, JSON_MEDIA_TYPE)
+            .post(requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
+            .build()
+        val inputTokens = parseClaudeCountTokens(
+            executeCancellableJson(request, "Empty Anthropic token-count response")
+        )
+        ProviderInputBudgetPreflight(
+            provider = AiProvider.CLAUDE,
+            model = metadata.resolvedModel,
+            inputTokens = inputTokens,
+            inputTokenLimit = inputTokenLimit,
+        )
     }
 
     // --- Anthropic Claude REST API ---
@@ -1831,15 +1930,15 @@ class AiChatService {
         var resolvedModel = metadata.resolvedModel
 
         repeat(MAX_NATIVE_TOOL_ROUNDS) { round ->
-            val basePayload = buildClaudeRequestPayload(
+            val requestPayload = buildClaudeRequestPayload(
                 model = resolvedModel,
                 maxTokens = metadata.maxTokens,
                 stream = false,
                 systemInstruction = systemInstruction,
                 messages = JsonArray(messages),
                 reasoningCapabilities = metadata.reasoningCapabilities,
+                toolDefinitions = toolDefinitions,
             )
-            val requestPayload = JsonObject(basePayload + ("tools" to toolDefinitions))
             val request = Request.Builder()
                 .url(CLAUDE_MESSAGES_API_URL)
                 .addHeader(HEADER_ANTHROPIC_API_KEY, apiKey)
