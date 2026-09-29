@@ -20,6 +20,12 @@ fun mergeNativeChatChanges(
             selectedModel = if (edited.selectedModel != original.selectedModel) edited.selectedModel else latest.selectedModel,
             includeSystemProfile = if (edited.includeSystemProfile != original.includeSystemProfile) edited.includeSystemProfile else latest.includeSystemProfile,
             projectId = if (edited.projectId != original.projectId) edited.projectId else latest.projectId,
+            forkedFrom = if (edited.forkedFrom != original.forkedFrom) edited.forkedFrom else latest.forkedFrom,
+            starredMessageIds = if (edited.starredMessageIds != original.starredMessageIds) {
+                edited.starredMessageIds
+            } else {
+                latest.starredMessageIds
+            },
             updatedAtEpochMs = maxOf(edited.updatedAtEpochMs, latest.updatedAtEpochMs),
             replyEpoch = maxOf(edited.replyEpoch, latest.replyEpoch),
             messages = when {

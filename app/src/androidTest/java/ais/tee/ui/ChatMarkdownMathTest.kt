@@ -3,7 +3,9 @@ package ais.tee.ui
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasAnyAncestor
@@ -11,6 +13,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import ais.tee.data.document.parseChatMarkdown
 import ais.tee.ui.screens.ChatMarkdownContent
 import ais.tee.ui.screens.prepareChatMarkdown
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,5 +36,18 @@ class ChatMarkdownMathTest {
         composeRule.onNodeWithText("Euler: eiπ+1=0 costs \$5.").assertIsDisplayed()
         composeRule.onNode(hasText("a/b≤√2") and hasAnyAncestor(hasTestTag("chat_markdown_math"))).assertIsDisplayed()
         composeRule.onNodeWithText("\\begin{pmatrix}1\\end{pmatrix}").assertIsDisplayed()
+    }
+
+    @Test
+    fun displayMathCopiesItsTexSource() {
+        val markdown = prepareChatMarkdown(checkNotNull(parseChatMarkdown("\$\$\\frac{a}{b}\$\$")))
+        val copied = mutableListOf<String>()
+        composeRule.setContent {
+            ChatMarkdownContent(markdown = markdown, color = Color.Black, onCopySource = { copied += it })
+        }
+
+        composeRule.onNodeWithTag("btn_copy_math_tex").performClick()
+
+        assertEquals(listOf("\\frac{a}{b}"), copied)
     }
 }

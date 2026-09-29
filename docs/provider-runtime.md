@@ -92,7 +92,7 @@ OpenAI background execution still requires temporary provider-side response stor
 
 **Claude Message Batches** use the same job model. Each Aistee batch holds one request (fixed `custom_id`). The request params come from the normal Claude request builder, so model limits and thinking settings match chat. Polling uses its own WorkManager work with exponential backoff that covers the 24-hour batch window. Results are read from the fixed `/v1/messages/batches/{id}/results` path, never from a URL in a response, so the API key only goes to `api.anthropic.com`. Batches cost half the normal price; Anthropic keeps batch requests and results for 29 days, and Jobs says so before starting.
 
-Gemini Batch should reuse the same durable job model and Project Library result boundary rather than adding provider-specific pseudo-chat state.
+**Gemini Batch** uses the same durable Jobs and Project Library boundary with one inline `GenerateContent` request per Aistee job. It is priced at 50% of the equivalent standard interactive request and targets completion within 24 hours; pending/running jobs can expire after 48 hours. Aistee polls only the fixed `batches/{id}` resource on `generativelanguage.googleapis.com`, supports best-effort provider cancellation, and saves successful text to Project Library. Google keeps completed batch results available for 6 weeks by default.
 
 ## Usage and comparison metadata
 

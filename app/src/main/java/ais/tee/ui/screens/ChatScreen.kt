@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -38,16 +39,32 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.TextToolbar
+import androidx.compose.ui.platform.TextToolbarStatus
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -70,6 +87,14 @@ import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatConversation
 import ais.tee.data.model.ProjectLibraryArchive
 import ais.tee.data.model.ProjectLibraryAsset
+import ais.tee.data.model.NativeChatTimelineMarker
+import ais.tee.data.model.canBeStarred
+import ais.tee.data.model.nativeChatTimeline
+import ais.tee.data.model.quoteIntoNativeChatDraft
+import ais.tee.data.model.spreadTimelineOffsets
+import ais.tee.data.model.thinNativeChatTimeline
+import ais.tee.data.model.canStartNativeChatFork
+import ais.tee.data.model.starredMessages
 import ais.tee.data.model.renderChatMarkdown
 import ais.tee.data.model.isCompletedAssistantResponse
 import ais.tee.data.model.supportedApiProcessingModes
@@ -260,6 +285,15 @@ private fun NativeChatDetailPane(
         MarkdownWorkspaceRecoveryStore(context.noBackupFilesDir)
     }
     val promptInput = uiState.nativeChatDraft
+    // Tracks the caret for the user's own edits; when the draft changes elsewhere (a quote, an
+    // imported draft, another chat), the caret moves to the end so typing continues below it.
+    // Keyed by chat so switching to a chat with an identical draft does not inherit the caret.
+    var composerEdit by remember(uiState.activeNativeConversation?.id) { mutableStateOf(TextFieldValue()) }
+    val composerValue = if (composerEdit.text == promptInput) {
+        composerEdit
+    } else {
+        TextFieldValue(promptInput, TextRange(promptInput.length))
+    }
     var showModelMenu by remember { mutableStateOf(false) }
     var showApiModeMenu by remember { mutableStateOf(false) }
     var showChatActionsMenu by remember { mutableStateOf(false) }
@@ -304,6 +338,9 @@ private fun NativeChatDetailPane(
         }
     }
     var viewingTable by remember { mutableStateOf<MarkdownTable?>(null) }
+    // Keyed by chat so a quote can never land in a different conversation's draft.
+    var selectingMessage by remember(uiState.activeNativeConversation?.id) { mutableStateOf<ModelChatMessage?>(null) }
+    var showStarredMessages by remember { mutableStateOf(false) }
     var pendingCsvExport by remember { mutableStateOf<String?>(null) }
 
     val csvExportLauncher = rememberLauncherForActivityResult(
@@ -421,6 +458,25 @@ private fun NativeChatDetailPane(
     }
 
     val isIncognito = uiState.isActiveConversationIncognito
+    val canBranchNativeChat =
+        !isIncognito && !uiState.isChatGenerating && uiState.isNativeConversationStoreReady
+    val starredMessageIds = uiState.activeNativeConversation?.starredMessageIds.orEmpty().toSet()
+    val starredMessages = uiState.activeNativeConversation?.starredMessages.orEmpty()
+    val starredIdList = uiState.activeNativeConversation?.starredMessageIds.orEmpty()
+    // Streaming only appends text to the newest reply in place, which never changes marker positions
+    // or user-turn previews, so key on list shape instead of the text-bearing message list.
+    val timelineMessages = uiState.chatMessages
+    val timelineMarkers = remember(
+        uiState.activeNativeConversation?.id,
+        timelineMessages.size,
+        timelineMessages.lastOrNull()?.id,
+        starredIdList,
+    ) {
+        nativeChatTimeline(timelineMessages, starredIdList)
+    }
+    val timelineUserTurns = remember(timelineMarkers) {
+        timelineMessages.count { it.sender == CHAT_ROLE_USER }
+    }
     val canOpenChatAsMarkdown =
         !isIncognito &&
             !uiState.isChatGenerating &&
@@ -505,6 +561,45 @@ private fun NativeChatDetailPane(
                 }
             },
             onDismiss = { showProjectLibrary = false },
+        )
+    }
+
+    if (showStarredMessages) {
+        StarredMessagesDialog(
+            messages = starredMessages,
+            onJump = { message ->
+                showStarredMessages = false
+                val index = uiState.chatMessages.indexOfFirst { it.id == message.id }
+                if (index >= 0) scope.launch { listState.animateScrollToItem(index) }
+            },
+            onDismiss = { showStarredMessages = false },
+        )
+    }
+
+    selectingMessage?.let { selected ->
+        SelectMessageTextDialog(
+            messageId = selected.id,
+            text = selected.text,
+            onDismiss = { selectingMessage = null },
+            onCopy = { excerpt ->
+                copyPlainTextToClipboard(
+                    context = context,
+                    label = "AI Message",
+                    text = excerpt,
+                    sensitive = true,
+                )
+                viewModel.showSnackbar("Copied to clipboard")
+            },
+            onQuote = { excerpt ->
+                val draft = quoteIntoNativeChatDraft(excerpt, promptInput, MAX_CHAT_PROMPT_IMPORT_CHARS)
+                if (draft == null) {
+                    viewModel.showSnackbar("That quote is too large for the composer.")
+                } else {
+                    selectingMessage = null
+                    viewModel.updateNativeConversationDraft(draft)
+                    viewModel.showSnackbar("Quote added to your reply. Nothing is sent until you tap Send.")
+                }
+            },
         )
     }
 
@@ -696,6 +791,18 @@ private fun NativeChatDetailPane(
                                     expanded = showChatActionsMenu,
                                     onDismissRequest = { showChatActionsMenu = false }
                                 ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Starred messages (${starredMessages.size})") },
+                                        leadingIcon = {
+                                            Icon(Icons.Outlined.StarBorder, contentDescription = null)
+                                        },
+                                        enabled = starredMessages.isNotEmpty(),
+                                        onClick = {
+                                            showChatActionsMenu = false
+                                            showStarredMessages = true
+                                        },
+                                        modifier = Modifier.testTag("btn_starred_messages")
+                                    )
                                     DropdownMenuItem(
                                         text = { Text("Use Markdown draft as prompt") },
                                         leadingIcon = {
@@ -1094,8 +1201,11 @@ private fun NativeChatDetailPane(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         OutlinedTextField(
-                            value = promptInput,
-                            onValueChange = viewModel::updateNativeConversationDraft,
+                            value = composerValue,
+                            onValueChange = { changed ->
+                                composerEdit = changed
+                                viewModel.updateNativeConversationDraft(changed.text)
+                            },
                             placeholder = {
                                 val destination = when (uiState.selectedChatProvider) {
                                     AiProvider.ALL -> "Ask Gemini, ChatGPT, Claude, DeepSeek & Kimi..."
@@ -1200,7 +1310,20 @@ private fun NativeChatDetailPane(
                         onRetryPrompt = { prompt -> viewModel.sendChatMessage(prompt) },
                         onEditQueued = { viewModel.cancelQueuedNativeMessage(message.id, moveToDraft = true) },
                         onCancelQueued = { viewModel.cancelQueuedNativeMessage(message.id, moveToDraft = false) },
-                        onViewTable = { table -> viewingTable = table }
+                        onViewTable = { table -> viewingTable = table },
+                        canBranch = canBranchNativeChat && message.canStartNativeChatFork(),
+                        onBranch = { viewModel.forkActiveNativeConversation(message.id) },
+                        onSelectText = if (message.isPartial || message.text.isBlank()) {
+                            null
+                        } else {
+                            { selectingMessage = message }
+                        },
+                        isStarred = message.id in starredMessageIds,
+                        onToggleStar = if (message.canBeStarred()) {
+                            { viewModel.toggleNativeMessageStar(message.id) }
+                        } else {
+                            null
+                        }
                     )
                 }
 
@@ -1209,6 +1332,20 @@ private fun NativeChatDetailPane(
                         GeneratingIndicator(activeProviders = uiState.activeGeneratingProviders)
                     }
                 }
+            }
+
+            if (timelineMarkers.isNotEmpty() && timelineUserTurns >= NATIVE_CHAT_TIMELINE_MIN_TURNS) {
+                NativeChatTimelineRail(
+                    markers = timelineMarkers,
+                    messageCount = uiState.chatMessages.size,
+                    onJump = { marker -> scope.launch { listState.animateScrollToItem(marker.messageIndex) } },
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(
+                            top = innerPadding.calculateTopPadding() + 24.dp,
+                            bottom = innerPadding.calculateBottomPadding() + 72.dp
+                        )
+                )
             }
 
             AnimatedVisibility(
@@ -1448,7 +1585,12 @@ fun ChatMessageItem(
     onRetryPrompt: (String) -> Unit,
     onViewTable: (MarkdownTable) -> Unit = {},
     onEditQueued: () -> Unit = {},
-    onCancelQueued: () -> Unit = {}
+    onCancelQueued: () -> Unit = {},
+    canBranch: Boolean = false,
+    onBranch: () -> Unit = {},
+    isStarred: Boolean = false,
+    onToggleStar: (() -> Unit)? = null,
+    onSelectText: (() -> Unit)? = null
 ) {
     val isUser = message.sender == "user"
     val tables = remember(message.id, message.text, message.isPartial, message.isError) {
@@ -1496,7 +1638,11 @@ fun ChatMessageItem(
                         text = "• $model",
                         style = MaterialTheme.typography.labelSmall,
                         fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        // Long gateway model ids must not squeeze the star button off the row.
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                 }
                 if (message.isSimulated) {
@@ -1529,6 +1675,21 @@ fun ChatMessageItem(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(14.dp)
                 )
+            }
+            if (onToggleStar != null) {
+                IconButton(
+                    onClick = onToggleStar,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .testTag("btn_star_${message.id}")
+                ) {
+                    Icon(
+                        imageVector = if (isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = if (isStarred) "Unstar message" else "Star message",
+                        tint = if (isStarred) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
             }
         }
 
@@ -1568,7 +1729,12 @@ fun ChatMessageItem(
                 }
                 SelectionContainer {
                     if (markdownBlocks != null) {
-                        ChatMarkdownContent(markdown = markdownBlocks, color = textColor)
+                        ChatMarkdownContent(
+                            markdown = markdownBlocks,
+                            color = textColor,
+                            // Same sensitive-clip copy as the message action, for one code or math block.
+                            onCopySource = onCopyText,
+                        )
                     } else {
                         Text(
                             text = message.text,
@@ -1689,6 +1855,36 @@ fun ChatMessageItem(
                                 contentDescription = "Open response as Markdown",
                                 modifier = Modifier.size(15.dp)
                             )
+                        }
+                        if (canBranch) {
+                            IconButton(
+                                onClick = onBranch,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .testTag("btn_branch_from_${message.id}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Outlined.CallSplit,
+                                    contentDescription = "Branch from this reply",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
+                        if (onSelectText != null) {
+                            IconButton(
+                                onClick = onSelectText,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .testTag("btn_select_text_${message.id}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.FormatQuote,
+                                    contentDescription = "Select text or quote",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
                         }
                         IconButton(
                             onClick = { onCopyText(message.text) },
@@ -2202,4 +2398,209 @@ internal fun ChatContextWarningBanner(
             }
         }
     }
+}
+
+@Composable
+private fun StarredMessagesDialog(
+    messages: List<ModelChatMessage>,
+    onJump: (ModelChatMessage) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Starred messages") },
+        text = {
+            if (messages.isEmpty()) {
+                Text("No starred messages in this chat.")
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.testTag("starred_messages_list")
+                ) {
+                    items(messages, key = { it.id }) { message ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(MaterialTheme.shapes.small)
+                                .clickable { onJump(message) }
+                                .padding(8.dp)
+                                .testTag("starred_message_${message.id}")
+                        ) {
+                            Text(
+                                text = if (message.sender == CHAT_ROLE_USER) {
+                                    "You"
+                                } else {
+                                    message.provider?.shortName ?: "Assistant"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = message.text.trim(),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
+}
+
+private const val NATIVE_CHAT_TIMELINE_MIN_TURNS = 4
+private val NATIVE_CHAT_TIMELINE_TARGET_WIDTH = 48.dp
+
+/** A thin rail of jump targets for long native chats: user turns as dots, starred messages as stars. */
+@Composable
+private fun NativeChatTimelineRail(
+    markers: List<NativeChatTimelineMarker>,
+    messageCount: Int,
+    onJump: (NativeChatTimelineMarker) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val lastIndex = (messageCount - 1).coerceAtLeast(1)
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(NATIVE_CHAT_TIMELINE_TARGET_WIDTH)
+            .testTag("native_chat_timeline")
+    ) {
+        // Each marker owns a 48x48dp, non-overlapping tap target; only marker rows take touches,
+        // so the rest of the rail leaves the message bubbles underneath tappable.
+        val markerSize = 48.dp
+        val density = LocalDensity.current
+        val railPx = with(density) { maxHeight.toPx() }
+        val markerPx = with(density) { markerSize.toPx() }
+        // Never more markers than fit without overlapping, so each keeps a full-height tap target.
+        val capacity = (railPx / markerPx).toInt().coerceAtLeast(1)
+        val shown = remember(markers, capacity) { thinNativeChatTimeline(markers, capacity) }
+        val offsets = remember(shown, lastIndex, railPx, markerPx) {
+            spreadTimelineOffsets(
+                ideal = shown.map { (railPx - markerPx) * it.messageIndex / lastIndex },
+                minGap = markerPx,
+                extent = railPx,
+            )
+        }
+        shown.forEachIndexed { position, marker ->
+            val offsetY = with(density) { offsets[position].toDp() }
+            val description = when {
+                marker.isStarred && marker.isUserTurn -> "Jump to starred turn ${marker.turnNumber}"
+                marker.isStarred -> "Jump to starred reply in turn ${marker.turnNumber}"
+                else -> "Jump to turn ${marker.turnNumber}"
+            }
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .offset(y = offsetY)
+                    .size(width = NATIVE_CHAT_TIMELINE_TARGET_WIDTH, height = markerSize)
+                    .clickable(onClickLabel = description) { onJump(marker) }
+                    .semantics { contentDescription = description }
+                    .testTag("timeline_marker_${marker.messageId}")
+            ) {
+                if (marker.isStarred) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(12.dp)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f))
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun KeyEvent.isCopyShortcut(): Boolean =
+    key == Key.Copy || (isCtrlPressed && (key == Key.C || key == Key.Insert))
+
+/** Toolbar that never shows, so selected chat text can only leave through the sensitive-clip Copy button. */
+private object NoTextToolbar : TextToolbar {
+    override val status: TextToolbarStatus = TextToolbarStatus.Hidden
+    override fun hide() = Unit
+    override fun showMenu(
+        rect: Rect,
+        onCopyRequested: (() -> Unit)?,
+        onPasteRequested: (() -> Unit)?,
+        onCutRequested: (() -> Unit)?,
+        onSelectAllRequested: (() -> Unit)?,
+    ) = Unit
+}
+
+/**
+ * Shows a message's Markdown source for precise selection. Copy and Quote act on the selection, or
+ * on the whole message when nothing is selected. Quoting only stages text in the composer.
+ */
+@Composable
+internal fun SelectMessageTextDialog(
+    messageId: String,
+    text: String,
+    onDismiss: () -> Unit,
+    onCopy: (String) -> Unit,
+    onQuote: (String) -> Unit,
+) {
+    var value by remember(messageId) { mutableStateOf(TextFieldValue(text)) }
+    val selection = value.selection
+    val hasSelection = !selection.collapsed
+    val excerpt = if (hasSelection) value.text.substring(selection.min, selection.max) else value.text
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select text") },
+        text = {
+            CompositionLocalProvider(LocalTextToolbar provides NoTextToolbar) {
+                OutlinedTextField(
+                    value = value,
+                    // Read-only: keep the snapshot text and accept selection changes only.
+                    onValueChange = { changed -> value = value.copy(selection = changed.selection) },
+                    readOnly = true,
+                    textStyle = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 360.dp)
+                        // Hardware-keyboard copy bypasses the toolbar; send it through the sensitive clip.
+                        .onPreviewKeyEvent { event ->
+                            if (event.type == KeyEventType.KeyDown && event.isCopyShortcut()) {
+                                if (excerpt.isNotEmpty()) onCopy(excerpt)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        .testTag("select_text_field")
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onQuote(excerpt) },
+                enabled = excerpt.isNotBlank(),
+                modifier = Modifier.testTag("btn_quote_selection")
+            ) {
+                Text(if (hasSelection) "Quote selection" else "Quote all")
+            }
+        },
+        dismissButton = {
+            Row {
+                TextButton(
+                    onClick = { onCopy(excerpt) },
+                    enabled = excerpt.isNotEmpty(),
+                    modifier = Modifier.testTag("btn_copy_selection")
+                ) {
+                    Text(if (hasSelection) "Copy selection" else "Copy all")
+                }
+                TextButton(onClick = onDismiss) { Text("Close") }
+            }
+        }
+    )
 }

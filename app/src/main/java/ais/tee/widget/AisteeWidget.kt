@@ -29,6 +29,7 @@ import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.NativeChatArchive
 import ais.tee.data.model.NativeChatConversation
 import ais.tee.data.model.NATIVE_CHAT_WELCOME_MESSAGE_ID
+import ais.tee.data.model.messagesForCrossChatFeed
 import ais.tee.data.preferences.AisteeWidgetMode
 import ais.tee.data.preferences.AisteeWidgetPreferencesStore
 import ais.tee.data.preferences.NativeChatStore
@@ -114,10 +115,11 @@ internal fun latestNativeMessagesForWidget(
     limit: Int = MAX_WIDGET_MESSAGES,
 ): List<NativeChatWidgetMessage> {
     if (limit <= 0) return emptyList()
+    val feedMessages = archive.messagesForCrossChatFeed()
     return archive.conversations
         .asSequence()
         .flatMap { conversation ->
-            conversation.messages.asSequence()
+            feedMessages[conversation.id].orEmpty().asSequence()
                 .filter { message ->
                     (message.sender == CHAT_ROLE_USER || message.sender == CHAT_ROLE_ASSISTANT) &&
                         message.id != NATIVE_CHAT_WELCOME_MESSAGE_ID &&
