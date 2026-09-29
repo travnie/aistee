@@ -96,6 +96,8 @@ OpenAI background execution still requires temporary provider-side response stor
 
 ## Usage and comparison metadata
 
+Gemini native chat also exposes a deliberate exact-input preflight for the current draft. It builds the same initial GenerateContent payload as Send, including bounded provider history, the active system instruction and currently enabled native tool declarations, then submits that payload to `models.countTokens`. A separate model-metadata lookup supplies `inputTokenLimit`, so the UI can show provider-exact input and remaining room. Nothing is counted remotely on each keystroke; the network call happens only after the user chooses the action.
+
 Native/API responses retain provider-reported usage next to the existing local wall-clock latency. The portable message metadata normalizes input, output and total tokens while preserving optional cached-input and reasoning-token counts. Claude input includes direct, cache-creation and cache-read tokens so its normalized input matches Anthropic's billing/accounting semantics; Gemini keeps `thoughtsTokenCount` separate while preserving the provider's `totalTokenCount`.
 
 Costs are recorded only when the response reports them. Aistee does not estimate provider prices in this path. OpenRouter requests usage accounting explicitly and may therefore supply a reported USD cost; other OpenAI-compatible gateways are parsed opportunistically when they return compatible usage fields. Hidden reasoning content remains opaque and is never exposed by these counters.

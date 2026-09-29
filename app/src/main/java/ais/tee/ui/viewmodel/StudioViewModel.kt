@@ -52,6 +52,7 @@ import ais.tee.notifications.nativeChatConversationIdForShortcut
 import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.widget.NativeChatWidgetUpdater
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -173,6 +174,9 @@ data class StudioUiState(
     val incognitoConversationId: String? = null,
     /** Send held back because the chat context does not fit the model; cleared on send or dismiss. */
     val pendingChatContextWarning: PendingChatContextWarning? = null,
+    /** Explicit provider-exact Gemini draft preflight; never persisted with the conversation. */
+    val inputBudgetPreflight: ProviderInputBudgetPreflight? = null,
+    val isInputBudgetPreflightRunning: Boolean = false,
     /** Model-initiated skill call waiting for Allow/Deny; cleared when answered or the reply stops. */
     val pendingActiveSkillPrompt: PendingActiveSkillPrompt? = null,
 ) {
@@ -244,6 +248,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private var nativeChatDraftPersistenceJob: Job? = null
     private var studioPersistenceOwnerId: Long? = null
     private val activeChatGenerationId = AtomicLong(0)
+    private val inputBudgetPreflightId = AtomicLong(0)
     private val offlineContextCheckInFlight = AtomicBoolean(false)
     private val incomingShareId = AtomicLong(0)
     private val pendingWebShareId = AtomicLong(0)
@@ -415,7 +420,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             val persisted = state.nativeChat.withoutIncognito(state.incognitoConversationId)
             val refreshed = nativeChatWriter.enqueue(persisted, nativePersistenceBase)
             val visible = refreshed.withIncognitoFrom(state.nativeChat, state.incognitoConversationId)
-            if (_uiState.compareAndSet(state, state.copy(nativeChat = visible))) {
+            if (
+                _uiState.compareAndSet(
+                    state,
+                    state.copy(
+                        nativeChat = visible,
+                        inputBudgetPreflight = null,
+                    )
+                )
+            ) {
                 nativePersistenceBase = refreshed
             } else {
                 nativePersistenceBase = persisted
@@ -555,7 +568,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             conversation
                         }
                     }
-                )
+                ),
+                inputBudgetPreflight = null,
             )
         }
         persistNativeChat()
@@ -897,7 +911,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         transform: (NativeChatConversation) -> NativeChatConversation
     ) {
         _uiState.update { state ->
-            state.copy(nativeChat = state.nativeChat.updateActiveConversation(transform))
+            state.copy(
+                nativeChat = state.nativeChat.updateActiveConversation(transform),
+                inputBudgetPreflight = null,
+            )
         }
         if (persist) persistNativeChat()
     }
@@ -1144,7 +1161,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 nativeChat = state.nativeChat.copy(
                     activeConversationId = conversation.id,
                     conversations = listOf(conversation) + state.nativeChat.conversations,
-                )
+                ),
+                inputBudgetPreflight = null,
             )
         }
         persistNativeChat()
@@ -1172,7 +1190,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     nativeChat = current.nativeChat.copy(
                         activeConversationId = conversation.id,
                         conversations = listOf(conversation) + current.nativeChat.conversations
-                    )
+                    ),
+                    inputBudgetPreflight = null,
                 )
             }
         }
@@ -1200,7 +1219,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 nativeChat = current.nativeChat.copy(
                     activeConversationId = branch.id,
                     conversations = listOf(branch) + current.nativeChat.conversations
-                )
+                ),
+                inputBudgetPreflight = null,
             )
         }
         persistNativeChat()
@@ -1228,7 +1248,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         activeConversationId = conversation.id,
                         conversations = listOf(conversation) + current.nativeChat.conversations
                     ),
-                    incognitoConversationId = conversation.id
+                    incognitoConversationId = conversation.id,
+                    inputBudgetPreflight = null,
                 )
             }
         }
@@ -1237,7 +1258,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     /** Explicit conversion: the incognito chat becomes a normal, persisted conversation. */
     fun saveIncognitoAsNormalConversation() {
         if (_uiState.value.incognitoConversationId == null) return
-        _uiState.update { it.copy(incognitoConversationId = null) }
+        _uiState.update {
+            it.copy(
+                incognitoConversationId = null,
+                inputBudgetPreflight = null,
+            )
+        }
         persistNativeChat()
         showSnackbar("Saved as a normal chat.")
     }
@@ -1253,7 +1279,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             } else {
                 current.withoutIncognitoConversation()
             }
-            remaining.copy(nativeChat = remaining.nativeChat.copy(activeConversationId = conversationId))
+            remaining.copy(
+                nativeChat = remaining.nativeChat.copy(activeConversationId = conversationId),
+                inputBudgetPreflight = null,
+            )
         }
         persistNativeChat()
         publishNativeConversationShortcut(conversationId)
@@ -1282,7 +1311,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 nativeChat = current.nativeChat.copy(
                     activeConversationId = activeId,
                     conversations = conversations
-                )
+                ),
+                inputBudgetPreflight = null,
             )
         }
         persistNativeChat()
@@ -1707,6 +1737,138 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         )
     }
 
+    /**
+     * Sends the current Gemini draft to countTokens only after this explicit user action. The
+     * assembled request mirrors Send: bounded provider history, profile/skills instruction and the
+     * currently enabled native tool declarations.
+     */
+    fun checkGeminiInputBudget(prompt: String): Boolean {
+        val trimmed = prompt.trim()
+        val origin = _uiState.value
+        if (
+            !origin.isNativeConversationStoreReady ||
+            origin.isChatGenerating ||
+            origin.isInputBudgetPreflightRunning ||
+            trimmed.isBlank() ||
+            origin.selectedChatProvider != AiProvider.GEMINI
+        ) return false
+
+        val apiKey = origin.apiKeyConfig.geminiKey.trim()
+        if (apiKey.isBlank()) {
+            _uiState.update { it.copy(showApiKeyDialog = true) }
+            showSnackbar("Add a Gemini API key to check the exact input budget.")
+            return false
+        }
+
+        val preflightId = inputBudgetPreflightId.incrementAndGet()
+        _uiState.update {
+            it.copy(
+                isInputBudgetPreflightRunning = true,
+                inputBudgetPreflight = null,
+            )
+        }
+        viewModelScope.launch {
+            try {
+                val promptContext = prepareNativeChatPromptContext(origin) ?: return@launch
+                val toolDefinitions = prepareGeminiInputBudgetToolDefinitions(origin)
+                val result = aiChatService.countGeminiInputBudget(
+                    prompt = trimmed,
+                    model = origin.selectedChatModel,
+                    apiKey = apiKey,
+                    systemInstruction = promptContext.systemPrompt,
+                    conversationHistory = origin.chatMessages,
+                    tools = toolDefinitions,
+                )
+                val current = _uiState.value
+                val sameConversationInput =
+                    isSameChatTarget(origin, current) &&
+                        current.nativeChatDraft.trim() == trimmed &&
+                        current.chatMessages == origin.chatMessages
+                if (!sameConversationInput) {
+                    showSnackbar("The chat, model, or draft changed. Check the input budget again.")
+                    return@launch
+                }
+
+                val currentPromptContext = prepareNativeChatPromptContext(current) ?: return@launch
+                val currentToolDefinitions = prepareGeminiInputBudgetToolDefinitions(current)
+
+                // Both reads above can suspend. Re-read the UI state after them so a change that
+                // happened during disk access cannot publish a count for an older request shape.
+                val latest = _uiState.value
+                val stateStillMatches =
+                    inputBudgetPreflightId.get() == preflightId &&
+                    !latest.isChatGenerating &&
+                    isSameChatTarget(current, latest) &&
+                        latest.nativeChatDraft == current.nativeChatDraft &&
+                        latest.chatMessages == current.chatMessages &&
+                        latest.includeSystemProfileInChat == current.includeSystemProfileInChat &&
+                        latest.renderedInstructions == current.renderedInstructions &&
+                        latest.activeNativeConversation?.projectId ==
+                            current.activeNativeConversation?.projectId &&
+                        latest.isActiveConversationIncognito == current.isActiveConversationIncognito
+                if (
+                    stateStillMatches &&
+                    currentPromptContext.systemPrompt == promptContext.systemPrompt &&
+                    currentToolDefinitions == toolDefinitions
+                ) {
+                    _uiState.update { state ->
+                        if (
+                            inputBudgetPreflightId.get() == preflightId &&
+                            !state.isChatGenerating &&
+                            isSameChatTarget(latest, state) &&
+                            state.nativeChatDraft == latest.nativeChatDraft &&
+                            state.chatMessages == latest.chatMessages &&
+                            state.includeSystemProfileInChat == latest.includeSystemProfileInChat &&
+                            state.renderedInstructions == latest.renderedInstructions &&
+                            state.activeNativeConversation?.projectId ==
+                                latest.activeNativeConversation?.projectId &&
+                            state.isActiveConversationIncognito == latest.isActiveConversationIncognito
+                        ) {
+                            state.copy(inputBudgetPreflight = result)
+                        } else {
+                            state
+                        }
+                    }
+                } else {
+                    showSnackbar("The chat context or enabled tools changed. Check the input budget again.")
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                showSnackbar(error.message ?: "Could not check the Gemini input budget.")
+            } finally {
+                if (inputBudgetPreflightId.get() == preflightId) {
+                    _uiState.update { it.copy(isInputBudgetPreflightRunning = false) }
+                }
+            }
+        }
+        return true
+    }
+
+    fun dismissInputBudgetPreflight() {
+        _uiState.update { it.copy(inputBudgetPreflight = null) }
+    }
+
+    private suspend fun prepareGeminiInputBudgetToolDefinitions(
+        state: StudioUiState,
+    ): List<NativeToolDefinition> {
+        val activeProjectId = state.activeNativeConversation?.projectId ?: DEFAULT_PROJECT_ID
+        val benchTools = NativeBenchChatTools(
+            context = getApplication(),
+            projectId = activeProjectId,
+        )
+        val skillTools = if (!state.isActiveConversationIncognito) {
+            NativeActiveSkillChatTools(
+                getApplication(),
+                localSkillStore,
+                ask = { _, _ -> ActiveSkillChatAnswer.Declined },
+            )
+        } else {
+            null
+        }
+        return benchTools.definitions() + skillTools?.definitions().orEmpty()
+    }
+
     /** Sends the prompt held back by the context warning without checking the budget again. */
     fun sendPendingChatDespiteContextWarning(): Boolean {
         val state = _uiState.value
@@ -1802,7 +1964,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update {
             it.copy(
                 isChatGenerating = true,
-                activeGeneratingProviders = emptySet()
+                activeGeneratingProviders = emptySet(),
+                inputBudgetPreflight = null,
             )
         }
 

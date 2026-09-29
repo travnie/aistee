@@ -6,6 +6,7 @@ import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ClaudeReasoningCapabilities
 import ais.tee.data.model.ModelChatMessage
+import ais.tee.data.model.ProviderInputBudgetPreflight
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -421,6 +422,66 @@ class AiChatServiceTest {
         assertFalse(simulatedAnswer in contents)
         assertFalse(otherProviderAnswer in contents)
         assertTrue(liveAnswer in contents)
+    }
+
+    @Test
+    fun geminiExactInputPreflightReusesGenerateContentPayloadAndParsesLimits() {
+        val service = AiChatService()
+        val contents = service.buildGeminiContents(
+            prompt = FOLLOW_UP,
+            conversationHistory = emptyList(),
+            modelName = TEST_GEMINI_MODEL,
+            systemInstruction = SYSTEM_PROMPT,
+        )
+        val toolDefinitions = Json.parseToJsonElement(
+            """[{"functionDeclarations":[{"name":"inspect_text","description":"Inspect","parameters":{"type":"object"}}]}]"""
+        ).jsonArray
+        val generation = service.buildGeminiGenerateContentPayload(
+            contents = contents,
+            systemInstruction = SYSTEM_PROMPT,
+            toolDefinitions = toolDefinitions,
+        )
+        val count = service.buildGeminiCountTokensPayload(TEST_GEMINI_MODEL, generation)
+        val countedRequest = count.getValue("generateContentRequest").jsonObject
+
+        assertEquals(contents, generation.getValue("contents").jsonArray)
+        assertEquals(toolDefinitions, generation.getValue("tools").jsonArray)
+        assertEquals(
+            SYSTEM_PROMPT,
+            generation.getValue("systemInstruction").jsonObject
+                .getValue("parts").jsonArray.single().jsonObject
+                .getValue(TEST_TEXT_KEY).jsonPrimitive.content
+        )
+        assertEquals("models/$TEST_GEMINI_MODEL", countedRequest.getValue("model").jsonPrimitive.content)
+        assertEquals(generation.getValue("contents"), countedRequest.getValue("contents"))
+        assertEquals(321, service.parseGeminiCountTokens("""{"totalTokens":321}"""))
+        assertEquals(
+            1_048_576,
+            service.parseGeminiInputTokenLimit("""{"inputTokenLimit":1048576}""")
+        )
+        assertTrue(runCatching { service.parseGeminiCountTokens("{}") }.isFailure)
+        assertTrue(runCatching { service.parseGeminiInputTokenLimit("""{"inputTokenLimit":0}""") }.isFailure)
+
+        val result = ProviderInputBudgetPreflight(
+            provider = AiProvider.GEMINI,
+            model = TEST_GEMINI_MODEL,
+            inputTokens = 900,
+            inputTokenLimit = 1_000,
+        )
+        assertEquals(100, result.remainingTokens)
+        assertTrue(result.fits)
+        assertEquals(
+            AiProvider.GEMINI.defaultModel,
+            service.resolveEffectiveModel(AiProvider.GEMINI, "all")
+        )
+        assertEquals(
+            AiProvider.GEMINI.defaultModel,
+            service.resolveEffectiveModel(AiProvider.GEMINI, "   ")
+        )
+        assertEquals(
+            TEST_GEMINI_MODEL,
+            service.resolveEffectiveModel(AiProvider.GEMINI, "  $TEST_GEMINI_MODEL  ")
+        )
     }
 
     @Test

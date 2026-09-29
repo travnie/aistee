@@ -18,6 +18,7 @@ import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
 import ais.tee.data.model.runtimeCapabilities
 import ais.tee.data.model.ProviderUsage
+import ais.tee.data.model.ProviderInputBudgetPreflight
 import ais.tee.data.model.buildBoundedProviderTextTurns
 import ais.tee.data.model.gatewayModelOptions
 import ais.tee.data.model.Profile
@@ -161,7 +162,8 @@ internal data class OpenAiBackgroundResponseSnapshot(
     val errorMessage: String?,
 )
 
-private const val GEMINI_BATCH_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+private const val GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+private const val GEMINI_BATCH_API_BASE_URL = GEMINI_API_BASE_URL
 /** Aistee Gemini batches hold one inline request, matched by this metadata key. */
 internal const val GEMINI_BATCH_REQUEST_KEY = "aistee-job"
 
@@ -290,6 +292,121 @@ class AiChatService {
         )
         gatewayModelOptions(provider, parseGatewayModelCatalog(provider, responseBody))
     }
+
+    /**
+     * Explicit network preflight for one Gemini native-chat draft. The request body is assembled
+     * through the same GenerateContent payload builder used by Send, then handed to countTokens.
+     */
+    internal suspend fun countGeminiInputBudget(
+        prompt: String,
+        model: String,
+        apiKey: String,
+        systemInstruction: String?,
+        conversationHistory: List<ModelChatMessage>,
+        tools: List<NativeToolDefinition>,
+    ): ProviderInputBudgetPreflight = withContext(Dispatchers.IO) {
+        val normalizedPrompt = prompt.trim()
+        val normalizedModel = resolveEffectiveModel(AiProvider.GEMINI, model)
+        val normalizedKey = apiKey.trim()
+        require(normalizedPrompt.isNotEmpty()) { "Gemini prompt is required" }
+        require(normalizedModel.isNotEmpty()) { "Gemini model is required" }
+        require(normalizedKey.isNotEmpty()) { "Gemini API key is required" }
+
+        val generationPayload = buildGeminiGenerateContentPayload(
+            contents = buildGeminiContents(
+                prompt = normalizedPrompt,
+                conversationHistory = conversationHistory,
+                modelName = normalizedModel,
+                systemInstruction = systemInstruction,
+            ),
+            systemInstruction = systemInstruction,
+            toolDefinitions = if (tools.isEmpty()) {
+                JsonArray(emptyList())
+            } else {
+                buildGeminiToolDefinitions(tools)
+            },
+        )
+        val countRequest = Request.Builder()
+            .url(
+                GEMINI_API_BASE_URL.toHttpUrl().newBuilder()
+                    .addPathSegment("models")
+                    .addPathSegment("$normalizedModel:countTokens")
+                    .build()
+            )
+            .addHeader(HEADER_GOOG_API_KEY, normalizedKey)
+            .addHeader(HEADER_CONTENT_TYPE, JSON_MEDIA_TYPE)
+            .post(
+                buildGeminiCountTokensPayload(normalizedModel, generationPayload)
+                    .toString()
+                    .toRequestBody(JSON_MEDIA_TYPE.toMediaType())
+            )
+            .build()
+        val modelRequest = Request.Builder()
+            .url(
+                GEMINI_API_BASE_URL.toHttpUrl().newBuilder()
+                    .addPathSegment("models")
+                    .addPathSegment(normalizedModel)
+                    .build()
+            )
+            .addHeader(HEADER_GOOG_API_KEY, normalizedKey)
+            .get()
+            .build()
+
+        val inputTokens = parseGeminiCountTokens(
+            executeCancellableJson(countRequest, "Empty Gemini token-count response")
+        )
+        val inputTokenLimit = parseGeminiInputTokenLimit(
+            executeCancellableJson(modelRequest, "Empty Gemini model-metadata response")
+        )
+        ProviderInputBudgetPreflight(
+            provider = AiProvider.GEMINI,
+            model = normalizedModel,
+            inputTokens = inputTokens,
+            inputTokenLimit = inputTokenLimit,
+        )
+    }
+
+    internal fun buildGeminiGenerateContentPayload(
+        contents: JsonArray,
+        systemInstruction: String?,
+        toolDefinitions: JsonArray = JsonArray(emptyList()),
+    ): JsonObject = buildJsonObject {
+        put("contents", contents)
+        if (toolDefinitions.isNotEmpty()) put("tools", toolDefinitions)
+        if (!systemInstruction.isNullOrBlank()) {
+            putJsonObject("systemInstruction") {
+                putJsonArray(JSON_PARTS_KEY) {
+                    addJsonObject { put(JSON_TEXT_KEY, systemInstruction) }
+                }
+            }
+        }
+    }
+
+    internal fun buildGeminiCountTokensPayload(
+        model: String,
+        generationPayload: JsonObject,
+    ): JsonObject {
+        val normalizedModel = model.trim()
+        require(normalizedModel.isNotEmpty()) { "Gemini model is required" }
+        val generateContentRequest = JsonObject(
+            generationPayload + (JSON_MODEL_KEY to JsonPrimitive("models/$normalizedModel"))
+        )
+        return buildJsonObject {
+            put("generateContentRequest", generateContentRequest)
+        }
+    }
+
+    internal fun parseGeminiCountTokens(rawJson: String): Int =
+        json.parseToJsonElement(rawJson).jsonObject["totalTokens"]
+            ?.jsonPrimitive?.intOrNull
+            ?.takeIf { it >= 0 }
+            ?: throw IOException("Gemini countTokens response is missing totalTokens")
+
+    internal fun parseGeminiInputTokenLimit(rawJson: String): Int =
+        json.parseToJsonElement(rawJson).jsonObject["inputTokenLimit"]
+            ?.jsonPrimitive?.intOrNull
+            ?.takeIf { it > 0 }
+            ?: throw IOException("Gemini model metadata is missing inputTokenLimit")
 
     internal suspend fun createOpenAiBackgroundResponse(
         prompt: String,
@@ -864,6 +981,11 @@ class AiChatService {
 
     private fun bearerToken(apiKey: String): String = "Bearer $apiKey"
 
+    internal fun resolveEffectiveModel(provider: AiProvider, modelName: String): String {
+        val normalized = modelName.trim()
+        return if (normalized.isEmpty() || normalized == "all") provider.defaultModel else normalized
+    }
+
     suspend fun generateResponse(
         prompt: String,
         provider: AiProvider,
@@ -887,7 +1009,7 @@ class AiChatService {
             }
         }
         val startTime = System.currentTimeMillis()
-        val effectiveModel = if (modelName == "all" || modelName.isBlank()) provider.defaultModel else modelName
+        val effectiveModel = resolveEffectiveModel(provider, modelName)
         var resolvedModel = effectiveModel
         var providerReplayState: String? = null
         var providerUsage: ProviderUsage? = null
@@ -1299,17 +1421,10 @@ class AiChatService {
     ): GeminiGenerationResult {
         val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
         val contentsArray = buildGeminiContents(prompt, conversationHistory, model, systemInstruction)
-
-        val requestPayload = buildJsonObject {
-            put("contents", contentsArray)
-            if (!systemInstruction.isNullOrBlank()) {
-                putJsonObject("systemInstruction") {
-                    putJsonArray(JSON_PARTS_KEY) {
-                        addJsonObject { put(JSON_TEXT_KEY, systemInstruction) }
-                    }
-                }
-            }
-        }
+        val requestPayload = buildGeminiGenerateContentPayload(
+            contents = contentsArray,
+            systemInstruction = systemInstruction,
+        )
 
         val body = requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType())
         val request = Request.Builder()
@@ -1348,17 +1463,11 @@ class AiChatService {
         var usage: ProviderUsage? = null
 
         repeat(MAX_NATIVE_TOOL_ROUNDS) { round ->
-            val requestPayload = buildJsonObject {
-                put("contents", JsonArray(contents))
-                put("tools", toolDefinitions)
-                if (!systemInstruction.isNullOrBlank()) {
-                    putJsonObject("systemInstruction") {
-                        putJsonArray(JSON_PARTS_KEY) {
-                            addJsonObject { put(JSON_TEXT_KEY, systemInstruction) }
-                        }
-                    }
-                }
-            }
+            val requestPayload = buildGeminiGenerateContentPayload(
+                contents = JsonArray(contents),
+                systemInstruction = systemInstruction,
+                toolDefinitions = toolDefinitions,
+            )
             val request = Request.Builder()
                 .url(url)
                 .post(requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
@@ -2051,16 +2160,10 @@ class AiChatService {
         onTextDelta: (String) -> Unit
     ): GeminiGenerationResult {
         val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:streamGenerateContent?alt=sse&key=$apiKey"
-        val requestPayload = buildJsonObject {
-            put("contents", buildGeminiContents(prompt, conversationHistory, model, systemInstruction))
-            if (!systemInstruction.isNullOrBlank()) {
-                putJsonObject("systemInstruction") {
-                    putJsonArray(JSON_PARTS_KEY) {
-                        addJsonObject { put(JSON_TEXT_KEY, systemInstruction) }
-                    }
-                }
-            }
-        }
+        val requestPayload = buildGeminiGenerateContentPayload(
+            contents = buildGeminiContents(prompt, conversationHistory, model, systemInstruction),
+            systemInstruction = systemInstruction,
+        )
         val request = Request.Builder()
             .url(url)
             .post(requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))

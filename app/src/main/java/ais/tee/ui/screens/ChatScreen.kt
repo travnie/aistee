@@ -803,6 +803,44 @@ private fun NativeChatDetailPane(
                                         },
                                         modifier = Modifier.testTag("btn_starred_messages")
                                     )
+                                    if (uiState.selectedChatProvider == AiProvider.GEMINI) {
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(
+                                                        if (uiState.isInputBudgetPreflightRunning) {
+                                                            "Checking exact input budget…"
+                                                        } else {
+                                                            "Check exact input budget"
+                                                        }
+                                                    )
+                                                    Text(
+                                                        "Gemini countTokens",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    )
+                                                }
+                                            },
+                                            leadingIcon = {
+                                                if (uiState.isInputBudgetPreflightRunning) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(18.dp),
+                                                        strokeWidth = 2.dp,
+                                                    )
+                                                } else {
+                                                    Icon(Icons.Outlined.Info, contentDescription = null)
+                                                }
+                                            },
+                                            enabled = promptInput.isNotBlank() &&
+                                                !uiState.isChatGenerating &&
+                                                !uiState.isInputBudgetPreflightRunning,
+                                            onClick = {
+                                                showChatActionsMenu = false
+                                                viewModel.checkGeminiInputBudget(promptInput)
+                                            },
+                                            modifier = Modifier.testTag("btn_gemini_input_budget")
+                                        )
+                                    }
                                     DropdownMenuItem(
                                         text = { Text("Use Markdown draft as prompt") },
                                         leadingIcon = {
@@ -1417,6 +1455,46 @@ private fun NativeChatDetailPane(
             dismissButton = {
                 TextButton(onClick = { pendingMarkdownPromptReplacement = null }) { Text("Cancel") }
             }
+        )
+    }
+
+    uiState.inputBudgetPreflight?.let { preflight ->
+        val remainingLine = if (preflight.fits) {
+            "Remaining: ${preflight.remainingTokens} tokens"
+        } else {
+            "Over limit by: ${-preflight.remainingTokens} tokens"
+        }
+        AlertDialog(
+            onDismissRequest = viewModel::dismissInputBudgetPreflight,
+            title = { Text("Gemini input budget") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Model: ${preflight.model}")
+                    Text("Exact input: ${preflight.inputTokens} tokens")
+                    Text("Input limit: ${preflight.inputTokenLimit} tokens")
+                    Text(
+                        text = remainingLine,
+                        color = if (preflight.fits) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                    )
+                    Text(
+                        "Source: Gemini models.countTokens + model metadata. " +
+                            "The counted request includes bounded chat history, the active " +
+                            "system instruction, and enabled native tool declarations.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissInputBudgetPreflight) {
+                    Text("Done")
+                }
+            },
+            modifier = Modifier.testTag("dialog_gemini_input_budget"),
         )
     }
 
