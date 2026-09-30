@@ -45,16 +45,14 @@ internal class EncryptedJsonStore(
         preferences.edit()
             .putString(ivKey, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
             .putString(ciphertextKey, Base64.encodeToString(ciphertext, Base64.NO_WRAP))
-            .apply()
-        true
+            .commit()
     }.getOrDefault(false)
 
     fun clear(): Boolean = runCatching {
         preferences.edit()
             .remove(ivKey)
             .remove(ciphertextKey)
-            .apply()
-        true
+            .commit()
     }.getOrDefault(false)
 
     private fun getOrCreateKey(): SecretKey {
