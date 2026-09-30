@@ -943,16 +943,21 @@ class AiChatServiceTest {
             prompt = FOLLOW_UP,
             conversationHistory = emptyList(),
         )
-        assertTrue(
-            runCatching {
-                AiChatService().buildOpenAiRequestPayload(
-                    model = TEST_OPENAI_MODEL,
-                    stream = true,
-                    systemInstruction = null,
-                    input = input,
-                    executionSource = ProviderExecutionSource.WEB_HANDOFF,
-                )
-            }.isFailure
+        val error = try {
+            AiChatService().buildOpenAiRequestPayload(
+                model = TEST_OPENAI_MODEL,
+                stream = true,
+                systemInstruction = null,
+                input = input,
+                executionSource = ProviderExecutionSource.WEB_HANDOFF,
+            )
+            null
+        } catch (error: IllegalArgumentException) {
+            error
+        }
+        assertEquals(
+            "Selected execution source is not a direct OpenAI Responses route",
+            error?.message,
         )
     }
 
