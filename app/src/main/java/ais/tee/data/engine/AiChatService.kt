@@ -1773,7 +1773,6 @@ class AiChatService {
         val metadata = resolveClaudeMetadata(model, apiKey)
         if (metadata.maxInputTokens != null) return metadata
 
-        invalidateClaudeMetadata(apiKey, model, metadata.resolvedModel)
         val refreshed = fetchClaudeMetadata(model, apiKey)
         if (refreshed.maxInputTokens == null) {
             throw IOException(
