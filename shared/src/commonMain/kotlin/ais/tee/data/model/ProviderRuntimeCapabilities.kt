@@ -32,6 +32,78 @@ fun AiProvider.supportedApiProcessingModes(): List<ApiProcessingMode> = when (th
 fun AiProvider.normalizeApiProcessingMode(mode: ApiProcessingMode): ApiProcessingMode =
     mode.takeIf { it in supportedApiProcessingModes() } ?: ApiProcessingMode.AUTO
 
+@Serializable
+enum class ProviderExecutionSource {
+    API_KEY,
+    ACCOUNT_PLAN,
+    WEB_HANDOFF,
+    GATEWAY,
+    LOCAL,
+}
+
+data class OpenAiResponsesRouteCapabilities(
+    val available: Boolean,
+    val requiresStreaming: Boolean,
+    val permitsBackground: Boolean,
+    val permitsFunctionTools: Boolean,
+    val permitsHostedImageGeneration: Boolean,
+    val permitsFileSearch: Boolean,
+    val permitsCodeInterpreter: Boolean,
+    val permitsNativeComputerUse: Boolean,
+    val permitsHostedMcp: Boolean,
+    val permitsToolSearch: Boolean,
+    val permitsPreviousResponseId: Boolean,
+    val permitsFilesUploadApi: Boolean,
+)
+
+fun ProviderExecutionSource.openAiResponsesRouteCapabilities(): OpenAiResponsesRouteCapabilities =
+    when (this) {
+        ProviderExecutionSource.API_KEY -> OpenAiResponsesRouteCapabilities(
+            available = true,
+            requiresStreaming = false,
+            permitsBackground = true,
+            permitsFunctionTools = true,
+            permitsHostedImageGeneration = true,
+            permitsFileSearch = true,
+            permitsCodeInterpreter = true,
+            permitsNativeComputerUse = true,
+            permitsHostedMcp = true,
+            permitsToolSearch = true,
+            permitsPreviousResponseId = true,
+            permitsFilesUploadApi = true,
+        )
+        ProviderExecutionSource.ACCOUNT_PLAN -> OpenAiResponsesRouteCapabilities(
+            available = true,
+            requiresStreaming = true,
+            permitsBackground = false,
+            permitsFunctionTools = true,
+            permitsHostedImageGeneration = false,
+            permitsFileSearch = false,
+            permitsCodeInterpreter = false,
+            permitsNativeComputerUse = false,
+            permitsHostedMcp = false,
+            permitsToolSearch = false,
+            permitsPreviousResponseId = false,
+            permitsFilesUploadApi = false,
+        )
+        ProviderExecutionSource.WEB_HANDOFF,
+        ProviderExecutionSource.GATEWAY,
+        ProviderExecutionSource.LOCAL -> OpenAiResponsesRouteCapabilities(
+            available = false,
+            requiresStreaming = false,
+            permitsBackground = false,
+            permitsFunctionTools = false,
+            permitsHostedImageGeneration = false,
+            permitsFileSearch = false,
+            permitsCodeInterpreter = false,
+            permitsNativeComputerUse = false,
+            permitsHostedMcp = false,
+            permitsToolSearch = false,
+            permitsPreviousResponseId = false,
+            permitsFilesUploadApi = false,
+        )
+    }
+
 enum class NativeChatTransport {
     COMPARE_FAN_OUT,
     GEMINI_GENERATE_CONTENT,
