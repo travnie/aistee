@@ -209,6 +209,34 @@ class AiChatServiceTest {
     }
 
     @Test
+    fun missingClaudeInputLimitDoesNotShortenGenerationMetadataCache() {
+        val service = AiChatService()
+        val model = TEST_CLAUDE_CONCRETE_MODEL
+        val apiKey = "send-cache-key"
+        val now = 20_000L
+        val capabilities = ClaudeReasoningCapabilities(supportsEnabled = true)
+
+        service.rememberClaudeMetadata(
+            requestedModel = model,
+            resolvedModel = model,
+            apiKey = apiKey,
+            reportedMaxTokens = TEST_CLAUDE_MAX_TOKENS,
+            reportedMaxInputTokens = null,
+            reportedReasoning = capabilities,
+            nowMillis = now,
+        )
+
+        val cached = service.readClaudeMetadataCache(
+            model = model,
+            apiKey = apiKey,
+            nowMillis = now + 31_000,
+        )
+        assertEquals(TEST_CLAUDE_MAX_TOKENS, cached?.maxTokens)
+        assertEquals(null, cached?.maxInputTokens)
+        assertEquals(capabilities, cached?.reasoningCapabilities)
+    }
+
+    @Test
     fun claudePayloadUsesResolvedOutputLimitInBufferedAndStreamingModes() {
         val service = AiChatService()
         val messages = Json.parseToJsonElement(TEST_CLAUDE_USER_MESSAGES_JSON).jsonArray
