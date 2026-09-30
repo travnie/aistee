@@ -106,19 +106,21 @@ Costs are recorded only when the response reports them. Aistee does not estimate
 
 Treat account-plan execution as a separate authentication and billing route, not as an API key discovered through login. The portable capability model should be able to distinguish at least `ACCOUNT_PLAN`, `API_KEY`, `WEB_HANDOFF`, `GATEWAY` and `LOCAL` execution sources while keeping one conversation/tool/result model above them.
 
-OpenAI now documents **Sign in with ChatGPT** plan usage for open-source and locally hosted clients. Eligible users can authorize Responses API inference against their ChatGPT plan/credits without configuring an API key. For the preview route, requests are intentionally narrower than ordinary API-key Responses: use `store=false`, streaming, explicit input history and documented supported fields/tools. Account-plan OAuth credentials remain separate from API keys and from ChatGPT conversation history.
+OpenAI now documents **Sign in with ChatGPT** plan usage for open-source and locally hosted clients. Eligible users can authorize Responses API inference against their ChatGPT plan/credits without configuring an API key. The OSS flow uses dynamic OAuth registration: persist a stable `ext_agent_host_id` per host, begin first registration with `client_id=dynamic_agent_client`, then store the issued per-account/workspace `client_id` with the validated identity, access token and rotating refresh token. The flow needs neither a partner API key nor an embedded client secret; inference is enabled only when the granted scopes include `chatgpt.tokens.use.direct`. For the preview route, requests are intentionally narrower than ordinary API-key Responses: use `store=false`, streaming, explicit input history and documented supported fields/tools. Account-plan OAuth credentials remain separate from API keys and from ChatGPT conversation history.
+
+Use the same account-plan access token to discover the connected account's visible model catalog from `GET /v1/models`. Keep entries marked for display, preserve the server's ordering and use the returned slug for inference. Refresh the catalog after switching account/workspace; the account-scoped catalog, not the API-key model list, is authoritative for this execution source.
 
 **Shipped request-layer foundation:** Aistee now models execution source separately from provider (`API_KEY`, `ACCOUNT_PLAN`, `WEB_HANDOFF`, `GATEWAY`, `LOCAL`) and keeps an OpenAI Responses route-capability map above the shared transport. The existing Responses request builder accepts that source and enforces mandatory streaming for the account-plan route while preserving API-key defaults. Background remains on its existing API-key-only workflow; OAuth credential lifecycle and account selection are still open.
 
 The request builder remains capability-driven because fields and hosted tools accepted by API-key Responses are not automatically accepted by the ChatGPT-plan route. In particular, the current preview supports function/custom tools and selected inputs but does not support hosted image generation, file search, Code Interpreter, native computer use, hosted MCP/connectors or Responses tool search.
 
 For image generation, keep two explicit routes:
-- **API key:** Image API or Responses image-generation tool using current GPT Image models such as `gpt-image-2.5-sunburst` / `gpt-image-2.5-flare`.
-- **ChatGPT plan/account:** unavailable as a direct Sign in with ChatGPT image-generation request in the current preview. A provider-owned WebView/browser handoff can remain a user-reviewed fallback, but must not become hidden automation or private-endpoint emulation.
+- **API key:** Image API or Responses image-generation tool using current GPT Image models such as `gpt-image-2.5-sunburst` / `gpt-image-2.5-flare`. Aistee can accept an ordinary natural-language image prompt, execute the chosen image route and save the result as an artifact/Project Library item with provider/model provenance.
+- **ChatGPT plan/account:** unavailable as a direct Sign in with ChatGPT image-generation request in the current preview. When an account-plan chat/preset requests an unsupported hosted capability, the runtime resolver must stop before sending and offer explicit alternatives such as API-key execution or a provider-owned WebView/browser handoff. Never silently switch to metered API billing or emulate private consumer endpoints.
 
 Codex is a useful first-party precedent for subscription-backed execution outside ordinary Chat: ChatGPT sign-in uses ChatGPT-plan usage/billing, while API-key sign-in uses API pricing. Aistee may evaluate Codex app-server as an Agent Lab runtime, but its auth/runtime scope must not be generalized into a universal ChatGPT token.
 
-ChatKit is orthogonal. Its advanced/custom-server path is useful as a UI/session/tool-widget reference and can front arbitrary agent services, but it does not by itself convert a ChatGPT subscription into inference. Hosted ChatKit session examples use server-side OpenAI API credentials. Keep Aistee's native Compose chat as the default unless ChatKit adds a concrete capability that justifies an embedded web surface.
+ChatKit is orthogonal. Its advanced/custom-server path is useful as a UI/session/tool-widget reference and can front an Aistee-owned server/runtime router, but it does not by itself convert a ChatGPT subscription into inference. A future web/desktop shell may put ChatKit in front of the same runtime router used by native chat, including a separately authorized `ACCOUNT_PLAN` Responses route; ChatKit must not mint, own or receive the Sign in with ChatGPT authorization as if it were a ChatKit credential. Keep Aistee's native Compose chat as the default unless ChatKit adds a concrete capability that justifies an embedded web surface.
 
 Account-plan UX requirements:
 - show the active funding/auth source beside model/runtime selection;
@@ -169,8 +171,11 @@ Account-plan UX requirements:
 - Anthropic Message Batches: https://platform.claude.com/docs/en/build-with-claude/batch-processing
 - OpenAI model guidance: https://developers.openai.com/api/docs/guides/latest-model
 - OpenAI Sign in with ChatGPT: https://developers.openai.com/siwc
+- OpenAI Sign in with ChatGPT OSS registration/sign-in: https://developers.openai.com/siwc/token-sharing-open-source/sign-in
+- OpenAI Sign in with ChatGPT model discovery/inference: https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference
 - OpenAI Sign in with ChatGPT plan-usage preview limits: https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations
 - OpenAI ChatKit: https://developers.openai.com/api/docs/guides/chatkit
+- OpenAI custom ChatKit: https://developers.openai.com/api/docs/guides/custom-chatkit
 - OpenAI image generation: https://developers.openai.com/api/docs/guides/image-generation
 - Anthropic prompting/thinking guidance: https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/prompt-templates-and-variables
 - Anthropic Models API: https://platform.claude.com/docs/en/api/models/retrieve
