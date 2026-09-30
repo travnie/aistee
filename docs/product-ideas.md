@@ -99,7 +99,7 @@ Treat Token Arena as the overlap between Bench tooling and a small experimental 
 
 - Keep the bundled local `o200k_base` counter as the always-available Android reference baseline today. Keep the shared `TokenCounter` contract portable so other clients can add equivalent local backends later. Label every result by encoding and never present `o200k_base` as a universal token count for unrelated model families.
 - Add model/provider-specific counters only when they provide useful signal through an official count API or a lightweight, trustworthy tokenizer. Do not bundle a tokenizer zoo merely to make the comparison table look complete.
-- Distinguish measurement modes clearly: provider-exact count, local exact-for-encoding count, and reference/fallback estimate. Never blend them into one unlabeled number.
+- Distinguish measurement modes clearly: provider-exact count, provider-reported estimate, local exact-for-encoding count, and reference/fallback estimate. Never blend them into one unlabeled number; two counts from the same provider/model still belong to different series when one is exact and the other is only an estimate.
 - Compare token count and percentage delta alongside provider-reported input/output/cached/reasoning usage where available, plus cost, latency, response length and Aistee quality scores.
 - Record response provenance for every Arena run, including live provider responses, cached/replayed data and local `isSimulated` fallbacks.
 - Exclude cached/replayed and simulated/fallback responses from live-provider efficiency rankings by default, or show them in clearly separate groups so they cannot win on replayed or synthetic latency/cost/quality data.

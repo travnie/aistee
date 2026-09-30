@@ -19,20 +19,31 @@ class TokenArenaMetricsTest {
                 localMeasurement(reference, 100, O200K_ENCODING),
                 localMeasurement(candidate, 80, O200K_ENCODING),
                 localMeasurement(candidate, 55, "other-encoding"),
-                providerMeasurement(reference, 120),
-                providerMeasurement(candidate, 90)
+                providerMeasurement(reference, 120, TokenMeasurementMode.PROVIDER_EXACT),
+                providerMeasurement(candidate, 90, TokenMeasurementMode.PROVIDER_EXACT),
+                providerMeasurement(reference, 118, TokenMeasurementMode.PROVIDER_ESTIMATE),
+                providerMeasurement(candidate, 92, TokenMeasurementMode.PROVIDER_ESTIMATE)
             )
         )
 
         val deltas = experiment.tokenDeltas(REFERENCE_ID)
 
-        assertEquals(2, deltas.size)
+        assertEquals(3, deltas.size)
         val local = deltas.single { it.series.mode == TokenMeasurementMode.LOCAL_EXACT_ENCODING }
         assertEquals(-20L, local.deltaTokens)
         assertEquals(-20.0, local.deltaPercent)
-        val provider = deltas.single { it.series.mode == TokenMeasurementMode.PROVIDER_EXACT }
-        assertEquals(-30L, provider.deltaTokens)
-        assertEquals(-25.0, provider.deltaPercent)
+        val providerExact = deltas.single {
+            it.series.mode == TokenMeasurementMode.PROVIDER_EXACT
+        }
+        assertEquals(-30L, providerExact.deltaTokens)
+        assertEquals(-25.0, providerExact.deltaPercent)
+        val providerEstimate = deltas.single {
+            it.series.mode == TokenMeasurementMode.PROVIDER_ESTIMATE
+        }
+        assertEquals(-26L, providerEstimate.deltaTokens)
+        assertEquals((-26.0 / 118.0) * 100.0, providerEstimate.deltaPercent)
+        assertEquals(providerExact.series.providerId, providerEstimate.series.providerId)
+        assertEquals(providerExact.series.modelName, providerEstimate.series.modelName)
         assertTrue(deltas.none { it.series.encodingLabel == "other-encoding" })
     }
 
@@ -188,12 +199,13 @@ class TokenArenaMetricsTest {
 
     private fun providerMeasurement(
         variant: TokenArenaVariant,
-        tokens: Long
+        tokens: Long,
+        mode: TokenMeasurementMode,
     ) = TokenArenaTokenMeasurement(
         variantId = variant.id,
         promptFingerprint = variant.promptFingerprint,
         tokens = tokens,
-        mode = TokenMeasurementMode.PROVIDER_EXACT,
+        mode = mode,
         backendLabel = PROVIDER_BACKEND,
         providerId = PROVIDER_ID,
         modelName = MODEL_NAME
