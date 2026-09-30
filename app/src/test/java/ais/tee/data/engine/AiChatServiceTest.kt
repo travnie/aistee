@@ -935,6 +935,21 @@ class AiChatServiceTest {
         assertEquals(TEST_OPENAI_MODEL, accountPlan.getValue("model").jsonPrimitive.content)
         assertEquals(SYSTEM_PROMPT, accountPlan.getValue("instructions").jsonPrimitive.content)
         assertEquals(input, accountPlan.getValue("input").jsonArray)
+        assertFalse("service_tier" in accountPlan)
+
+        ApiProcessingMode.entries
+            .filterNot { it == ApiProcessingMode.AUTO }
+            .forEach { persistedMode ->
+                val normalizedAccountPlan = service.buildOpenAiRequestPayload(
+                    model = TEST_OPENAI_MODEL,
+                    stream = false,
+                    systemInstruction = SYSTEM_PROMPT,
+                    input = input,
+                    apiProcessingMode = persistedMode,
+                    executionSource = ProviderExecutionSource.ACCOUNT_PLAN,
+                )
+                assertFalse("service_tier" in normalizedAccountPlan)
+            }
     }
 
     @Test
