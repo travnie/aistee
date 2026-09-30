@@ -1299,11 +1299,13 @@ class AiChatService {
         put(JSON_MODEL_KEY, model)
         put(JSON_INPUT_KEY, input)
         put(JSON_STORE_KEY, false)
-        when (apiProcessingMode) {
-            ApiProcessingMode.AUTO -> Unit
-            ApiProcessingMode.STANDARD -> put(JSON_SERVICE_TIER_KEY, "default")
-            ApiProcessingMode.FLEX -> put(JSON_SERVICE_TIER_KEY, "flex")
-            ApiProcessingMode.FAST -> put(JSON_SERVICE_TIER_KEY, "fast")
+        if (executionSource == ProviderExecutionSource.API_KEY) {
+            when (apiProcessingMode) {
+                ApiProcessingMode.AUTO -> Unit
+                ApiProcessingMode.STANDARD -> put(JSON_SERVICE_TIER_KEY, "default")
+                ApiProcessingMode.FLEX -> put(JSON_SERVICE_TIER_KEY, "flex")
+                ApiProcessingMode.FAST -> put(JSON_SERVICE_TIER_KEY, "fast")
+            }
         }
         putJsonArray(JSON_INCLUDE_KEY) {
             add(OPENAI_REASONING_ENCRYPTED_CONTENT)
