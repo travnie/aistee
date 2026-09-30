@@ -102,6 +102,31 @@ Native/API responses retain provider-reported usage next to the existing local w
 
 Costs are recorded only when the response reports them. Aistee does not estimate provider prices in this path. OpenRouter requests usage accounting explicitly and may therefore supply a reported USD cost; other OpenAI-compatible gateways are parsed opportunistically when they return compatible usage fields. Hidden reasoning content remains opaque and is never exposed by these counters.
 
+## Subscription/account-backed runtimes
+
+Treat account-plan execution as a separate authentication and billing route, not as an API key discovered through login. The portable capability model should be able to distinguish at least `ACCOUNT_PLAN`, `API_KEY`, `WEB_HANDOFF`, `GATEWAY` and `LOCAL` execution sources while keeping one conversation/tool/result model above them.
+
+OpenAI now documents **Sign in with ChatGPT** plan usage for open-source and locally hosted clients. Eligible users can authorize Responses API inference against their ChatGPT plan/credits without configuring an API key. For the preview route, requests are intentionally narrower than ordinary API-key Responses: use `store=false`, streaming, explicit input history and documented supported fields/tools. Account-plan OAuth credentials remain separate from API keys and from ChatGPT conversation history.
+
+The first Aistee slice should therefore reuse the existing OpenAI Responses adapter behind a new auth/funding source rather than fork a second OpenAI chat implementation. The request builder must be capability-driven because fields and hosted tools accepted by API-key Responses are not automatically accepted by the ChatGPT-plan route. In particular, the current preview supports function/custom tools and selected inputs but does not support hosted image generation, file search, Code Interpreter, native computer use, hosted MCP/connectors or Responses tool search.
+
+For image generation, keep two explicit routes:
+- **API key:** Image API or Responses image-generation tool using current GPT Image models such as `gpt-image-2.5-sunburst` / `gpt-image-2.5-flare`.
+- **ChatGPT plan/account:** unavailable as a direct Sign in with ChatGPT image-generation request in the current preview. A provider-owned WebView/browser handoff can remain a user-reviewed fallback, but must not become hidden automation or private-endpoint emulation.
+
+Codex is a useful first-party precedent for subscription-backed execution outside ordinary Chat: ChatGPT sign-in uses ChatGPT-plan usage/billing, while API-key sign-in uses API pricing. Aistee may evaluate Codex app-server as an Agent Lab runtime, but its auth/runtime scope must not be generalized into a universal ChatGPT token.
+
+ChatKit is orthogonal. Its advanced/custom-server path is useful as a UI/session/tool-widget reference and can front arbitrary agent services, but it does not by itself convert a ChatGPT subscription into inference. Hosted ChatKit session examples use server-side OpenAI API credentials. Keep Aistee's native Compose chat as the default unless ChatKit adds a concrete capability that justifies an embedded web surface.
+
+Account-plan UX requirements:
+- show the active funding/auth source beside model/runtime selection;
+- never silently switch between plan allowance and API billing;
+- expose provider usage/management links and usage-limit recovery;
+- keep OAuth/access/refresh tokens in protected storage and out of logs, URLs, browser storage and exports;
+- keep multiple provider registrations/workspaces separate;
+- invalidate/disconnect cleanly without touching locally owned Aistee chats;
+- treat each provider's account-plan capability matrix as independently verified rather than inferred from WebView login.
+
 ## Web/account-chat TODO
 
 - [x] Never invent a fallback Studio prompt when no rendered instructions are active.
@@ -141,6 +166,10 @@ Costs are recorded only when the response reports them. Aistee does not estimate
 - OpenAI Background mode: https://developers.openai.com/api/docs/guides/background
 - Anthropic Message Batches: https://platform.claude.com/docs/en/build-with-claude/batch-processing
 - OpenAI model guidance: https://developers.openai.com/api/docs/guides/latest-model
+- OpenAI Sign in with ChatGPT: https://developers.openai.com/siwc
+- OpenAI Sign in with ChatGPT plan-usage preview limits: https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations
+- OpenAI ChatKit: https://developers.openai.com/api/docs/guides/chatkit
+- OpenAI image generation: https://developers.openai.com/api/docs/guides/image-generation
 - Anthropic prompting/thinking guidance: https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/prompt-templates-and-variables
 - Anthropic Models API: https://platform.claude.com/docs/en/api/models/retrieve
 - OpenRouter routing/fallbacks: https://openrouter.ai/docs/guides/routing/model-fallbacks
