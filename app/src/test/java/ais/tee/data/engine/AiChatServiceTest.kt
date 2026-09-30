@@ -6,6 +6,7 @@ import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ClaudeReasoningCapabilities
 import ais.tee.data.model.ModelChatMessage
+import ais.tee.data.model.ProviderExecutionSource
 import ais.tee.data.model.ProviderInputBudgetPreflight
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
@@ -901,6 +902,78 @@ class AiChatServiceTest {
         assertFalse("stream" in buffered)
         assertEquals("false", streaming.getValue("store").jsonPrimitive.content)
         assertEquals("true", streaming.getValue("stream").jsonPrimitive.content)
+    }
+
+    @Test
+    fun accountPlanOpenAiPayloadForcesPreviewStreamingWithoutChangingApiKeyDefault() {
+        val service = AiChatService()
+        val input = service.buildOpenAiResponseInput(
+            prompt = FOLLOW_UP,
+            conversationHistory = emptyList(),
+            systemInstruction = SYSTEM_PROMPT,
+            modelName = TEST_OPENAI_MODEL,
+        )
+
+        val apiKey = service.buildOpenAiRequestPayload(
+            model = TEST_OPENAI_MODEL,
+            stream = false,
+            systemInstruction = SYSTEM_PROMPT,
+            input = input,
+            executionSource = ProviderExecutionSource.API_KEY,
+        )
+        val accountPlan = service.buildOpenAiRequestPayload(
+            model = TEST_OPENAI_MODEL,
+            stream = false,
+            systemInstruction = SYSTEM_PROMPT,
+            input = input,
+            executionSource = ProviderExecutionSource.ACCOUNT_PLAN,
+        )
+
+        assertFalse("stream" in apiKey)
+        assertEquals("true", accountPlan.getValue("stream").jsonPrimitive.content)
+        assertEquals("false", accountPlan.getValue("store").jsonPrimitive.content)
+        assertEquals(TEST_OPENAI_MODEL, accountPlan.getValue("model").jsonPrimitive.content)
+        assertEquals(SYSTEM_PROMPT, accountPlan.getValue("instructions").jsonPrimitive.content)
+        assertEquals(input, accountPlan.getValue("input").jsonArray)
+        assertFalse("service_tier" in accountPlan)
+
+        ApiProcessingMode.entries
+            .filterNot { it == ApiProcessingMode.AUTO }
+            .forEach { persistedMode ->
+                val normalizedAccountPlan = service.buildOpenAiRequestPayload(
+                    model = TEST_OPENAI_MODEL,
+                    stream = false,
+                    systemInstruction = SYSTEM_PROMPT,
+                    input = input,
+                    apiProcessingMode = persistedMode,
+                    executionSource = ProviderExecutionSource.ACCOUNT_PLAN,
+                )
+                assertFalse("service_tier" in normalizedAccountPlan)
+            }
+    }
+
+    @Test
+    fun nonResponsesExecutionSourceCannotBuildOpenAiPayload() {
+        val input = AiChatService().buildOpenAiResponseInput(
+            prompt = FOLLOW_UP,
+            conversationHistory = emptyList(),
+        )
+        val error = try {
+            AiChatService().buildOpenAiRequestPayload(
+                model = TEST_OPENAI_MODEL,
+                stream = true,
+                systemInstruction = null,
+                input = input,
+                executionSource = ProviderExecutionSource.WEB_HANDOFF,
+            )
+            null
+        } catch (error: IllegalArgumentException) {
+            error
+        }
+        assertEquals(
+            "Selected execution source is not a direct OpenAI Responses route",
+            error?.message,
+        )
     }
 
     @Test

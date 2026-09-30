@@ -174,7 +174,7 @@ data class StudioUiState(
     val incognitoConversationId: String? = null,
     /** Send held back because the chat context does not fit the model; cleared on send or dismiss. */
     val pendingChatContextWarning: PendingChatContextWarning? = null,
-    /** Explicit provider-exact Gemini draft preflight; never persisted with the conversation. */
+    /** Explicit provider-reported draft preflight; accuracy semantics come from the provider. */
     val inputBudgetPreflight: ProviderInputBudgetPreflight? = null,
     val isInputBudgetPreflightRunning: Boolean = false,
     /** Model-initiated skill call waiting for Allow/Deny; cleared when answered or the reply stops. */

@@ -28,6 +28,36 @@ class ProviderRuntimeCapabilitiesTest {
     }
 
     @Test
+    fun openAiResponsesCapabilitiesDependOnExecutionSource() {
+        val apiKey = ProviderExecutionSource.API_KEY.openAiResponsesRouteCapabilities()
+        val accountPlan = ProviderExecutionSource.ACCOUNT_PLAN.openAiResponsesRouteCapabilities()
+        val web = ProviderExecutionSource.WEB_HANDOFF.openAiResponsesRouteCapabilities()
+
+        assertTrue(apiKey.available)
+        assertFalse(apiKey.requiresStreaming)
+        assertTrue(apiKey.permitsBackground)
+        assertTrue(apiKey.permitsHostedImageGeneration)
+        assertTrue(apiKey.permitsPreviousResponseId)
+        assertTrue(apiKey.permitsFilesUploadApi)
+
+        assertTrue(accountPlan.available)
+        assertTrue(accountPlan.requiresStreaming)
+        assertFalse(accountPlan.permitsBackground)
+        assertTrue(accountPlan.permitsFunctionTools)
+        assertFalse(accountPlan.permitsHostedImageGeneration)
+        assertFalse(accountPlan.permitsFileSearch)
+        assertFalse(accountPlan.permitsCodeInterpreter)
+        assertFalse(accountPlan.permitsNativeComputerUse)
+        assertFalse(accountPlan.permitsHostedMcp)
+        assertFalse(accountPlan.permitsToolSearch)
+        assertFalse(accountPlan.permitsPreviousResponseId)
+        assertFalse(accountPlan.permitsFilesUploadApi)
+
+        assertFalse(web.available)
+        assertFalse(web.permitsFunctionTools)
+    }
+
+    @Test
     fun nativeProvidersKeepNativeSystemInstructionFields() {
         assertEquals(
             SystemInstructionPlacement.NATIVE_FIELD,
