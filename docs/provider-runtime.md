@@ -171,8 +171,11 @@ Account-plan UX requirements:
 - Anthropic Message Batches: https://platform.claude.com/docs/en/build-with-claude/batch-processing
 - OpenAI model guidance: https://developers.openai.com/api/docs/guides/latest-model
 - OpenAI Sign in with ChatGPT: https://developers.openai.com/siwc
+- OpenAI Sign in with ChatGPT OSS registration/sign-in: https://developers.openai.com/siwc/token-sharing-open-source/sign-in
+- OpenAI Sign in with ChatGPT model discovery/inference: https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference
 - OpenAI Sign in with ChatGPT plan-usage preview limits: https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations
 - OpenAI ChatKit: https://developers.openai.com/api/docs/guides/chatkit
+- OpenAI custom ChatKit: https://developers.openai.com/api/docs/guides/custom-chatkit
 - OpenAI image generation: https://developers.openai.com/api/docs/guides/image-generation
 - Anthropic prompting/thinking guidance: https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering/prompt-templates-and-variables
 - Anthropic Models API: https://platform.claude.com/docs/en/api/models/retrieve
