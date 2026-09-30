@@ -40,15 +40,20 @@ class TokenArenaTest {
     }
 
     @Test
-    fun providerExactMeasurementRequiresProviderAndModel() {
-        assertFailsWith<IllegalArgumentException> {
-            TokenArenaTokenMeasurement(
-                variantId = SHORT_VARIANT_ID,
-                promptFingerprint = stablePromptFingerprint(PROMPT_HELLO),
-                tokens = 10,
-                mode = TokenMeasurementMode.PROVIDER_EXACT,
-                backendLabel = "provider-api"
-            )
+    fun providerMeasurementsRequireProviderAndModel() {
+        listOf(
+            TokenMeasurementMode.PROVIDER_EXACT,
+            TokenMeasurementMode.PROVIDER_ESTIMATE,
+        ).forEach { mode ->
+            assertFailsWith<IllegalArgumentException> {
+                TokenArenaTokenMeasurement(
+                    variantId = SHORT_VARIANT_ID,
+                    promptFingerprint = stablePromptFingerprint(PROMPT_HELLO),
+                    tokens = 10,
+                    mode = mode,
+                    backendLabel = "provider-api"
+                )
+            }
         }
     }
 

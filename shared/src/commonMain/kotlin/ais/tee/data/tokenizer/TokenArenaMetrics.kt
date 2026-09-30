@@ -23,8 +23,9 @@ data class TokenArenaTokenDelta(
 /**
  * Compare prompt token counts only when the complete measurement identity matches.
  *
- * A local `o200k` result therefore never silently becomes comparable with a provider-exact count,
- * another encoding, or a different backend. Ambiguous duplicate measurements in the same series are
+ * A local `o200k` result therefore never silently becomes comparable with a provider-reported count,
+ * and provider exact/estimate modes remain separate even for the same backend/model. Another encoding
+ * or backend also creates a distinct series. Ambiguous duplicate measurements in the same series are
  * skipped rather than choosing one arbitrarily.
  */
 fun TokenArenaExperiment.tokenDeltas(referenceVariantId: String): List<TokenArenaTokenDelta> {

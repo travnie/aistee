@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class TokenMeasurementMode {
     PROVIDER_EXACT,
+    PROVIDER_ESTIMATE,
     LOCAL_EXACT_ENCODING,
     REFERENCE_FALLBACK
 }
@@ -43,7 +44,8 @@ data class TokenArenaVariant(
  * Token count for one prompt variant, with enough provenance to interpret the number honestly.
  *
  * `LOCAL_EXACT_ENCODING` is exact only for the named encoding, not universally for other models.
- * `PROVIDER_EXACT` must name the provider and model that supplied the count.
+ * Provider-reported measurements must preserve whether the provider calls the number exact or estimated.
+ * Both provider modes must name the provider and model that supplied the count.
  */
 @Serializable
 data class TokenArenaTokenMeasurement(
@@ -66,9 +68,12 @@ data class TokenArenaTokenMeasurement(
                 "Local exact token measurements must name their encoding"
             }
         }
-        if (mode == TokenMeasurementMode.PROVIDER_EXACT) {
+        if (
+            mode == TokenMeasurementMode.PROVIDER_EXACT ||
+            mode == TokenMeasurementMode.PROVIDER_ESTIMATE
+        ) {
             require(!providerId.isNullOrBlank() && !modelName.isNullOrBlank()) {
-                "Provider-exact token measurements must name provider and model"
+                "Provider token measurements must name provider and model"
             }
         }
     }
