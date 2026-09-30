@@ -22206,3 +22206,9 @@ SPLais/tee/ui/viewmodel/StudioUiState;->copy$default(Lais/tee/ui/viewmodel/Studi
 SPLais/tee/ui/viewmodel/StudioUiState;->copy(Lais/tee/data/model/Profile;Lais/tee/data/model/ProfileOverlay;Ljava/util/List;Lais/tee/data/model/Profile;Ljava/lang/String;Ljava/lang/String;Lais/tee/data/engine/ValidationResult;Ljava/lang/String;Ljava/util/List;ZLais/tee/ui/viewmodel/NavigationTab;Lais/tee/data/model/WebAiService;Ljava/util/Set;Ljava/lang/String;Lais/tee/share/IncomingSharePayload;JLais/tee/share/PendingWebShare;Lais/tee/ui/viewmodel/PendingWebDraft;Lais/tee/data/model/NativeChatArchive;ZLais/tee/ui/viewmodel/NativeChatNavigationRequest;JLais/tee/data/model/ApiKeyConfig;ZLjava/util/Set;ZLjava/util/Map;Ljava/util/Set;Lais/tee/data/model/ProjectLibraryArchive;ZLais/tee/data/model/AsyncProviderJobArchive;ZLjava/lang/String;Lais/tee/ui/viewmodel/PendingChatContextWarning;Lais/tee/data/model/ProviderInputBudgetPreflight;ZLais/tee/ui/viewmodel/PendingActiveSkillPrompt;)Lais/tee/ui/viewmodel/StudioUiState;
 SPLais/tee/ui/viewmodel/StudioUiState;->getInputBudgetPreflight()Lais/tee/data/model/ProviderInputBudgetPreflight;
 SPLais/tee/data/engine/AiChatService;->resolveEffectiveModel(Lais/tee/data/model/AiProvider;Ljava/lang/String;)Ljava/lang/String;
+SPLais/tee/data/model/ProviderExecutionSource$Companion;-><init>()V
+SPLais/tee/data/model/ProviderExecutionSource$Companion;-><init>(Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+SPLais/tee/data/model/ProviderExecutionSource;->$values()[Lais/tee/data/model/ProviderExecutionSource;
+SPLais/tee/data/model/ProviderExecutionSource;-><clinit>()V
+SPLais/tee/data/model/ProviderExecutionSource;-><init>(Ljava/lang/String;I)V
+SPLais/tee/data/model/ProviderExecutionSource;->values()[Lais/tee/data/model/ProviderExecutionSource;
