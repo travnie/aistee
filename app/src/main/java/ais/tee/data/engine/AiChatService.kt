@@ -1686,8 +1686,9 @@ class AiChatService {
             reasoningCapabilities = reportedReasoning ?: ClaudeReasoningCapabilities(),
             resolvedModel = resolvedModel
         )
-        val metadataIncomplete =
-            reportedMaxTokens == null || reportedMaxInputTokens == null || reportedReasoning == null
+        // Generation cache health depends only on fields Send needs. max_input_tokens is
+        // preflight-only and must not shorten the shared metadata TTL when a model omits it.
+        val metadataIncomplete = reportedMaxTokens == null || reportedReasoning == null
         val concreteExpiry = if (metadataIncomplete) nowMillis + CLAUDE_METADATA_FAILURE_TTL_MILLIS else null
         claudeMetadataByModelAndCredential[claudeMetadataCacheKey(resolvedModel, apiKey)] =
             ClaudeMetadataCacheEntry(metadata, concreteExpiry)
