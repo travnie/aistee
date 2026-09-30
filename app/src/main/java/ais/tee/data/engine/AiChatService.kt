@@ -18,7 +18,9 @@ import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
 import ais.tee.data.model.runtimeCapabilities
 import ais.tee.data.model.ProviderUsage
+import ais.tee.data.model.ProviderExecutionSource
 import ais.tee.data.model.ProviderInputBudgetPreflight
+import ais.tee.data.model.openAiResponsesRouteCapabilities
 import ais.tee.data.model.buildBoundedProviderTextTurns
 import ais.tee.data.model.gatewayModelOptions
 import ais.tee.data.model.Profile
@@ -1288,7 +1290,12 @@ class AiChatService {
         systemInstruction: String?,
         input: JsonArray,
         apiProcessingMode: ApiProcessingMode = ApiProcessingMode.AUTO,
+        executionSource: ProviderExecutionSource = ProviderExecutionSource.API_KEY,
     ): JsonObject = buildJsonObject {
+        val routeCapabilities = executionSource.openAiResponsesRouteCapabilities()
+        require(routeCapabilities.available) {
+            "Selected execution source is not a direct OpenAI Responses route"
+        }
         put(JSON_MODEL_KEY, model)
         put(JSON_INPUT_KEY, input)
         put(JSON_STORE_KEY, false)
@@ -1301,7 +1308,7 @@ class AiChatService {
         putJsonArray(JSON_INCLUDE_KEY) {
             add(OPENAI_REASONING_ENCRYPTED_CONTENT)
         }
-        if (stream) put(JSON_STREAM_KEY, true)
+        if (stream || routeCapabilities.requiresStreaming) put(JSON_STREAM_KEY, true)
         if (!systemInstruction.isNullOrBlank()) {
             put(JSON_INSTRUCTIONS_KEY, systemInstruction)
         }
