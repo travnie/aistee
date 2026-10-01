@@ -25,13 +25,14 @@ class WebProviderSelectionStateTest {
     @Test
     fun retainedProviderPageFinishUsesCurrentSelection() {
         switchProvider("chatgpt")
+        val fixtureUrl = "https://chatgpt.com/aistee-selection-fixture"
         val chatGpt = composeRule.runOnIdle {
             requireNotNull(visibleWebView(composeRule.activity.window.decorView)).also { webView ->
                 webView.stopLoading()
                 webView.loadDataWithBaseURL(
-                    "https://chatgpt.com/aistee-selection-fixture",
+                    fixtureUrl,
                     "<html><body><p>Selection fixture</p></body></html>",
-                    "text/html", "UTF-8", "https://chatgpt.com/aistee-selection-fixture",
+                    "text/html", "UTF-8", fixtureUrl,
                 )
             }
         }
@@ -45,7 +46,7 @@ class WebProviderSelectionStateTest {
             fixtureReady.get() == "true"
         }
         composeRule.runOnIdle {
-            assertEquals("https://chatgpt.com/aistee-selection-fixture", chatGpt.url)
+            assertEquals(fixtureUrl, chatGpt.url)
             chatGpt.webViewClient.onPageFinished(chatGpt, chatGpt.url)
         }
         awaitTrackerSelection(chatGpt, selected = true)
