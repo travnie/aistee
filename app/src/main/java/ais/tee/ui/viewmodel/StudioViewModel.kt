@@ -1023,12 +1023,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     suspend fun insertProjectLibraryAssetIntoDraft(asset: ProjectLibraryAsset, maxChars: Int): Boolean {
         val start = _uiState.value
         val conversationId = start.activeNativeConversation?.id
-        // UTF-8 uses at most 3 bytes per UTF-16 char, so this size can never fit the composer.
-        if (conversationId == null || !start.isNativeConversationStoreReady || !asset.canInsertIntoDraft() ||
-            asset.sizeBytes > maxChars * 3L
-        ) {
-            return false
-        }
+        if (conversationId == null || !start.isNativeConversationStoreReady || !asset.canInsertIntoDraft()) return false
         val text = loadProjectLibraryAsset(asset.id) ?: return false
         val baseDraft = _uiState.value.activeNativeConversation
             ?.takeIf { it.id == conversationId }
