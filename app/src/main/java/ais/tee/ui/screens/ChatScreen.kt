@@ -2739,6 +2739,7 @@ private const val LONG_USER_MESSAGE_PREVIEW_LINES = 8
 private val NATIVE_CHAT_TIMELINE_TARGET_WIDTH = 48.dp
 
 /** A thin rail of jump targets for long native chats: user turns as dots, starred messages as stars. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NativeChatTimelineRail(
     markers: List<NativeChatTimelineMarker>,
@@ -2776,29 +2777,41 @@ private fun NativeChatTimelineRail(
                 marker.isStarred -> "Jump to starred reply in turn ${marker.turnNumber}"
                 else -> "Jump to turn ${marker.turnNumber}"
             }
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .offset(y = offsetY)
-                    .size(width = NATIVE_CHAT_TIMELINE_TARGET_WIDTH, height = markerSize)
-                    .clickable(onClickLabel = description) { onJump(marker) }
-                    .semantics { contentDescription = description }
-                    .testTag("timeline_marker_${marker.messageId}")
+            // Long-press (or hover with a pointer) previews the turn without jumping.
+            TooltipBox(
+                positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                tooltip = {
+                    PlainTooltip(modifier = Modifier.testTag("timeline_preview_${marker.messageId}")) {
+                        Text(marker.preview, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    }
+                },
+                state = rememberTooltipState(),
+                enableUserInput = marker.preview.isNotBlank(),
+                modifier = Modifier.offset(y = offsetY),
             ) {
-                if (marker.isStarred) {
-                    Icon(
-                        imageVector = Icons.Filled.Star,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.size(12.dp)
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f))
-                    )
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(width = NATIVE_CHAT_TIMELINE_TARGET_WIDTH, height = markerSize)
+                        .clickable(onClickLabel = description) { onJump(marker) }
+                        .semantics { contentDescription = description }
+                        .testTag("timeline_marker_${marker.messageId}")
+                ) {
+                    if (marker.isStarred) {
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f))
+                        )
+                    }
                 }
             }
         }
