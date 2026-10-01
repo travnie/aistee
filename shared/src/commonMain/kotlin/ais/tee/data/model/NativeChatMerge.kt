@@ -26,6 +26,7 @@ fun mergeNativeChatChanges(
             } else {
                 latest.starredMessageIds
             },
+            starNotes = if (edited.starNotes != original.starNotes) edited.starNotes else latest.starNotes,
             updatedAtEpochMs = maxOf(edited.updatedAtEpochMs, latest.updatedAtEpochMs),
             replyEpoch = maxOf(edited.replyEpoch, latest.replyEpoch),
             messages = when {

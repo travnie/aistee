@@ -66,6 +66,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
@@ -99,6 +100,7 @@ import ais.tee.data.model.spreadTimelineOffsets
 import ais.tee.data.model.thinNativeChatTimeline
 import ais.tee.data.model.canStartNativeChatFork
 import ais.tee.data.model.starredMessages
+import ais.tee.data.model.MAX_NATIVE_STAR_NOTE_CHARS
 import ais.tee.data.model.renderChatMarkdown
 import ais.tee.data.model.isCompletedAssistantResponse
 import ais.tee.data.model.supportedApiProcessingModes
@@ -345,6 +347,7 @@ private fun NativeChatDetailPane(
     // Keyed by chat so a quote can never land in a different conversation's draft.
     var selectingMessage by remember(uiState.activeNativeConversation?.id) { mutableStateOf<ModelChatMessage?>(null) }
     var showStarredMessages by remember { mutableStateOf(false) }
+    var editingStarNoteId by remember { mutableStateOf<String?>(null) }
     var pendingCsvExport by remember { mutableStateOf<String?>(null) }
 
     val csvExportLauncher = rememberLauncherForActivityResult(
@@ -467,6 +470,7 @@ private fun NativeChatDetailPane(
     val starredMessageIds = uiState.activeNativeConversation?.starredMessageIds.orEmpty().toSet()
     val starredMessages = uiState.activeNativeConversation?.starredMessages.orEmpty()
     val starredIdList = uiState.activeNativeConversation?.starredMessageIds.orEmpty()
+    val starNotes = uiState.activeNativeConversation?.starNotes.orEmpty()
     // Streaming only appends text to the newest reply in place, which never changes marker positions
     // or user-turn previews, so key on list shape instead of the text-bearing message list.
     val timelineMessages = uiState.chatMessages
@@ -571,12 +575,29 @@ private fun NativeChatDetailPane(
     if (showStarredMessages) {
         StarredMessagesDialog(
             messages = starredMessages,
+            notes = starNotes,
+            onEditNote = { message -> editingStarNoteId = message.id },
             onJump = { message ->
                 showStarredMessages = false
                 val index = uiState.chatMessages.indexOfFirst { it.id == message.id }
                 if (index >= 0) scope.launch { listState.animateScrollToItem(index) }
             },
             onDismiss = { showStarredMessages = false },
+        )
+    }
+
+    // A star removed or a chat switched while editing closes the editor instead of saving to nothing.
+    LaunchedEffect(editingStarNoteId, starredMessageIds) {
+        if (editingStarNoteId?.let { it !in starredMessageIds } == true) editingStarNoteId = null
+    }
+    editingStarNoteId?.takeIf { it in starredMessageIds }?.let { messageId ->
+        StarNoteDialog(
+            initialNote = starNotes[messageId].orEmpty(),
+            onSave = { note ->
+                viewModel.setNativeStarNote(messageId, note)
+                editingStarNoteId = null
+            },
+            onDismiss = { editingStarNoteId = null },
         )
     }
 
@@ -2551,6 +2572,8 @@ internal fun ChatContextWarningBanner(
 @Composable
 private fun StarredMessagesDialog(
     messages: List<ModelChatMessage>,
+    notes: Map<String, String>,
+    onEditNote: (ModelChatMessage) -> Unit,
     onJump: (ModelChatMessage) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -2566,29 +2589,50 @@ private fun StarredMessagesDialog(
                     modifier = Modifier.testTag("starred_messages_list")
                 ) {
                     items(messages, key = { it.id }) { message ->
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(MaterialTheme.shapes.small)
-                                .clickable { onJump(message) }
-                                .padding(8.dp)
-                                .testTag("starred_message_${message.id}")
-                        ) {
-                            Text(
-                                text = if (message.sender == CHAT_ROLE_USER) {
-                                    "You"
-                                } else {
-                                    message.provider?.shortName ?: "Assistant"
-                                },
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = message.text.trim(),
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                        val note = notes[message.id]
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(MaterialTheme.shapes.small)
+                                    .clickable { onJump(message) }
+                                    .padding(8.dp)
+                                    .testTag("starred_message_${message.id}")
+                            ) {
+                                Text(
+                                    text = if (message.sender == CHAT_ROLE_USER) {
+                                        "You"
+                                    } else {
+                                        message.provider?.shortName ?: "Assistant"
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = message.text.trim(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (note != null) {
+                                    Text(
+                                        text = "Note: $note",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontStyle = FontStyle.Italic,
+                                        color = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.testTag("star_note_${message.id}")
+                                    )
+                                }
+                            }
+                            IconButton(
+                                onClick = { onEditNote(message) },
+                                modifier = Modifier.testTag("btn_star_note_${message.id}")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Edit,
+                                    contentDescription = if (note == null) "Add note" else "Edit note",
+                                )
+                            }
                         }
                     }
                 }
@@ -2596,6 +2640,38 @@ private fun StarredMessagesDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
+}
+
+/** Edits the one-line local note on a starred message; saving an empty note removes it. */
+@Composable
+private fun StarNoteDialog(
+    initialNote: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var note by rememberSaveable { mutableStateOf(initialNote) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (initialNote.isEmpty()) "Add note" else "Edit note") },
+        text = {
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it.replace('\n', ' ').take(MAX_NATIVE_STAR_NOTE_CHARS) },
+                singleLine = true,
+                placeholder = { Text("Why this message matters") },
+                supportingText = { Text("${note.length}/$MAX_NATIVE_STAR_NOTE_CHARS · stays on this device") },
+                modifier = Modifier.fillMaxWidth().testTag("input_star_note")
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(note) }, modifier = Modifier.testTag("btn_save_star_note")) {
+                Text(if (note.isBlank() && initialNote.isNotEmpty()) "Remove" else "Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
 }

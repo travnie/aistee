@@ -1235,6 +1235,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         updateActiveNativeConversation { it.withStarToggled(messageId) }
     }
 
+    /** Sets or clears the short local note on a starred message in the active native chat. */
+    fun setNativeStarNote(messageId: String, note: String) {
+        if (!_uiState.value.isNativeConversationStoreReady) return
+        updateActiveNativeConversation { it.withStarNote(messageId, note) }
+    }
+
     /** Starts a chat that lives only in memory; leaving it or process death discards it. */
     fun newIncognitoConversation() {
         if (!_uiState.value.isNativeConversationStoreReady) return
@@ -1465,6 +1471,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 // A cleared branch no longer holds anything inherited from its source.
                 forkedFrom = null,
                 starredMessageIds = emptyList(),
+                starNotes = emptyMap(),
             )
         }
         NativeChatNotificationPublisher.cancelConversation(getApplication(), conversationId)
