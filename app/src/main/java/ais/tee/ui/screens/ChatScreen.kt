@@ -96,6 +96,8 @@ import ais.tee.data.model.NativeChatTimelineMarker
 import ais.tee.data.model.canBeStarred
 import ais.tee.data.model.nativeChatTimeline
 import ais.tee.data.model.quoteIntoNativeChatDraft
+import ais.tee.data.model.appendToNativeChatDraft
+import ais.tee.data.model.canInsertIntoDraft
 import ais.tee.data.model.spreadTimelineOffsets
 import ais.tee.data.model.thinNativeChatTimeline
 import ais.tee.data.model.canStartNativeChatFork
@@ -292,6 +294,7 @@ private fun NativeChatDetailPane(
         MarkdownWorkspaceRecoveryStore(context.noBackupFilesDir)
     }
     val promptInput = uiState.nativeChatDraft
+    val latestPromptInput by rememberUpdatedState(promptInput)
     // Tracks the caret for the user's own edits; when the draft changes elsewhere (a quote, an
     // imported draft, another chat), the caret moves to the end so typing continues below it.
     // Keyed by chat so switching to a chat with an identical draft does not inherit the caret.
@@ -561,6 +564,25 @@ private fun NativeChatDetailPane(
                         showProjectLibrary = false
                     }
                 }
+            },
+            onInsertAsset = if (uiState.activeNativeConversation != null) {
+                { asset ->
+                    scope.launch {
+                        val text = viewModel.loadProjectLibraryAsset(asset.id)
+                        val draft = text?.let {
+                            appendToNativeChatDraft(it, latestPromptInput, MAX_CHAT_PROMPT_IMPORT_CHARS)
+                        }
+                        if (draft == null) {
+                            viewModel.showSnackbar("Could not insert that asset; it may be empty or too large.")
+                        } else {
+                            viewModel.updateNativeConversationDraft(draft)
+                            showProjectLibrary = false
+                            viewModel.showSnackbar("Inserted into your prompt. Nothing is sent until you tap Send.")
+                        }
+                    }
+                }
+            } else {
+                null
             },
             onDeleteAsset = { asset ->
                 scope.launch {
@@ -2416,6 +2438,7 @@ private fun ProjectLibraryDialog(
     onSelectProject: (String) -> Unit,
     onCreateProject: (String) -> Unit,
     onOpenAsset: (ProjectLibraryAsset) -> Unit,
+    onInsertAsset: ((ProjectLibraryAsset) -> Unit)?,
     onDeleteAsset: (ProjectLibraryAsset) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -2497,6 +2520,14 @@ private fun ProjectLibraryDialog(
                                 Row {
                                     IconButton(onClick = { onOpenAsset(asset) }) {
                                         Icon(Icons.Outlined.OpenInNew, contentDescription = "Open asset")
+                                    }
+                                    if (onInsertAsset != null && asset.canInsertIntoDraft()) {
+                                        IconButton(
+                                            onClick = { onInsertAsset(asset) },
+                                            modifier = Modifier.testTag("btn_insert_asset_${asset.id}"),
+                                        ) {
+                                            Icon(Icons.Outlined.PostAdd, contentDescription = "Insert into prompt")
+                                        }
                                     }
                                     IconButton(onClick = { onDeleteAsset(asset) }) {
                                         Icon(Icons.Outlined.Delete, contentDescription = "Delete asset")
