@@ -348,7 +348,7 @@ private fun NativeChatDetailPane(
     // Keyed by chat so a quote can never land in a different conversation's draft.
     var selectingMessage by remember(uiState.activeNativeConversation?.id) { mutableStateOf<ModelChatMessage?>(null) }
     var showStarredMessages by remember { mutableStateOf(false) }
-    var editingStarNoteId by remember { mutableStateOf<String?>(null) }
+    var editingStarNoteId by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingCsvExport by remember { mutableStateOf<String?>(null) }
 
     val csvExportLauncher = rememberLauncherForActivityResult(
@@ -588,18 +588,24 @@ private fun NativeChatDetailPane(
     }
 
     // A star removed or a chat switched while editing closes the editor instead of saving to nothing.
-    LaunchedEffect(editingStarNoteId, starredMessageIds) {
-        if (editingStarNoteId?.let { it !in starredMessageIds } == true) editingStarNoteId = null
+    // Wait for the chat store before judging a restored target, so recreation keeps the editor open.
+    LaunchedEffect(editingStarNoteId, starredMessageIds, uiState.isNativeConversationStoreReady) {
+        if (uiState.isNativeConversationStoreReady && editingStarNoteId?.let { it !in starredMessageIds } == true) {
+            editingStarNoteId = null
+        }
     }
     editingStarNoteId?.takeIf { it in starredMessageIds }?.let { messageId ->
-        StarNoteDialog(
-            initialNote = starNotes[messageId].orEmpty(),
-            onSave = { note ->
-                viewModel.setNativeStarNote(messageId, note)
-                editingStarNoteId = null
-            },
-            onDismiss = { editingStarNoteId = null },
-        )
+        // Keyed so one message's unsaved draft never carries over to another message's editor.
+        key(uiState.nativeChat.activeConversationId, messageId) {
+            StarNoteDialog(
+                initialNote = starNotes[messageId].orEmpty(),
+                onSave = { note ->
+                    viewModel.setNativeStarNote(messageId, note)
+                    editingStarNoteId = null
+                },
+                onDismiss = { editingStarNoteId = null },
+            )
+        }
     }
 
     selectingMessage?.let { selected ->
