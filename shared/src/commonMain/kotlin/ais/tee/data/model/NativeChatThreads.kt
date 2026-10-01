@@ -18,6 +18,8 @@ private const val NATIVE_CHAT_FORK_COPY_ROOT_SEPARATOR = '/'
 fun ModelChatMessage.forkRootMessageId(): String =
     if (id.startsWith(NATIVE_CHAT_FORK_COPY_ID_PREFIX)) id.substringAfter(NATIVE_CHAT_FORK_COPY_ROOT_SEPARATOR, id) else id
 private const val MAX_NATIVE_CONVERSATION_TITLE_CHARS = 56
+/** Longest note a starred message can carry; notes are one short line, not a second message. */
+const val MAX_NATIVE_STAR_NOTE_CHARS = 140
 
 @Serializable
 data class NativeChatConversation(
@@ -37,11 +39,13 @@ data class NativeChatConversation(
     val forkedFrom: NativeChatForkOrigin? = null,
     /** Local bookmarks on this chat's own messages, in the order they were starred. */
     val starredMessageIds: List<String> = emptyList(),
+    /** Optional short user notes on starred messages, keyed by message id. */
+    val starNotes: Map<String, String> = emptyMap(),
 ) {
     override fun toString(): String =
         "NativeChatConversation(id=<redacted>, title=<redacted>, messages=${messages.size}, " +
             "selectedProvider=${selectedProvider.id}, selectedModel=<redacted>, projectId=<redacted>, " +
-            "forked=${forkedFrom != null}, starred=${starredMessageIds.size})"
+            "forked=${forkedFrom != null}, starred=${starredMessageIds.size}, starNotes=${starNotes.size})"
 }
 
 /** Where a branch came from: its first [inheritedMessageCount] messages are copies from the source. */
@@ -131,6 +135,7 @@ fun NativeChatConversation.forkAt(
         updatedAtEpochMs = nowEpochMs,
         messages = copies,
         starredMessageIds = starredMessageIds.mapNotNull(copyIds::get),
+        starNotes = starNotes.mapNotNull { (id, note) -> copyIds[id]?.let { it to note } }.toMap(),
         draft = "",
         selectedProvider = provider,
         selectedModel = model,
@@ -178,9 +183,30 @@ fun ModelChatMessage.canBeStarred(): Boolean =
 
 /** Stars or unstars one of this chat's messages; unknown ids leave the chat unchanged. */
 fun NativeChatConversation.withStarToggled(messageId: String): NativeChatConversation {
-    if (messageId in starredMessageIds) return copy(starredMessageIds = starredMessageIds - messageId)
+    if (messageId in starredMessageIds) {
+        return copy(starredMessageIds = starredMessageIds - messageId, starNotes = starNotes - messageId)
+    }
     if (messages.none { it.id == messageId && it.canBeStarred() }) return this
     return copy(starredMessageIds = starredMessageIds + messageId)
+}
+
+/** One trimmed line of at most [MAX_NATIVE_STAR_NOTE_CHARS] characters; blank means no note. */
+fun normalizeNativeStarNote(note: String): String =
+    clipNativeStarNote(note.trim().replace(Regex("\\s+"), " ")).trimEnd()
+
+/** Clips to [MAX_NATIVE_STAR_NOTE_CHARS] without splitting a surrogate pair such as an emoji. */
+fun clipNativeStarNote(text: String): String {
+    if (text.length <= MAX_NATIVE_STAR_NOTE_CHARS) return text
+    val clipped = text.take(MAX_NATIVE_STAR_NOTE_CHARS)
+    return if (clipped.last().isHighSurrogate()) clipped.dropLast(1) else clipped
+}
+
+/** Sets or clears the note on a starred message; messages that are not starred stay without one. */
+fun NativeChatConversation.withStarNote(messageId: String, note: String): NativeChatConversation {
+    if (messageId !in starredMessageIds) return this
+    val normalized = normalizeNativeStarNote(note)
+    val notes = if (normalized.isEmpty()) starNotes - messageId else starNotes + (messageId to normalized)
+    return if (notes == starNotes) this else copy(starNotes = notes)
 }
 
 /** Starred messages in conversation order, for a jump list. */
@@ -214,7 +240,16 @@ fun NativeChatArchive.normalized(): NativeChatArchive? {
                 val ids = conversation.messages.mapTo(HashSet()) { it.id }
                 conversation.starredMessageIds.distinct().filter { it in ids }
             },
-        )
+        ).let { normalizedConversation ->
+            if (normalizedConversation.starNotes.isEmpty()) return@let normalizedConversation
+            val starred = normalizedConversation.starredMessageIds.toSet()
+            normalizedConversation.copy(
+                starNotes = normalizedConversation.starNotes
+                    .filterKeys { it in starred }
+                    .mapValues { (_, note) -> normalizeNativeStarNote(note) }
+                    .filterValues { it.isNotEmpty() },
+            )
+        }
     }
     if (retained.isEmpty()) return copy(activeConversationId = "", conversations = emptyList())
     val activeId = activeConversationId.takeIf { candidate ->

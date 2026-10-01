@@ -26,6 +26,7 @@ fun mergeNativeChatChanges(
             } else {
                 latest.starredMessageIds
             },
+            starNotes = mergeStarNotes(original.starNotes, edited.starNotes, latest.starNotes),
             updatedAtEpochMs = maxOf(edited.updatedAtEpochMs, latest.updatedAtEpochMs),
             replyEpoch = maxOf(edited.replyEpoch, latest.replyEpoch),
             messages = when {
@@ -41,6 +42,19 @@ fun mergeNativeChatChanges(
         } else current.activeConversationId,
         conversations = conversations,
     ).normalized() ?: current
+}
+
+/** Per-message three-way merge, so a note edited on one side never drops another side's note. */
+private fun mergeStarNotes(
+    base: Map<String, String>,
+    incoming: Map<String, String>,
+    current: Map<String, String>,
+): Map<String, String> {
+    if (incoming == base) return current
+    return (base.keys + incoming.keys + current.keys).mapNotNull { id ->
+        val note = if (incoming[id] != base[id]) incoming[id] else current[id]
+        note?.let { id to it }
+    }.toMap()
 }
 
 private fun mergeMessages(

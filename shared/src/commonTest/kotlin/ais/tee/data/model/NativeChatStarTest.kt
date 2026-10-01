@@ -90,4 +90,103 @@ class NativeChatStarTest {
         assertEquals(listOf("fork-m0/u1"), branch.starredMessageIds)
         assertEquals(listOf("u1", "u2"), source.starredMessageIds)
     }
+
+    @Test
+    fun notesAreOneTrimmedClippedLineOnStarredMessagesOnly() {
+        val starred = conversation.withStarToggled("u1")
+        assertEquals(mapOf("u1" to "check this later"), starred.withStarNote("u1", "  check\n this\tlater ").starNotes)
+        assertEquals(MAX_NATIVE_STAR_NOTE_CHARS, starred.withStarNote("u1", "x".repeat(500)).starNotes.getValue("u1").length)
+        assertSame(starred, starred.withStarNote("a1", "not starred"))
+        assertTrue(starred.withStarNote("u1", "keep").withStarNote("u1", "  ").starNotes.isEmpty())
+    }
+
+    @Test
+    fun clippingNeverSplitsAnEmoji() {
+        val note = "x".repeat(MAX_NATIVE_STAR_NOTE_CHARS - 1) + "\uD83D\uDE00"
+        assertEquals("x".repeat(MAX_NATIVE_STAR_NOTE_CHARS - 1), clipNativeStarNote(note))
+        assertEquals("x".repeat(MAX_NATIVE_STAR_NOTE_CHARS - 1), normalizeNativeStarNote(note))
+        assertEquals("ok \uD83D\uDE00", clipNativeStarNote("ok \uD83D\uDE00"))
+    }
+
+    @Test
+    fun unstarringDropsTheNote() {
+        val noted = conversation.withStarToggled("u1").withStarNote("u1", "keep")
+        assertTrue(noted.withStarToggled("u1").starNotes.isEmpty())
+    }
+
+    @Test
+    fun normalizationKeepsNotesOnlyForRetainedStars() {
+        val archive = NativeChatArchive(
+            activeConversationId = "c",
+            conversations = listOf(
+                conversation.copy(
+                    starredMessageIds = listOf("u1", "gone"),
+                    starNotes = mapOf("u1" to " a\nb ", "gone" to "x", "a1" to "unstarred"),
+                )
+            ),
+        )
+        assertEquals(mapOf("u1" to "a b"), assertNotNull(archive.normalized()).conversations.single().starNotes)
+    }
+
+    @Test
+    fun notesSurviveTheCodecAndOlderArchivesDecodeWithoutThem() {
+        val archive = NativeChatArchive(
+            activeConversationId = "c",
+            conversations = listOf(conversation.withStarToggled("a1").withStarNote("a1", "good answer")),
+        )
+        val decoded = assertNotNull(NativeChatArchiveCodec.decode(NativeChatArchiveCodec.encode(archive)))
+        assertEquals(mapOf("a1" to "good answer"), decoded.conversations.single().starNotes)
+
+        val legacy = """{"version":1,"activeConversationId":"c","conversations":[{"id":"c","createdAtEpochMs":1}]}"""
+        assertTrue(assertNotNull(NativeChatArchiveCodec.decode(legacy.encodeToByteArray())).conversations.single().starNotes.isEmpty())
+    }
+
+    @Test
+    fun foregroundNoteEditsSurviveAMergeWithAWorkerReply() {
+        val starred = conversation.withStarToggled("u1")
+        val base = NativeChatArchive(activeConversationId = "c", conversations = listOf(starred))
+        val incoming = base.copy(conversations = listOf(starred.withStarNote("u1", "remember")))
+        val current = base.copy(
+            conversations = listOf(starred.copy(messages = starred.messages + message("worker", CHAT_ROLE_ASSISTANT)))
+        )
+
+        val merged = mergeNativeChatChanges(base, incoming, current).conversations.single()
+
+        assertEquals(mapOf("u1" to "remember"), merged.starNotes)
+        assertTrue(merged.messages.any { it.id == "worker" })
+    }
+
+    @Test
+    fun notesEditedOnDifferentMessagesOnBothSidesAreBothKept() {
+        val starred = conversation.withStarToggled("u1").withStarToggled("a1")
+            .withStarNote("a1", "old")
+        val base = NativeChatArchive(activeConversationId = "c", conversations = listOf(starred))
+        val incoming = base.copy(conversations = listOf(starred.withStarNote("u1", "mine").withStarNote("a1", "")))
+        val current = base.copy(conversations = listOf(starred.withStarNote("u1", "theirs").copy(starNotes = mapOf("a1" to "old"))))
+        val other = base.copy(conversations = listOf(starred.withStarNote("a1", "kept elsewhere")))
+
+        assertEquals(mapOf("u1" to "mine"), mergeNativeChatChanges(base, incoming, current).conversations.single().starNotes)
+        val addOnly = base.copy(conversations = listOf(starred.withStarNote("u1", "mine")))
+        assertEquals(
+            mapOf("u1" to "mine", "a1" to "kept elsewhere"),
+            mergeNativeChatChanges(base, addOnly, other).conversations.single().starNotes,
+        )
+    }
+
+    @Test
+    fun branchesCarryNotesForTheMessagesTheyCopy() {
+        val source = conversation.withStarToggled("u1").withStarToggled("u2")
+            .withStarNote("u1", "first").withStarNote("u2", "second")
+        var next = 0
+        val branch = assertNotNull(source.forkAt("a1", newConversationId = "b", nowEpochMs = 99) { "m${next++}" })
+
+        assertEquals(mapOf("fork-m0/u1" to "first"), branch.starNotes)
+        assertEquals(mapOf("u1" to "first", "u2" to "second"), source.starNotes)
+    }
+
+    @Test
+    fun notesAreRedactedFromToString() {
+        val noted = conversation.withStarToggled("u1").withStarNote("u1", "secret plan")
+        assertTrue("secret plan" !in noted.toString())
+    }
 }
