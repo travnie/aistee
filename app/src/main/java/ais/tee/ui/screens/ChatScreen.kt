@@ -36,6 +36,7 @@ import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldDestinationIt
 import androidx.compose.material3.adaptive.navigation.NavigableListDetailPaneScaffold
 import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1834,6 +1835,10 @@ fun ChatMessageItem(
                 } else {
                     null
                 }
+                // Long pasted prompts collapse to a preview; the full text stays in the archive and copy/export.
+                var isExpanded by rememberSaveable(message.id) { mutableStateOf(false) }
+                var overflowsPreview by remember(message.id, message.text) { mutableStateOf(false) }
+                val collapseLongText = isUser && !isExpanded
                 SelectionContainer {
                     if (markdownBlocks != null) {
                         ChatMarkdownContent(
@@ -1847,8 +1852,24 @@ fun ChatMessageItem(
                             text = message.text,
                             style = MaterialTheme.typography.bodyMedium,
                             color = textColor,
-                            lineHeight = 21.sp
+                            lineHeight = 21.sp,
+                            maxLines = if (collapseLongText) LONG_USER_MESSAGE_PREVIEW_LINES else Int.MAX_VALUE,
+                            overflow = TextOverflow.Ellipsis,
+                            onTextLayout = { layout ->
+                                if (collapseLongText) overflowsPreview = layout.hasVisualOverflow
+                            }
                         )
+                    }
+                }
+                if (isUser && (overflowsPreview || isExpanded)) {
+                    TextButton(
+                        onClick = { isExpanded = !isExpanded },
+                        colors = ButtonDefaults.textButtonColors(contentColor = textColor),
+                        modifier = Modifier
+                            .align(Alignment.End)
+                            .testTag("btn_expand_message_${message.id}")
+                    ) {
+                        Text(if (isExpanded) "Show less" else "Show more")
                     }
                 }
 
@@ -2560,6 +2581,7 @@ private fun StarredMessagesDialog(
 }
 
 private const val NATIVE_CHAT_TIMELINE_MIN_TURNS = 4
+private const val LONG_USER_MESSAGE_PREVIEW_LINES = 8
 private val NATIVE_CHAT_TIMELINE_TARGET_WIDTH = 48.dp
 
 /** A thin rail of jump targets for long native chats: user turns as dots, starred messages as stars. */
