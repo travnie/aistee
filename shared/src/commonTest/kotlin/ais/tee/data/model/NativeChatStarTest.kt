@@ -157,6 +157,23 @@ class NativeChatStarTest {
     }
 
     @Test
+    fun notesEditedOnDifferentMessagesOnBothSidesAreBothKept() {
+        val starred = conversation.withStarToggled("u1").withStarToggled("a1")
+            .withStarNote("a1", "old")
+        val base = NativeChatArchive(activeConversationId = "c", conversations = listOf(starred))
+        val incoming = base.copy(conversations = listOf(starred.withStarNote("u1", "mine").withStarNote("a1", "")))
+        val current = base.copy(conversations = listOf(starred.withStarNote("u1", "theirs").copy(starNotes = mapOf("a1" to "old"))))
+        val other = base.copy(conversations = listOf(starred.withStarNote("a1", "kept elsewhere")))
+
+        assertEquals(mapOf("u1" to "mine"), mergeNativeChatChanges(base, incoming, current).conversations.single().starNotes)
+        val addOnly = base.copy(conversations = listOf(starred.withStarNote("u1", "mine")))
+        assertEquals(
+            mapOf("u1" to "mine", "a1" to "kept elsewhere"),
+            mergeNativeChatChanges(base, addOnly, other).conversations.single().starNotes,
+        )
+    }
+
+    @Test
     fun branchesCarryNotesForTheMessagesTheyCopy() {
         val source = conversation.withStarToggled("u1").withStarToggled("u2")
             .withStarNote("u1", "first").withStarNote("u2", "second")
