@@ -11,7 +11,16 @@ internal data class ProviderDomCapabilities(
     val passwordInputs: Int,
     val fileInputs: Int,
     val multipleFileInputs: Int,
-    val activeEditorKind: String?
+    val activeEditorKind: String?,
+    /** Null when the provider has no candidate turn selectors. */
+    val turnAnchors: ProviderTurnAnchorCounts? = null
+)
+
+/** Structural turn counts only: no message text, ids or attribute values leave the page. */
+internal data class ProviderTurnAnchorCounts(
+    val userTurns: Int,
+    val assistantTurns: Int,
+    val turnsWithStableId: Int
 )
 
 internal sealed interface ProviderDiagnosticsProbeResult {
@@ -60,7 +69,9 @@ internal fun providerDiagnosticsProbeSummary(result: ProviderDiagnosticsProbeRes
     is ProviderDiagnosticsProbeResult.Ready -> with(result.capabilities) {
         "textarea=$textareas, contenteditable=$contentEditables, identity=$identityInputs, " +
             "password=$passwordInputs, file=$fileInputs, multi-file=$multipleFileInputs, " +
-            "active=${activeEditorKind ?: "none"}"
+            "active=${activeEditorKind ?: "none"}, " +
+            (turnAnchors?.let { "turns=user ${it.userTurns}/assistant ${it.assistantTurns}/stable-id ${it.turnsWithStableId}" }
+                ?: "turns=not configured")
     }
 }
 
@@ -148,6 +159,7 @@ internal fun providerDiagnosticsProbeScript(
                 else if (active.isContentEditable === true) activeKind = 'contenteditable';
                 else if (tag === 'input') activeKind = 'input';
             }
+            ${turnAnchorCountScript(service)}
             return [
                 textareas,
                 contentEditables,
@@ -155,17 +167,55 @@ internal fun providerDiagnosticsProbeScript(
                 passwordInputs,
                 fileInputs,
                 multipleFileInputs,
-                activeKind
+                activeKind,
+                turnCounts.join('|')
             ].join('|');
         })();
     """.trimIndent()
+}
+
+private const val MAX_DIAGNOSTIC_TURNS = 100_000
+
+private fun turnAnchorCountScript(service: WebAiService): String {
+    val anchors = ProviderWebRegistry.turnAnchors(service)
+        ?: return "var turnCounts = [-1, -1, -1];"
+    val idAttribute = anchors.stableIdAttribute
+    return """
+        var turnCounts = (function() {
+            function llmbenchCount(selector) {
+                try { return document.querySelectorAll(selector); } catch (e) { return []; }
+            }
+            var userNodes = llmbenchCount(${javascriptStringLiteral(anchors.userSelector)});
+            var assistantNodes = llmbenchCount(${javascriptStringLiteral(anchors.assistantSelector)});
+            var idAttribute = ${idAttribute?.let(::javascriptStringLiteral) ?: "null"};
+            var withId = 0;
+            if (idAttribute) {
+                [userNodes, assistantNodes].forEach(function(nodes) {
+                    Array.prototype.forEach.call(nodes, function(node) {
+                        if (node.hasAttribute(idAttribute) && node.getAttribute(idAttribute) !== '') withId++;
+                    });
+                });
+            }
+            return [userNodes.length, assistantNodes.length, withId];
+        })();
+    """.trimIndent()
+}
+
+private fun parseTurnAnchorCounts(parts: List<String>): Result<ProviderTurnAnchorCounts?> {
+    val counts = parts.map { it.toIntOrNull() ?: return Result.failure(IllegalArgumentException()) }
+    if (counts.all { it == -1 }) return Result.success(null)
+    val (user, assistant, withId) = counts
+    if (counts.any { it < 0 || it > MAX_DIAGNOSTIC_TURNS } || withId > user + assistant) {
+        return Result.failure(IllegalArgumentException())
+    }
+    return Result.success(ProviderTurnAnchorCounts(user, assistant, withId))
 }
 
 internal fun parseProviderDiagnosticsProbeResult(rawResult: String?): ProviderDiagnosticsProbeResult {
     val token = rawResult?.trim()?.removeSurrounding("\"") ?: return ProviderDiagnosticsProbeResult.Failed
     if (token == "off-provider") return ProviderDiagnosticsProbeResult.OffProvider
     val parts = token.split('|')
-    if (parts.size != 7) return ProviderDiagnosticsProbeResult.Failed
+    if (parts.size != 10) return ProviderDiagnosticsProbeResult.Failed
     val textareas = parts[0].toIntOrNull() ?: return ProviderDiagnosticsProbeResult.Failed
     val contentEditables = parts[1].toIntOrNull() ?: return ProviderDiagnosticsProbeResult.Failed
     val identityInputs = parts[2].toIntOrNull() ?: return ProviderDiagnosticsProbeResult.Failed
@@ -188,6 +238,9 @@ internal fun parseProviderDiagnosticsProbeResult(rawResult: String?): ProviderDi
         "textarea", "contenteditable", "input" -> parts[6]
         else -> return ProviderDiagnosticsProbeResult.Failed
     }
+    val turnAnchors = parseTurnAnchorCounts(parts.subList(7, 10)).getOrElse {
+        return ProviderDiagnosticsProbeResult.Failed
+    }
     return ProviderDiagnosticsProbeResult.Ready(
         ProviderDomCapabilities(
             textareas = textareas,
@@ -196,7 +249,8 @@ internal fun parseProviderDiagnosticsProbeResult(rawResult: String?): ProviderDi
             passwordInputs = passwordInputs,
             fileInputs = fileInputs,
             multipleFileInputs = multipleFileInputs,
-            activeEditorKind = activeKind
+            activeEditorKind = activeKind,
+            turnAnchors = turnAnchors
         )
     )
 }
