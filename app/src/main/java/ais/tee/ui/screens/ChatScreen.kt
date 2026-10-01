@@ -101,6 +101,7 @@ import ais.tee.data.model.thinNativeChatTimeline
 import ais.tee.data.model.canStartNativeChatFork
 import ais.tee.data.model.starredMessages
 import ais.tee.data.model.MAX_NATIVE_STAR_NOTE_CHARS
+import ais.tee.data.model.clipNativeStarNote
 import ais.tee.data.model.renderChatMarkdown
 import ais.tee.data.model.isCompletedAssistantResponse
 import ais.tee.data.model.supportedApiProcessingModes
@@ -2658,7 +2659,7 @@ private fun StarNoteDialog(
         text = {
             OutlinedTextField(
                 value = note,
-                onValueChange = { note = it.replace('\n', ' ').take(MAX_NATIVE_STAR_NOTE_CHARS) },
+                onValueChange = { note = clipNativeStarNote(it.replace('\n', ' ')) },
                 singleLine = true,
                 placeholder = { Text("Why this message matters") },
                 supportingText = { Text("${note.length}/$MAX_NATIVE_STAR_NOTE_CHARS · stays on this device") },

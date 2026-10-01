@@ -192,7 +192,14 @@ fun NativeChatConversation.withStarToggled(messageId: String): NativeChatConvers
 
 /** One trimmed line of at most [MAX_NATIVE_STAR_NOTE_CHARS] characters; blank means no note. */
 fun normalizeNativeStarNote(note: String): String =
-    note.trim().replace(Regex("\\s+"), " ").take(MAX_NATIVE_STAR_NOTE_CHARS).trimEnd()
+    clipNativeStarNote(note.trim().replace(Regex("\\s+"), " ")).trimEnd()
+
+/** Clips to [MAX_NATIVE_STAR_NOTE_CHARS] without splitting a surrogate pair such as an emoji. */
+fun clipNativeStarNote(text: String): String {
+    if (text.length <= MAX_NATIVE_STAR_NOTE_CHARS) return text
+    val clipped = text.take(MAX_NATIVE_STAR_NOTE_CHARS)
+    return if (clipped.last().isHighSurrogate()) clipped.dropLast(1) else clipped
+}
 
 /** Sets or clears the note on a starred message; messages that are not starred stay without one. */
 fun NativeChatConversation.withStarNote(messageId: String, note: String): NativeChatConversation {

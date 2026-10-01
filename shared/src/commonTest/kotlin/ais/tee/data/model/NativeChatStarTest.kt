@@ -101,6 +101,14 @@ class NativeChatStarTest {
     }
 
     @Test
+    fun clippingNeverSplitsAnEmoji() {
+        val note = "x".repeat(MAX_NATIVE_STAR_NOTE_CHARS - 1) + "\uD83D\uDE00"
+        assertEquals("x".repeat(MAX_NATIVE_STAR_NOTE_CHARS - 1), clipNativeStarNote(note))
+        assertEquals("x".repeat(MAX_NATIVE_STAR_NOTE_CHARS - 1), normalizeNativeStarNote(note))
+        assertEquals("ok \uD83D\uDE00", clipNativeStarNote("ok \uD83D\uDE00"))
+    }
+
+    @Test
     fun unstarringDropsTheNote() {
         val noted = conversation.withStarToggled("u1").withStarNote("u1", "keep")
         assertTrue(noted.withStarToggled("u1").starNotes.isEmpty())
