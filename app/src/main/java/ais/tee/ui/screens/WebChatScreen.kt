@@ -1199,7 +1199,7 @@ fun WebChatScreen(
                                 service = service,
                                 initialUrl = lastKnownUrls[service] ?: service.url,
                                 isDesktop = initialDesktopMode,
-                                isServiceSelected = { selectedService == service },
+                                isServiceSelected = { viewModel.uiState.value.selectedWebService == service },
                                 isRendererInactivityConfirmed = {
                                     rendererInactivityConfirmed[service] == true
                                 },
