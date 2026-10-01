@@ -7,7 +7,12 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Modifier
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ModelChatMessage
@@ -26,14 +31,17 @@ class LongUserMessageCollapseTest {
 
     private fun setMessage(text: String) {
         composeRule.setContent {
-            ChatMessageItem(
-                message = ModelChatMessage(id = "u1", sender = CHAT_ROLE_USER, text = text),
-                maxBubbleWidth = 360.dp,
-                canOpenMarkdown = false,
-                onCopyText = {},
-                onOpenMarkdown = {},
-                onRetryPrompt = {},
-            )
+            // Scrollable like the production list, so the expanded toggle can be scrolled into view.
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                ChatMessageItem(
+                    message = ModelChatMessage(id = "u1", sender = CHAT_ROLE_USER, text = text),
+                    maxBubbleWidth = 360.dp,
+                    canOpenMarkdown = false,
+                    onCopyText = {},
+                    onOpenMarkdown = {},
+                    onRetryPrompt = {},
+                )
+            }
         }
     }
 
@@ -43,8 +51,10 @@ class LongUserMessageCollapseTest {
 
         composeRule.onNodeWithText(SHOW_MORE).assertIsDisplayed()
         composeRule.onNodeWithTag(TOGGLE_TAG).performClick()
+        composeRule.onNodeWithTag(TOGGLE_TAG).performScrollTo()
         composeRule.onNodeWithText("Show less").assertIsDisplayed()
         composeRule.onNodeWithTag(TOGGLE_TAG).performClick()
+        composeRule.onNodeWithTag(TOGGLE_TAG).performScrollTo()
         composeRule.onNodeWithText(SHOW_MORE).assertIsDisplayed()
     }
 
