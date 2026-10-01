@@ -36,6 +36,7 @@ import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldDestinationIt
 import androidx.compose.material3.adaptive.navigation.NavigableListDetailPaneScaffold
 import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,10 +57,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -1834,6 +1838,24 @@ fun ChatMessageItem(
                 } else {
                     null
                 }
+                // Long pasted prompts collapse to a preview; the full text stays in the archive and copy/export.
+                var isExpanded by rememberSaveable(message.id) { mutableStateOf(false) }
+                var overflowsPreview by remember(message.id, message.text) { mutableStateOf(false) }
+                var previewEnd by remember(message.id, message.text) { mutableStateOf(message.text.length) }
+                val collapseLongText = isUser && !isExpanded
+                val expandToggle: @Composable () -> Unit = {
+                    TextButton(
+                        onClick = { isExpanded = !isExpanded },
+                        colors = ButtonDefaults.textButtonColors(contentColor = textColor),
+                        modifier = Modifier
+                            .align(Alignment.End)
+                            .testTag("btn_expand_message_${message.id}")
+                    ) {
+                        Text(if (isExpanded) "Show less" else "Show more")
+                    }
+                }
+                // Expanded prompts can span screens, so the collapse control sits above the text.
+                if (isUser && isExpanded) expandToggle()
                 SelectionContainer {
                     if (markdownBlocks != null) {
                         ChatMarkdownContent(
@@ -1843,14 +1865,33 @@ fun ChatMessageItem(
                             onCopySource = onCopyText,
                         )
                     } else {
-                        Text(
-                            text = message.text,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = textColor,
-                            lineHeight = 21.sp
-                        )
+                        // Screen readers get the same preview as the eye while collapsed, not the full prompt.
+                        val previewSemantics = if (collapseLongText && overflowsPreview) {
+                            Modifier.clearAndSetSemantics {
+                                text = AnnotatedString(message.text.take(previewEnd).trimEnd() + "…")
+                            }
+                        } else {
+                            Modifier
+                        }
+                        Box(modifier = previewSemantics) {
+                            Text(
+                                text = message.text,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = textColor,
+                                lineHeight = 21.sp,
+                                maxLines = if (collapseLongText) LONG_USER_MESSAGE_PREVIEW_LINES else Int.MAX_VALUE,
+                                overflow = TextOverflow.Ellipsis,
+                                onTextLayout = { layout ->
+                                    if (collapseLongText) {
+                                        overflowsPreview = layout.hasVisualOverflow
+                                        previewEnd = layout.getLineEnd(layout.lineCount - 1, visibleEnd = true)
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
+                if (isUser && overflowsPreview && !isExpanded) expandToggle()
 
                 if (!isUser) {
                     formatChatResponseDiagnostics(message)?.let { diagnostics ->
@@ -2560,6 +2601,7 @@ private fun StarredMessagesDialog(
 }
 
 private const val NATIVE_CHAT_TIMELINE_MIN_TURNS = 4
+private const val LONG_USER_MESSAGE_PREVIEW_LINES = 8
 private val NATIVE_CHAT_TIMELINE_TARGET_WIDTH = 48.dp
 
 /** A thin rail of jump targets for long native chats: user turns as dots, starred messages as stars. */
