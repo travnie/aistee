@@ -16,3 +16,19 @@ fun quoteIntoNativeChatDraft(excerpt: String, draft: String, maxChars: Int): Str
     val result = "$prefix$quote\n\n"
     return result.takeIf { it.length <= maxChars }
 }
+
+/**
+ * Appends [text] (for example a Library text asset) below [draft], separated by a blank line, leaving
+ * the cursor on a fresh line. Like quoting, this only edits the local draft. Returns null when the text
+ * is blank or the result would exceed [maxChars].
+ */
+fun appendToNativeChatDraft(text: String, draft: String, maxChars: Int): String? {
+    val body = text.replace("\r\n", "\n").replace('\r', '\n').trim('\n').trimEnd()
+    if (body.isBlank()) return null
+    val prefix = draft.trimEnd().let { if (it.isEmpty()) "" else "$it\n\n" }
+    val result = "$prefix$body\n"
+    return result.takeIf { it.length <= maxChars }
+}
+
+/** Whether a Library asset holds text that can go straight into the composer. */
+fun ProjectLibraryAsset.canInsertIntoDraft(): Boolean = mediaType.trim().lowercase().startsWith("text/")

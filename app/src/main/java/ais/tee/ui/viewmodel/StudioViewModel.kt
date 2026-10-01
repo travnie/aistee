@@ -15,6 +15,8 @@ import ais.tee.data.engine.executeNativeChatSend
 import ais.tee.data.engine.ProfileMerger
 import ais.tee.data.engine.ValidationResult
 import ais.tee.data.engine.YamlParser
+import ais.tee.data.model.appendToNativeChatDraft
+import ais.tee.data.model.canInsertIntoDraft
 import ais.tee.data.model.*
 import ais.tee.data.preferences.AsyncProviderJobStore
 import ais.tee.data.preferences.NativeChatStore
@@ -1013,6 +1015,30 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     suspend fun loadProjectLibraryAsset(assetId: String): String? =
         withContext(Dispatchers.IO) { projectLibraryStore.loadTextAsset(assetId)?.text }
+
+    /**
+     * Appends a text Library asset to the active native chat's draft. Fails rather than writing
+     * into another chat if the active conversation or its draft changes while the asset loads.
+     */
+    suspend fun insertProjectLibraryAssetIntoDraft(asset: ProjectLibraryAsset, maxChars: Int): Boolean {
+        val start = _uiState.value
+        val conversationId = start.activeNativeConversation?.id
+        if (conversationId == null || !start.isNativeConversationStoreReady || !asset.canInsertIntoDraft()) return false
+        val text = loadProjectLibraryAsset(asset.id) ?: return false
+        val baseDraft = _uiState.value.activeNativeConversation
+            ?.takeIf { it.id == conversationId }
+            ?.draft
+            ?: return false
+        val draft = withContext(Dispatchers.Default) { appendToNativeChatDraft(text, baseDraft, maxChars) }
+            ?: return false
+        val current = _uiState.value
+        val active = current.activeNativeConversation
+        if (!current.isNativeConversationStoreReady || active?.id != conversationId || active.draft != baseDraft) {
+            return false
+        }
+        updateNativeConversationDraft(draft)
+        return true
+    }
 
     /** Starts a standalone job with [provider]'s async API; its text result goes to [projectId]. */
     fun startAsyncProviderJob(
