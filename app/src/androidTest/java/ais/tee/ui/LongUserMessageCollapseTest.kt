@@ -17,6 +17,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.ui.screens.ChatMessageItem
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,13 +25,15 @@ import org.junit.runner.RunWith
 private const val TOGGLE_TAG = "btn_expand_message_u1"
 private const val SHOW_MORE = "Show more"
 private const val LAST_LINE = "line 40"
+private const val SAVE_TAG = "btn_save_prompt_u1"
+private val LONG_PROMPT = (1..40).joinToString("\n") { "line $it" }
 
 @RunWith(AndroidJUnit4::class)
 class LongUserMessageCollapseTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    private fun setMessage(text: String) {
+    private fun setMessage(text: String, onSaveToLibrary: (() -> Unit)? = null) {
         composeRule.setContent {
             // Scrollable like the production list, so the expanded toggle can be scrolled into view.
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
@@ -41,6 +44,7 @@ class LongUserMessageCollapseTest {
                     onCopyText = {},
                     onOpenMarkdown = {},
                     onRetryPrompt = {},
+                    onSaveToLibrary = onSaveToLibrary,
                 )
             }
         }
@@ -48,7 +52,7 @@ class LongUserMessageCollapseTest {
 
     @Test
     fun longPromptCollapsesAndExpands() {
-        setMessage((1..40).joinToString("\n") { "line $it" })
+        setMessage(LONG_PROMPT)
 
         composeRule.onNodeWithText(SHOW_MORE).assertIsDisplayed()
         // Collapsed semantics expose only the preview, not the hidden tail.
@@ -63,9 +67,19 @@ class LongUserMessageCollapseTest {
     }
 
     @Test
+    fun longPromptOffersLibrarySave() {
+        var saves = 0
+        setMessage(LONG_PROMPT, onSaveToLibrary = { saves++ })
+
+        composeRule.onNodeWithTag(SAVE_TAG).performClick()
+        assertEquals(1, saves)
+    }
+
+    @Test
     fun shortPromptHasNoToggle() {
-        setMessage("Just a short question?")
+        setMessage("Just a short question?", onSaveToLibrary = {})
 
         composeRule.onAllNodesWithTag(TOGGLE_TAG).assertCountEquals(0)
+        composeRule.onAllNodesWithTag(SAVE_TAG).assertCountEquals(0)
     }
 }
