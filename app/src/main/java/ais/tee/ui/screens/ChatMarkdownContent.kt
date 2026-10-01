@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -115,6 +116,7 @@ internal fun chatMarkdownAnnotatedString(
     linkColor: Color,
     codeBackground: Color,
     math: Map<String, List<ChatMathRun>?> = emptyMap(),
+    onCopyMath: ((String) -> Unit)? = null,
 ): AnnotatedString = buildAnnotatedString {
     spans.forEach { span ->
         if (span.math) {
@@ -122,6 +124,11 @@ internal fun chatMarkdownAnnotatedString(
             if (link != null) {
                 val linkStyle = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)
                 withLink(LinkAnnotation.Url(link, TextLinkStyles(style = linkStyle))) { appendMath(span.text, codeBackground, math) }
+            } else if (onCopyMath != null) {
+                // Tapping inline math copies its TeX source (without delimiters), not the rendered approximation.
+                withLink(LinkAnnotation.Clickable(INLINE_MATH_TAG) { onCopyMath(span.text) }) {
+                    appendMath(span.text, codeBackground, math)
+                }
             } else {
                 appendMath(span.text, codeBackground, math)
             }
@@ -208,13 +215,21 @@ private fun ChatMarkdownBlockView(
     val linkColor = MaterialTheme.colorScheme.primary
     val codeBackground = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     val bodyStyle = MaterialTheme.typography.bodyMedium.copy(color = color, lineHeight = 21.sp)
+    // Keyed on presence only so a fresh caller lambda does not rebuild every paragraph.
+    val latestCopySource by rememberUpdatedState(onCopySource)
+    val canCopy = onCopySource != null
+    val onCopyMath: ((String) -> Unit)? = remember(canCopy) {
+        if (canCopy) { tex -> latestCopySource?.invoke(tex) } else null
+    }
     when (block) {
         is ChatMarkdownBlock.Paragraph -> Text(
-            text = remember(block, linkColor, codeBackground) { chatMarkdownAnnotatedString(block.spans, linkColor, codeBackground, math) },
+            text = remember(block, linkColor, codeBackground, onCopyMath) {
+                chatMarkdownAnnotatedString(block.spans, linkColor, codeBackground, math, onCopyMath)
+            },
             style = bodyStyle,
         )
         is ChatMarkdownBlock.Heading -> Text(
-            text = chatMarkdownAnnotatedString(block.spans, linkColor, codeBackground, math),
+            text = chatMarkdownAnnotatedString(block.spans, linkColor, codeBackground, math, onCopyMath),
             style = headingStyle(block.level).copy(color = color),
             fontWeight = FontWeight.Bold,
         )
@@ -326,6 +341,7 @@ private fun ChatMarkdownBlockView(
 }
 
 private val MATH_COPY_BUTTON_SIZE = 48.dp
+internal const val INLINE_MATH_TAG = "inline_math_tex"
 
 @Composable
 private fun headingStyle(level: Int): TextStyle = when (level) {
