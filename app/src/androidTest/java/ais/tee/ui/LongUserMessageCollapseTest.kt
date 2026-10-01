@@ -23,6 +23,7 @@ import org.junit.runner.RunWith
 
 private const val TOGGLE_TAG = "btn_expand_message_u1"
 private const val SHOW_MORE = "Show more"
+private const val LAST_LINE = "line 40"
 
 @RunWith(AndroidJUnit4::class)
 class LongUserMessageCollapseTest {
@@ -50,9 +51,12 @@ class LongUserMessageCollapseTest {
         setMessage((1..40).joinToString("\n") { "line $it" })
 
         composeRule.onNodeWithText(SHOW_MORE).assertIsDisplayed()
+        // Collapsed semantics expose only the preview, not the hidden tail.
+        composeRule.onNodeWithText(LAST_LINE, substring = true).assertDoesNotExist()
         composeRule.onNodeWithTag(TOGGLE_TAG).performClick()
         composeRule.onNodeWithTag(TOGGLE_TAG).performScrollTo()
         composeRule.onNodeWithText("Show less").assertIsDisplayed()
+        composeRule.onNodeWithText(LAST_LINE, substring = true).assertExists()
         composeRule.onNodeWithTag(TOGGLE_TAG).performClick()
         composeRule.onNodeWithTag(TOGGLE_TAG).performScrollTo()
         composeRule.onNodeWithText(SHOW_MORE).assertIsDisplayed()

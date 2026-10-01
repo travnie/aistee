@@ -57,10 +57,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -1838,30 +1841,9 @@ fun ChatMessageItem(
                 // Long pasted prompts collapse to a preview; the full text stays in the archive and copy/export.
                 var isExpanded by rememberSaveable(message.id) { mutableStateOf(false) }
                 var overflowsPreview by remember(message.id, message.text) { mutableStateOf(false) }
+                var previewEnd by remember(message.id, message.text) { mutableStateOf(message.text.length) }
                 val collapseLongText = isUser && !isExpanded
-                SelectionContainer {
-                    if (markdownBlocks != null) {
-                        ChatMarkdownContent(
-                            markdown = markdownBlocks,
-                            color = textColor,
-                            // Same sensitive-clip copy as the message action, for one code or math block.
-                            onCopySource = onCopyText,
-                        )
-                    } else {
-                        Text(
-                            text = message.text,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = textColor,
-                            lineHeight = 21.sp,
-                            maxLines = if (collapseLongText) LONG_USER_MESSAGE_PREVIEW_LINES else Int.MAX_VALUE,
-                            overflow = TextOverflow.Ellipsis,
-                            onTextLayout = { layout ->
-                                if (collapseLongText) overflowsPreview = layout.hasVisualOverflow
-                            }
-                        )
-                    }
-                }
-                if (isUser && (overflowsPreview || isExpanded)) {
+                val expandToggle: @Composable () -> Unit = {
                     TextButton(
                         onClick = { isExpanded = !isExpanded },
                         colors = ButtonDefaults.textButtonColors(contentColor = textColor),
@@ -1872,6 +1854,44 @@ fun ChatMessageItem(
                         Text(if (isExpanded) "Show less" else "Show more")
                     }
                 }
+                // Expanded prompts can span screens, so the collapse control sits above the text.
+                if (isUser && isExpanded) expandToggle()
+                SelectionContainer {
+                    if (markdownBlocks != null) {
+                        ChatMarkdownContent(
+                            markdown = markdownBlocks,
+                            color = textColor,
+                            // Same sensitive-clip copy as the message action, for one code or math block.
+                            onCopySource = onCopyText,
+                        )
+                    } else {
+                        // Screen readers get the same preview as the eye while collapsed, not the full prompt.
+                        val previewSemantics = if (collapseLongText && overflowsPreview) {
+                            Modifier.clearAndSetSemantics {
+                                text = AnnotatedString(message.text.take(previewEnd).trimEnd() + "…")
+                            }
+                        } else {
+                            Modifier
+                        }
+                        Box(modifier = previewSemantics) {
+                            Text(
+                                text = message.text,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = textColor,
+                                lineHeight = 21.sp,
+                                maxLines = if (collapseLongText) LONG_USER_MESSAGE_PREVIEW_LINES else Int.MAX_VALUE,
+                                overflow = TextOverflow.Ellipsis,
+                                onTextLayout = { layout ->
+                                    if (collapseLongText) {
+                                        overflowsPreview = layout.hasVisualOverflow
+                                        previewEnd = layout.getLineEnd(layout.lineCount - 1, visibleEnd = true)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+                if (isUser && overflowsPreview && !isExpanded) expandToggle()
 
                 if (!isUser) {
                     formatChatResponseDiagnostics(message)?.let { diagnostics ->
