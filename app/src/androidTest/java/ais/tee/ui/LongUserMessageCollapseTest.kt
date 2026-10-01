@@ -16,6 +16,9 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
+private const val TOGGLE_TAG = "btn_expand_message_u1"
+private const val SHOW_MORE = "Show more"
+
 @RunWith(AndroidJUnit4::class)
 class LongUserMessageCollapseTest {
     @get:Rule
@@ -38,17 +41,17 @@ class LongUserMessageCollapseTest {
     fun longPromptCollapsesAndExpands() {
         setMessage((1..40).joinToString("\n") { "line $it" })
 
-        composeRule.onNodeWithText("Show more").assertIsDisplayed()
-        composeRule.onNodeWithTag("btn_expand_message_u1").performClick()
+        composeRule.onNodeWithText(SHOW_MORE).assertIsDisplayed()
+        composeRule.onNodeWithTag(TOGGLE_TAG).performClick()
         composeRule.onNodeWithText("Show less").assertIsDisplayed()
-        composeRule.onNodeWithTag("btn_expand_message_u1").performClick()
-        composeRule.onNodeWithText("Show more").assertIsDisplayed()
+        composeRule.onNodeWithTag(TOGGLE_TAG).performClick()
+        composeRule.onNodeWithText(SHOW_MORE).assertIsDisplayed()
     }
 
     @Test
     fun shortPromptHasNoToggle() {
         setMessage("Just a short question?")
 
-        composeRule.onAllNodesWithTag("btn_expand_message_u1").assertCountEquals(0)
+        composeRule.onAllNodesWithTag(TOGGLE_TAG).assertCountEquals(0)
     }
 }
