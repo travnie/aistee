@@ -131,6 +131,21 @@ Account-plan UX requirements:
 - invalidate/disconnect cleanly without touching locally owned Aistee chats;
 - treat each provider's account-plan capability matrix as independently verified rather than inferred from WebView login.
 
+### Sign in with ChatGPT on Android (planned)
+
+Integration notes for the open `ACCOUNT_PLAN` credential lifecycle; nothing below ships yet. Source: OpenAI's [ChatGPT plan usage for open-source apps](https://developers.openai.com/siwc/token-sharing-open-source) docs. OpenAI's Node/Electron DevKit is a reference only (noncommercial license, not usable on Android).
+
+- **Eligibility:** the self-serve route is for open-source, locally run apps (Aistee is ISC-licensed and runs on-device); a paid or remotely hosted app needs OpenAI's interest form. No pre-approved client ID: first sign-in uses dynamic registration (`client_id=dynamic_agent_client`, `agent_name_hint=Aistee`) and the callback returns the issued `oaiapp_…` client ID to keep per account/workspace.
+- **Host ID:** generate one `urn:uuid:` (or RFC 9278 JWK-thumbprint) `ext_agent_host_id` per install before the first sign-in and keep it across sign-ins, sign-outs and account switches. It is an opaque identifier, never derived from email or user IDs.
+- **Browser and callback:** open `https://auth.openai.com/api/accounts/authorize` in a Custom Tab (never a WebView). The docs require an HTTP loopback redirect on `127.0.0.1` (path `/auth/callback`; only the port may vary), so the app runs a short-lived listener bound to `127.0.0.1` for one attempt and closes it on callback, cancel or timeout. Fresh `state`, OIDC `nonce` and S256 PKCE per attempt; reject mismatched `state` or an unexpected `client_id`.
+- **Scopes:** `openid profile email offline_access resource.invoke chatgpt.tokens.use.direct` with `resource=https://api.openai.com/v1`. Plan inference is enabled only if the token response grants `chatgpt.tokens.use.direct`; validate the ID token (JWKS signature, issuer, audience = issued client ID, expiry, nonce) before saving.
+- **Storage:** one record per issued client ID + validated `sub`, holding the tokens, granted scopes, expiry and retained ID token (for `id_token_hint`). Encrypt with an Android Keystore key, exclude from backup/export, never log, never put tokens in URLs or WebView storage, and redact authorize URLs that carry `id_token_hint`.
+- **Lifetimes:** access tokens last 1 hour; refresh tokens last 30 days and rotate on every refresh. Serialize refreshes per session (refresh and WorkManager jobs) and replace access token, refresh token, expiry and scopes atomically.
+- **Sign-out:** POST the refresh token to the discovery `revocation_endpoint` with the issued client ID, retry on network/5xx failures, then clear tokens. Keep the client-ID mapping and host ID for later sign-in; if revocation is unconfirmed, say so and link ChatGPT Settings.
+- **Usage:** link to ChatGPT Settings → Usage. Plus plans share one five-hour limit across all apps using the plan, so surface limit errors as plan limits, not app bugs.
+
+**Pending decision, not yet policy:** `AGENTS.md` forbids persisting provider OAuth tokens, so implementation needs an explicit exception approved by the maintainer first. Proposed wording: "Narrow exception: Aistee's own Sign in with ChatGPT grant (user-authorized in a Custom Tab, not intercepted) may be persisted Keystore-encrypted, excluded from backup/export and never logged." WebView provider sessions stay off-limits either way.
+
 ## Web/account-chat TODO
 
 - [x] Never invent a fallback Studio prompt when no rendered instructions are active.
