@@ -1403,6 +1403,19 @@ private fun NativeChatDetailPane(
                             { viewModel.toggleNativeMessageStar(message.id) }
                         } else {
                             null
+                        },
+                        // Incognito chats keep nothing on disk, so they never offer a Library save.
+                        onSaveToLibrary = if (uiState.isActiveConversationIncognito) {
+                            null
+                        } else {
+                            {
+                                scope.launch {
+                                    val saved = viewModel.saveLongPromptToProjectLibrary(message.text)
+                                    viewModel.showSnackbar(
+                                        if (saved != null) "Saved prompt to Library." else "Could not save prompt to Library."
+                                    )
+                                }
+                            }
                         }
                     )
                 }
@@ -1729,7 +1742,8 @@ fun ChatMessageItem(
     onBranch: () -> Unit = {},
     isStarred: Boolean = false,
     onToggleStar: (() -> Unit)? = null,
-    onSelectText: (() -> Unit)? = null
+    onSelectText: (() -> Unit)? = null,
+    onSaveToLibrary: (() -> Unit)? = null
 ) {
     val isUser = message.sender == "user"
     val tables = remember(message.id, message.text, message.isPartial, message.isError) {
@@ -1871,19 +1885,29 @@ fun ChatMessageItem(
                 var overflowsPreview by remember(message.id, message.text) { mutableStateOf(false) }
                 var previewEnd by remember(message.id, message.text) { mutableStateOf(message.text.length) }
                 val collapseLongText = isUser && !isExpanded
-                val expandToggle: @Composable () -> Unit = {
-                    TextButton(
-                        onClick = { isExpanded = !isExpanded },
-                        colors = ButtonDefaults.textButtonColors(contentColor = textColor),
-                        modifier = Modifier
-                            .align(Alignment.End)
-                            .testTag("btn_expand_message_${message.id}")
-                    ) {
-                        Text(if (isExpanded) "Show less" else "Show more")
+                val promptActions: @Composable () -> Unit = {
+                    Row(modifier = Modifier.align(Alignment.End)) {
+                        // Oversized prompts can move into the Library instead of living only in the bubble.
+                        if (onSaveToLibrary != null) {
+                            TextButton(
+                                onClick = onSaveToLibrary,
+                                colors = ButtonDefaults.textButtonColors(contentColor = textColor),
+                                modifier = Modifier.testTag("btn_save_prompt_${message.id}")
+                            ) {
+                                Text("Save to Library")
+                            }
+                        }
+                        TextButton(
+                            onClick = { isExpanded = !isExpanded },
+                            colors = ButtonDefaults.textButtonColors(contentColor = textColor),
+                            modifier = Modifier.testTag("btn_expand_message_${message.id}")
+                        ) {
+                            Text(if (isExpanded) "Show less" else "Show more")
+                        }
                     }
                 }
                 // Expanded prompts can span screens, so the collapse control sits above the text.
-                if (isUser && isExpanded) expandToggle()
+                if (isUser && isExpanded) promptActions()
                 SelectionContainer {
                     if (markdownBlocks != null) {
                         ChatMarkdownContent(
@@ -1919,7 +1943,7 @@ fun ChatMessageItem(
                         }
                     }
                 }
-                if (isUser && overflowsPreview && !isExpanded) expandToggle()
+                if (isUser && overflowsPreview && !isExpanded) promptActions()
 
                 if (!isUser) {
                     formatChatResponseDiagnostics(message)?.let { diagnostics ->
