@@ -22252,3 +22252,13 @@ SPLais/tee/data/model/NativeChatConversation;->_childSerializers$_anonymous_$3()
 SPLais/tee/data/model/NativeChatConversation;->copy$default(Lais/tee/data/model/NativeChatConversation;Ljava/lang/String;Ljava/lang/String;JJLjava/util/List;Ljava/lang/String;Lais/tee/data/model/AiProvider;Ljava/lang/String;Lais/tee/data/model/ApiProcessingMode;ZLjava/lang/String;JLais/tee/data/model/NativeChatForkOrigin;Ljava/util/List;Ljava/util/Map;ILjava/lang/Object;)Lais/tee/data/model/NativeChatConversation;
 SPLais/tee/data/model/NativeChatConversation;->copy(Ljava/lang/String;Ljava/lang/String;JJLjava/util/List;Ljava/lang/String;Lais/tee/data/model/AiProvider;Ljava/lang/String;Lais/tee/data/model/ApiProcessingMode;ZLjava/lang/String;JLais/tee/data/model/NativeChatForkOrigin;Ljava/util/List;Ljava/util/Map;)Lais/tee/data/model/NativeChatConversation;
 SPLais/tee/data/model/NativeChatConversation;->getStarNotes()Ljava/util/Map;
+SPLais/tee/ui/screens/ChatScreenKt$NativeChatDetailPane$21$1$1$1$3$10$1;-><init>(Lais/tee/ui/viewmodel/StudioViewModel;Lais/tee/data/model/ModelChatMessage;)V
+SPLais/tee/ui/screens/ChatScreenKt$NativeChatDetailPane$21$1$1$1$3$3$1;-><init>(Lkotlinx/coroutines/CoroutineScope;Lais/tee/ui/viewmodel/StudioViewModel;Lais/tee/data/model/ModelChatMessage;)V
+SPLais/tee/ui/screens/ChatScreenKt$NativeChatDetailPane$21$1$1$1$3$4$1;-><init>(Landroid/content/Context;Lais/tee/ui/viewmodel/StudioViewModel;)V
+SPLais/tee/ui/screens/ChatScreenKt$NativeChatDetailPane$21$1$1$1$3$5$1;-><init>(Lais/tee/ui/viewmodel/MarkdownWorkspaceViewModel;Lais/tee/ui/viewmodel/StudioViewModel;Landroidx/compose/runtime/MutableState;)V
+SPLais/tee/ui/screens/ChatScreenKt$NativeChatDetailPane$21$1$1$1$3$6$1;-><init>(Lais/tee/ui/viewmodel/StudioViewModel;)V
+SPLais/tee/ui/screens/ChatScreenKt$NativeChatDetailPane$21$1$1$1$3$7$1;-><init>(Landroidx/compose/runtime/MutableState;)V
+SPLais/tee/ui/screens/ChatScreenKt;->ChatMessageItem-Xp82yGw(Lais/tee/data/model/ModelChatMessage;FZLkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;ZLkotlin/jvm/functions/Function0;ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;III)V
+SPLais/tee/ui/screens/ComposableSingletons$ChatScreenKt;->getLambda$-802225463$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$ChatScreenKt;->getLambda$1977712877$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$ChatScreenKt;->getLambda$2086992544$app()Lkotlin/jvm/functions/Function2;
