@@ -1404,8 +1404,9 @@ private fun NativeChatDetailPane(
                         } else {
                             null
                         },
-                        // Incognito chats keep nothing on disk, so they never offer a Library save.
-                        onSaveToLibrary = if (uiState.isActiveConversationIncognito) {
+                        // Incognito chats keep nothing on disk, so they never offer a Library save. Like the other
+                        // Library actions, it waits for the first Library load so that load cannot hide a new save.
+                        onSaveToLibrary = if (uiState.isActiveConversationIncognito || !uiState.isProjectLibraryReady) {
                             null
                         } else {
                             {

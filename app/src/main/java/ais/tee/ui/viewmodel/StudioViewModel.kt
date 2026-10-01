@@ -994,7 +994,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Saves one long prompt as a plain-text Library asset in the active chat's project. */
     suspend fun saveLongPromptToProjectLibrary(text: String): ProjectLibraryAsset? {
-        if (_uiState.value.isActiveConversationIncognito) return null
+        if (_uiState.value.isActiveConversationIncognito || !_uiState.value.isProjectLibraryReady) return null
         val conversation = _uiState.value.activeNativeConversation ?: return null
         val asset = withContext(Dispatchers.IO) {
             runCatching {
