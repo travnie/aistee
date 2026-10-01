@@ -17,6 +17,7 @@ Aistee: Kotlin Multiplatform; Android is the first shipping client.
 - Long-chat mobile performance is core: bound live WebViews, pause inactive views, evict under memory pressure without clearing provider sessions.
 - File upload is core provider capability: preserve accept types, multiple selection, cancellation and platform picker lifecycle.
 - Never intercept, persist, export or log provider passwords, session cookies, OAuth tokens or equivalent account credentials.
+  - Narrow exception: Aistee's own Sign in with ChatGPT grant (user-authorized in a Custom Tab, not intercepted) may be persisted Keystore-encrypted, excluded from backup/export and never logged; see `docs/provider-runtime.md`.
 - Treat embedded account pages as untrusted web content; minimize WebView privileges needed for compatibility.
 
 ## Workflow
