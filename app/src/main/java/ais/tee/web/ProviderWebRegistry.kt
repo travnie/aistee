@@ -5,8 +5,20 @@ import ais.tee.data.model.WebAiService
 import ais.tee.data.model.onboardingCapabilities
 import java.net.URI
 
+/**
+ * Candidate selectors for conversation turns on a loaded provider page. They are unverified until
+ * provider diagnostics confirms non-zero counts on device; no feature may rely on them before that.
+ * [stableIdAttribute] names an attribute whose presence (never its value) diagnostics counts.
+ */
+internal data class ProviderTurnAnchors(
+    val userSelector: String,
+    val assistantSelector: String,
+    val stableIdAttribute: String? = null
+)
+
 private data class ProviderWebProfile(
     val ownedHostAliases: Set<String> = emptySet(),
+    val turnAnchors: ProviderTurnAnchors? = null,
     val verifiedTopLevelNavigationIdentityMethods: Set<ProviderIdentityMethod> = emptySet(),
     val generationSelectors: List<String> = emptyList(),
     val generationIdleSelectors: List<String> = emptyList()
@@ -27,16 +39,29 @@ internal object ProviderWebRegistry {
     // Provider-scoped WebView policy. Canonical hosts stay in WebAiService.url.
     private val profiles = mapOf(
         WebAiService.CHATGPT to ProviderWebProfile(
-            generationSelectors = listOf(STOP_BUTTON_TEST_ID_SELECTOR)
+            generationSelectors = listOf(STOP_BUTTON_TEST_ID_SELECTOR),
+            turnAnchors = ProviderTurnAnchors(
+                userSelector = "[data-message-author-role=\"user\"]",
+                assistantSelector = "[data-message-author-role=\"assistant\"]",
+                stableIdAttribute = "data-message-id"
+            )
         ),
         WebAiService.CLAUDE to ProviderWebProfile(
             generationSelectors = listOf(
                 STOP_BUTTON_TEST_ID_SELECTOR,
                 "button[aria-label=\"Stop Response\" i]"
+            ),
+            turnAnchors = ProviderTurnAnchors(
+                userSelector = "[data-testid=\"user-message\"]",
+                assistantSelector = "[data-is-streaming]"
             )
         ),
         WebAiService.GEMINI to ProviderWebProfile(
-            generationSelectors = listOf("[data-test-id=\"send-button-container\"].stop")
+            generationSelectors = listOf("[data-test-id=\"send-button-container\"].stop"),
+            turnAnchors = ProviderTurnAnchors(
+                userSelector = "user-query",
+                assistantSelector = "model-response"
+            )
         ),
         WebAiService.DEEPSEEK to ProviderWebProfile(
             generationSelectors = listOf(
@@ -111,6 +136,8 @@ internal object ProviderWebRegistry {
 
     fun generationIdleSelectors(service: WebAiService): List<String> =
         profile(service).generationIdleSelectors
+
+    fun turnAnchors(service: WebAiService): ProviderTurnAnchors? = profile(service).turnAnchors
 }
 
 internal fun providerHostMatches(service: WebAiService, host: String?): Boolean {

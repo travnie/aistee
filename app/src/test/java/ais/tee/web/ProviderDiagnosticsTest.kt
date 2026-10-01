@@ -106,7 +106,7 @@ class ProviderDiagnosticsTest {
                     activeEditorKind = "textarea"
                 )
             ),
-            parseProviderDiagnosticsProbeResult("\"2|1|1|1|3|2|textarea\"")
+            parseProviderDiagnosticsProbeResult("\"2|1|1|1|3|2|textarea|-1|-1|-1\"")
         )
         assertEquals(
             ProviderDiagnosticsProbeResult.Ready(
@@ -120,11 +120,11 @@ class ProviderDiagnosticsTest {
                     activeEditorKind = null
                 )
             ),
-            parseProviderDiagnosticsProbeResult("\"0|0|0|0|0|0|none\"")
+            parseProviderDiagnosticsProbeResult("\"0|0|0|0|0|0|none|-1|-1|-1\"")
         )
         assertEquals(
             ProviderDiagnosticsProbeResult.Failed,
-            parseProviderDiagnosticsProbeResult("\"1|0|0|0|0|0|unexpected\"")
+            parseProviderDiagnosticsProbeResult("\"1|0|0|0|0|0|unexpected|-1|-1|-1\"")
         )
     }
 
@@ -163,11 +163,11 @@ class ProviderDiagnosticsTest {
         )
         assertEquals(
             ProviderDiagnosticsProbeResult.Failed,
-            parseProviderDiagnosticsProbeResult("\"-1|0|0|0|0|0|none\"")
+            parseProviderDiagnosticsProbeResult("\"-1|0|0|0|0|0|none|-1|-1|-1\"")
         )
         assertEquals(
             ProviderDiagnosticsProbeResult.Failed,
-            parseProviderDiagnosticsProbeResult("\"0|0|0|0|1|2|none\"")
+            parseProviderDiagnosticsProbeResult("\"0|0|0|0|1|2|none|-1|-1|-1\"")
         )
         assertEquals(
             ProviderDiagnosticsProbeResult.Failed,
@@ -176,6 +176,48 @@ class ProviderDiagnosticsTest {
         assertEquals(
             ProviderDiagnosticsProbeResult.Failed,
             parseProviderDiagnosticsProbeResult(null)
+        )
+    }
+
+    @Test
+    fun turnAnchorCountsAreParsedAndBounded() {
+        val ready = parseProviderDiagnosticsProbeResult("\"1|0|0|0|0|0|none|3|2|5\"")
+        assertEquals(
+            ProviderTurnAnchorCounts(userTurns = 3, assistantTurns = 2, turnsWithStableId = 5),
+            (ready as ProviderDiagnosticsProbeResult.Ready).capabilities.turnAnchors
+        )
+        assertTrue(providerDiagnosticsProbeSummary(ready).endsWith("turns=user 3/assistant 2/stable-id 5"))
+        val unconfigured = parseProviderDiagnosticsProbeResult("\"1|0|0|0|0|0|none|-1|-1|-1\"")
+        assertTrue(providerDiagnosticsProbeSummary(unconfigured).endsWith("turns=not configured"))
+        assertEquals(
+            ProviderDiagnosticsProbeResult.Failed,
+            parseProviderDiagnosticsProbeResult("\"1|0|0|0|0|0|none|1|1|3\"")
+        )
+        assertEquals(
+            ProviderDiagnosticsProbeResult.Failed,
+            parseProviderDiagnosticsProbeResult("\"1|0|0|0|0|0|none|-1|2|0\"")
+        )
+        assertEquals(
+            ProviderDiagnosticsProbeResult.Failed,
+            parseProviderDiagnosticsProbeResult("\"1|0|0|0|0|0|none\"")
+        )
+    }
+
+    @Test
+    fun turnAnchorProbeCountsWithoutReadingMessageContent() {
+        val script = requireNotNull(
+            providerDiagnosticsProbeScript(WebAiService.CHATGPT, "https://chatgpt.com/c/123")
+        )
+
+        assertTrue(script.contains("data-message-author-role"))
+        assertTrue(script.contains("\"data-message-id\""))
+        assertTrue(!script.contains("innerText"))
+        assertTrue(!script.contains("textContent"))
+        assertTrue(!script.contains("innerHTML"))
+        assertTrue(!script.contains("outerHTML"))
+        assertTrue(
+            requireNotNull(providerDiagnosticsProbeScript(WebAiService.QWEN, "https://qwen.ai/"))
+                .contains("var turnCounts = [-1, -1, -1];")
         )
     }
 }

@@ -157,6 +157,7 @@ Integration notes for the open `ACCOUNT_PLAN` credential lifecycle; nothing belo
 - [x] Recover individual WebViews after renderer-process termination without clearing provider-owned sessions; selected low-memory loss recreates the last URL, inactive loss stays evicted until selected, and a renderer crash requires an explicit retry from the provider home page.
 - [x] Keep selected, untracked, or activity-uncertain WebView renderers at IMPORTANT priority; only hidden tracked MRU WebViews with freshly confirmed inactivity may waive renderer priority under memory pressure now that renderer termination recovery is in place.
 - [ ] Continue provider-specific mobile performance tweaks where they are measurable and safely scoped.
+- [ ] Web stars and timelines: provider-scoped turn-anchor candidates (ChatGPT, Claude, Gemini) are counted in Provider diagnostics (user/assistant/stable-id counts only, never text or attribute values). A Web timeline ships per provider only after on-device counts confirm the selectors; stars only where a stable message id exists, keyed by provider + conversation path + id with no page text stored. Web quote stays design-only until a trustworthy excerpt source exists.
 
 ### Manual/account verification (later)
 
