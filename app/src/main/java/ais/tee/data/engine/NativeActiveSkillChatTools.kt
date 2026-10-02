@@ -6,6 +6,7 @@ import ais.tee.data.model.MAX_NATIVE_TOOL_RESULT_CHARS
 import ais.tee.data.model.NativeToolCall
 import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
+import ais.tee.data.model.NativeToolReceipt
 import ais.tee.data.preferences.ActiveSkillsPreferencesStore
 import ais.tee.data.skills.ACTIVE_SKILL_CHAT_INPUT_FIELD
 import ais.tee.data.skills.ACTIVE_SKILL_MAX_CARDS_PER_MESSAGE
@@ -100,6 +101,20 @@ internal class NativeActiveSkillChatTools(
                 }.getOrNull()
             }
         }
+    }
+
+    suspend fun executeWithReceipt(call: NativeToolCall): NativeToolExecution {
+        val result = execute(call)
+        return NativeToolExecution(
+            result = result,
+            receipt = NativeToolReceipt(
+                toolName = call.name,
+                inputScope = "Model-supplied skill input",
+                decision = CapabilityDecision.REQUIRES_USER_INTERACTION,
+                destination = "Current model turn",
+                outcome = if (result.isError) "Not completed" else "Approved and shared",
+            ),
+        )
     }
 
     suspend fun execute(call: NativeToolCall): NativeToolResult {
