@@ -2102,7 +2102,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         allowSingleProviderSimulationFallback = targetProvider != AiProvider.ALL,
                         tools = toolDefinitions,
                         executeTool = { call ->
-                            if (skillTools?.handles(call.name) == true) skillTools.execute(call) else benchTools.execute(call)
+                            if (skillTools?.handles(call.name) == true) {
+                                skillTools.executeWithReceipt(call)
+                            } else {
+                                benchTools.executeWithReceipt(call)
+                            }
                         },
                     ),
                     aiChatService = aiChatService,
@@ -2118,15 +2122,17 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     onResponse = { generated ->
                         val skillNotes = skillTools?.transcriptNotes.orEmpty()
                         val skillCards = skillTools?.skillCards.orEmpty()
+                        val toolReceipts = generated.message.toolReceipts + generated.toolReceipts
                         finishStreamingMessage(
                             generationId,
                             "stream_${userMessage.id}_${generated.provider.id}",
                             generated.provider,
-                            if (skillNotes.isEmpty() && skillCards.isEmpty()) {
+                            if (skillNotes.isEmpty() && skillCards.isEmpty() && toolReceipts.isEmpty()) {
                                 generated.message
                             } else {
                                 generated.message.copy(
                                     activeProfileNotes = generated.message.activeProfileNotes + skillNotes,
+                                    toolReceipts = toolReceipts,
                                     skillCards = skillCards,
                                 )
                             },
