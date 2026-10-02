@@ -14,12 +14,14 @@ import ais.tee.data.model.BenchToolInvocationMode
 import ais.tee.data.model.BenchToolPermission
 import ais.tee.data.model.BenchToolSurface
 import ais.tee.data.model.BuiltInBenchTool
+import ais.tee.data.model.BuiltInBenchToolAvailability
 import ais.tee.data.model.CapabilityDecision
 import ais.tee.data.model.DEFAULT_PROJECT_ID
 import ais.tee.data.model.MAX_NATIVE_TOOL_RESULT_CHARS
 import ais.tee.data.model.NativeToolCall
 import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
+import ais.tee.data.model.NativeToolReceipt
 import ais.tee.data.model.availability
 import ais.tee.data.preferences.BuiltInBenchPreferencesStore
 import ais.tee.data.preferences.ProjectLibraryStore
@@ -86,31 +88,61 @@ internal class NativeBenchChatTools(
         }
     }
 
-    suspend fun execute(call: NativeToolCall): NativeToolResult = withContext(Dispatchers.Default) {
-        val enabled = preferences.loadEnabledTools()
-        val owner = toolOwner(call.name)
-            ?: return@withContext errorResult(call, "Unknown first-party tool.")
-        val actionRequiredPermissions =
-            if (call.name == GENERATE_QR) PROJECT_LIBRARY_WRITE_SCOPE else emptySet()
-        if (!modelRouteAllowed(owner, enabled, actionRequiredPermissions)) {
-            return@withContext errorResult(call, "Tool is disabled or blocked by the current Bench policy.")
+    suspend fun execute(call: NativeToolCall): NativeToolResult =
+        executeWithReceipt(call).result
+
+    suspend fun executeWithReceipt(call: NativeToolCall): NativeToolExecution =
+        withContext(Dispatchers.Default) {
+            val enabled = preferences.loadEnabledTools()
+            val owner = toolOwner(call.name)
+                ?: return@withContext NativeToolExecution(
+                    result = errorResult(call, "Unknown first-party tool."),
+                    receipt = receipt(call, CapabilityDecision.DENY, "Blocked"),
+                )
+            val actionRequiredPermissions =
+                if (call.name == GENERATE_QR) PROJECT_LIBRARY_WRITE_SCOPE else emptySet()
+            val availability = modelRouteAvailability(owner, enabled, actionRequiredPermissions)
+            if (availability.decision != CapabilityDecision.ALLOW) {
+                return@withContext NativeToolExecution(
+                    result = errorResult(call, "Tool is disabled or blocked by the current Bench policy."),
+                    receipt = receipt(call, availability.decision, "Blocked"),
+                )
+            }
+            val result = when (call.name) {
+                FORMAT_STRUCTURED -> formatStructured(call)
+                REPAIR_MARKDOWN -> repairMarkdown(call)
+                NORMALIZE_EOL -> normalizeEol(call)
+                INSPECT_TEXT -> inspectText(call)
+                COUNT_TOKENS -> countTokens(call)
+                GENERATE_QR -> generateQr(call)
+                else -> errorResult(call, "Unknown first-party tool.")
+            }
+            NativeToolExecution(
+                result = result,
+                receipt = receipt(
+                    call = call,
+                    decision = CapabilityDecision.ALLOW,
+                    outcome = when {
+                        result.isError -> "Failed"
+                        call.name == GENERATE_QR -> "Artifact saved"
+                        else -> "Result returned"
+                    },
+                ),
+            )
         }
-        when (call.name) {
-            FORMAT_STRUCTURED -> formatStructured(call)
-            REPAIR_MARKDOWN -> repairMarkdown(call)
-            NORMALIZE_EOL -> normalizeEol(call)
-            INSPECT_TEXT -> inspectText(call)
-            COUNT_TOKENS -> countTokens(call)
-            GENERATE_QR -> generateQr(call)
-            else -> errorResult(call, "Unknown first-party tool.")
-        }
-    }
 
     private fun modelRouteAllowed(
         tool: BuiltInBenchTool,
         enabled: Set<BuiltInBenchTool>,
         actionRequiredPermissions: Set<BenchToolPermission> = emptySet(),
     ): Boolean =
+        modelRouteAvailability(tool, enabled, actionRequiredPermissions).decision == CapabilityDecision.ALLOW
+
+    private fun modelRouteAvailability(
+        tool: BuiltInBenchTool,
+        enabled: Set<BuiltInBenchTool>,
+        actionRequiredPermissions: Set<BenchToolPermission> = emptySet(),
+    ): BuiltInBenchToolAvailability =
         tool.availability(
             surface = BenchToolSurface.NATIVE_CHAT,
             invocationMode = BenchToolInvocationMode.MODEL_TOOL_CALL,
@@ -119,7 +151,22 @@ internal class NativeBenchChatTools(
             grantedPermissions = MODEL_SCOPED_GRANTS,
             networkAvailable = false,
             actionRequiredPermissions = actionRequiredPermissions,
-        ).decision == CapabilityDecision.ALLOW
+        )
+
+    private fun receipt(
+        call: NativeToolCall,
+        decision: CapabilityDecision,
+        outcome: String,
+    ): NativeToolReceipt = NativeToolReceipt(
+        toolName = call.name,
+        inputScope = if (toolOwner(call.name) == null) "Unknown model tool input" else "Model-selected inline chat text",
+        decision = decision,
+        destination = when (call.name) {
+            GENERATE_QR -> "Project Library"
+            else -> if (toolOwner(call.name) == null) "No destination" else "Current model turn"
+        },
+        outcome = outcome,
+    )
 
     private fun formatStructured(call: NativeToolCall): NativeToolResult {
         val text = call.inlineText() ?: return errorResult(call, "Missing or oversized text.")
