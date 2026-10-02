@@ -16,12 +16,19 @@ internal data class ProviderTurnAnchors(
     val stableIdAttribute: String? = null
 )
 
+internal data class ProviderWebToolbarShortcut(
+    val id: String,
+    val label: String,
+    val url: String,
+)
+
 private data class ProviderWebProfile(
     val ownedHostAliases: Set<String> = emptySet(),
     val turnAnchors: ProviderTurnAnchors? = null,
     val verifiedTopLevelNavigationIdentityMethods: Set<ProviderIdentityMethod> = emptySet(),
     val generationSelectors: List<String> = emptyList(),
-    val generationIdleSelectors: List<String> = emptyList()
+    val generationIdleSelectors: List<String> = emptyList(),
+    val toolbarShortcut: ProviderWebToolbarShortcut? = null,
 )
 
 internal object ProviderWebRegistry {
@@ -40,6 +47,11 @@ internal object ProviderWebRegistry {
     private val profiles = mapOf(
         WebAiService.CHATGPT to ProviderWebProfile(
             generationSelectors = listOf(STOP_BUTTON_TEST_ID_SELECTOR),
+            toolbarShortcut = ProviderWebToolbarShortcut(
+                id = "codex-cloud",
+                label = "Codex",
+                url = "https://chatgpt.com/codex/cloud",
+            ),
             turnAnchors = ProviderTurnAnchors(
                 userSelector = "[data-message-author-role=\"user\"]",
                 assistantSelector = "[data-message-author-role=\"assistant\"]",
@@ -138,6 +150,9 @@ internal object ProviderWebRegistry {
         profile(service).generationIdleSelectors
 
     fun turnAnchors(service: WebAiService): ProviderTurnAnchors? = profile(service).turnAnchors
+
+    fun toolbarShortcut(service: WebAiService): ProviderWebToolbarShortcut? =
+        profile(service).toolbarShortcut
 }
 
 internal fun providerHostMatches(service: WebAiService, host: String?): Boolean {
