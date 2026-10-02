@@ -1,6 +1,9 @@
 package ais.tee.data.model
 
+import kotlinx.serialization.Serializable
+
 /** SDK-independent policy result. Only ALLOW permits execution of the evaluated action. */
+@Serializable
 enum class CapabilityDecision {
     ALLOW,
     DENY,
