@@ -137,6 +137,31 @@ private const val STREAMING_UI_FLUSH_INTERVAL_MS = 50L
 private const val NATIVE_CHAT_DRAFT_PERSIST_DELAY_MS = 300L
 private const val MAX_BACKGROUND_JOB_PROMPT_CHARS = 128 * 1024
 
+internal fun upsertStreamingToolReceipt(
+    messages: List<ModelChatMessage>,
+    messageId: String,
+    provider: AiProvider,
+    model: String,
+    receipt: NativeToolReceipt,
+): List<ModelChatMessage> {
+    val index = messages.indexOfFirst { it.id == messageId }
+    return if (index >= 0) {
+        messages.toMutableList().apply {
+            this[index] = this[index].copy(toolReceipts = this[index].toolReceipts + receipt)
+        }
+    } else {
+        messages + ModelChatMessage(
+            id = messageId,
+            sender = CHAT_ROLE_ASSISTANT,
+            provider = provider,
+            modelName = model,
+            text = "",
+            isPartial = true,
+            toolReceipts = listOf(receipt),
+        )
+    }
+}
+
 data class StudioUiState(
     val baseProfile: Profile = PresetProfiles.DefaultBaseProfile,
     val selectedOverlay: ProfileOverlay? = null,
@@ -1636,24 +1661,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             flushStreamingGenerationLocked(generationId)
             val now = System.currentTimeMillis()
             _uiState.update { state ->
-                val index = state.chatMessages.indexOfFirst { it.id == messageId }
-                val messages = if (index >= 0) {
-                    state.chatMessages.toMutableList().apply {
-                        this[index] = this[index].copy(
-                            toolReceipts = this[index].toolReceipts + receipt,
-                        )
-                    }
-                } else {
-                    state.chatMessages + ModelChatMessage(
-                        id = messageId,
-                        sender = CHAT_ROLE_ASSISTANT,
-                        provider = provider,
-                        modelName = model,
-                        text = "",
-                        isPartial = true,
-                        toolReceipts = listOf(receipt),
-                    )
-                }
+                val messages = upsertStreamingToolReceipt(
+                    messages = state.chatMessages,
+                    messageId = messageId,
+                    provider = provider,
+                    model = model,
+                    receipt = receipt,
+                )
                 state.copy(
                     nativeChat = state.nativeChat.updateActiveConversation { conversation ->
                         conversation.copy(messages = messages, updatedAtEpochMs = now)
