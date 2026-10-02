@@ -8,12 +8,18 @@ import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeToolCall
 import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
+import ais.tee.data.model.NativeToolReceipt
 import ais.tee.data.model.normalizeApiProcessingMode
 import ais.tee.data.model.runtimeCapabilities
 import ais.tee.data.model.Profile
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+
+internal data class NativeToolExecution(
+    val result: NativeToolResult,
+    val receipt: NativeToolReceipt,
+)
 
 internal data class NativeChatSendRequest(
     val prompt: String,
@@ -27,7 +33,7 @@ internal data class NativeChatSendRequest(
     val conversationHistory: List<ModelChatMessage>,
     val allowSingleProviderSimulationFallback: Boolean,
     val tools: List<NativeToolDefinition> = emptyList(),
-    val executeTool: (suspend (NativeToolCall) -> NativeToolResult)? = null,
+    val executeTool: (suspend (NativeToolCall) -> NativeToolExecution)? = null,
 ) {
     init {
         require(tools.isEmpty() || executeTool != null) {
@@ -43,6 +49,7 @@ internal data class NativeChatGeneratedResponse(
     val provider: AiProvider,
     val model: String,
     val message: ModelChatMessage,
+    val toolReceipts: List<NativeToolReceipt> = emptyList(),
 )
 
 internal suspend fun executeNativeChatSend(
@@ -65,6 +72,12 @@ internal suspend fun executeNativeChatSend(
             ClientToolCallingStrategy.PER_PROVIDER -> emptyList()
         }
         val processingMode = provider.normalizeApiProcessingMode(request.apiProcessingMode)
+        val providerReceipts = mutableListOf<NativeToolReceipt>()
+        val providerToolExecutor = request.executeTool?.let { execute ->
+            suspend { call: NativeToolCall ->
+                execute(call).also { providerReceipts += it.receipt }.result
+            }
+        }
         val response = aiChatService.generateResponse(
             prompt = request.prompt,
             provider = provider,
@@ -78,9 +91,14 @@ internal suspend fun executeNativeChatSend(
                 request.allowSingleProviderSimulationFallback && request.targetProvider != AiProvider.ALL,
             onTextDelta = { delta -> onTextDelta(provider, model, delta) },
             tools = providerTools,
-            executeTool = request.executeTool,
+            executeTool = providerToolExecutor,
         )
-        return NativeChatGeneratedResponse(provider, model, response).also(onResponse)
+        return NativeChatGeneratedResponse(
+            provider = provider,
+            model = model,
+            message = response,
+            toolReceipts = providerReceipts.toList(),
+        ).also(onResponse)
     }
 
     if (request.targetProvider == AiProvider.ALL) {
