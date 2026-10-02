@@ -6,12 +6,18 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 
 class NativeToolReceiptMessageTest {
+    private companion object {
+        const val SECRET_SCOPE = "SECRET_SCOPE"
+        const val SECRET_DESTINATION = "SECRET_DESTINATION"
+        const val SECRET_OUTCOME = "SECRET_OUTCOME"
+    }
+
     private val receipt = NativeToolReceipt(
         toolName = "docbench_inspect_text",
-        inputScope = "SECRET_SCOPE",
+        inputScope = SECRET_SCOPE,
         decision = CapabilityDecision.ALLOW,
-        destination = "SECRET_DESTINATION",
-        outcome = "SECRET_OUTCOME",
+        destination = SECRET_DESTINATION,
+        outcome = SECRET_OUTCOME,
     )
     private val reply = ModelChatMessage(
         id = "m1",
@@ -42,12 +48,12 @@ class NativeToolReceiptMessageTest {
             renderChatMarkdown(listOf(ModelChatMessage(id = "u1", sender = CHAT_ROLE_USER, text = "inspect"), reply))
         )
 
-        assertFalse("SECRET_SCOPE" in markdown)
-        assertFalse("SECRET_DESTINATION" in markdown)
-        assertFalse("SECRET_OUTCOME" in markdown)
-        assertFalse("SECRET_SCOPE" in reply.toString())
-        assertFalse("SECRET_DESTINATION" in reply.toString())
-        assertFalse("SECRET_OUTCOME" in reply.toString())
-        assertFalse("SECRET_SCOPE" in receipt.toString())
+        assertFalse(SECRET_SCOPE in markdown)
+        assertFalse(SECRET_DESTINATION in markdown)
+        assertFalse(SECRET_OUTCOME in markdown)
+        assertFalse(SECRET_SCOPE in reply.toString())
+        assertFalse(SECRET_DESTINATION in reply.toString())
+        assertFalse(SECRET_OUTCOME in reply.toString())
+        assertFalse(SECRET_SCOPE in receipt.toString())
     }
 }
