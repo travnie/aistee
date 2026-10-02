@@ -1718,6 +1718,21 @@ private fun WebChatToolbar(
                 WebProviderActivityIndicator(selectedService, activityStatus, brandColor)
                 Spacer(Modifier.weight(1f))
 
+                ProviderWebRegistry.toolbarShortcut(selectedService)?.let { shortcut ->
+                    IconButton(
+                        onClick = { activeWebView?.loadUrl(shortcut.url) },
+                        enabled = activeWebView != null,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("btn_web_shortcut_" + shortcut.id),
+                    ) {
+                        Icon(
+                            Icons.Default.Terminal,
+                            contentDescription = "Open " + shortcut.label,
+                        )
+                    }
+                }
+
                 IconButton(
                     onClick = onApplyStudio,
                     modifier = Modifier

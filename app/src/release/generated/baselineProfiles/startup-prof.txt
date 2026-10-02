@@ -19973,3 +19973,9 @@ SPLais/tee/data/model/ModelChatMessage;->_childSerializers$_anonymous_$2()Lkotli
 SPLais/tee/data/model/NativeToolReceipt$$serializer;-><clinit>()V
 SPLais/tee/data/model/NativeToolReceipt$$serializer;-><init>()V
 SPLais/tee/data/model/NativeToolReceipt$$serializer;->getDescriptor()Lkotlinx/serialization/descriptors/SerialDescriptor;
+SPLais/tee/web/ProviderWebProfile;-><init>(Ljava/util/Set;Lais/tee/web/ProviderTurnAnchors;Ljava/util/Set;Ljava/util/List;Ljava/util/List;Lais/tee/web/ProviderWebToolbarShortcut;)V
+SPLais/tee/web/ProviderWebProfile;-><init>(Ljava/util/Set;Lais/tee/web/ProviderTurnAnchors;Ljava/util/Set;Ljava/util/List;Ljava/util/List;Lais/tee/web/ProviderWebToolbarShortcut;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+SPLais/tee/web/ProviderWebProfile;->getToolbarShortcut()Lais/tee/web/ProviderWebToolbarShortcut;
+SPLais/tee/web/ProviderWebRegistry;->toolbarShortcut(Lais/tee/data/model/WebAiService;)Lais/tee/web/ProviderWebToolbarShortcut;
+SPLais/tee/web/ProviderWebToolbarShortcut;-><clinit>()V
+SPLais/tee/web/ProviderWebToolbarShortcut;-><init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
