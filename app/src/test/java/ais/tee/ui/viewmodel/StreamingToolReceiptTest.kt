@@ -8,6 +8,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StreamingToolReceiptTest {
+    private companion object {
+        const val MESSAGE_ID = "stream-user-1-gemini"
+        const val MODEL = "gemini-test"
+    }
+
     private val receipt = NativeToolReceipt(
         toolName = "codebench_generate_qr",
         inputScope = "Model-selected inline chat text",
@@ -20,9 +25,9 @@ class StreamingToolReceiptTest {
     fun firstCompletedToolCallCreatesPartialReplyWithReceipt() {
         val messages = upsertStreamingToolReceipt(
             messages = emptyList(),
-            messageId = "stream-user-1-gemini",
+            messageId = MESSAGE_ID,
             provider = AiProvider.GEMINI,
-            model = "gemini-test",
+            model = MODEL,
             receipt = receipt,
         )
 
@@ -35,18 +40,18 @@ class StreamingToolReceiptTest {
     fun laterReceiptStaysOnTheSamePartialReply() {
         val first = upsertStreamingToolReceipt(
             messages = emptyList(),
-            messageId = "stream-user-1-gemini",
+            messageId = MESSAGE_ID,
             provider = AiProvider.GEMINI,
-            model = "gemini-test",
+            model = MODEL,
             receipt = receipt,
         )
         val second = receipt.copy(toolName = "docbench_inspect_text", destination = "Current model turn")
 
         val messages = upsertStreamingToolReceipt(
             messages = first,
-            messageId = "stream-user-1-gemini",
+            messageId = MESSAGE_ID,
             provider = AiProvider.GEMINI,
-            model = "gemini-test",
+            model = MODEL,
             receipt = second,
         )
 
