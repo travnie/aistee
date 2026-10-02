@@ -64,6 +64,12 @@ sealed interface ActiveSkillChatAnswer {
  * exact input, confirms each native action and shows the result before it reaches the model.
  * With the active skills switch off nothing is read and no tool is offered.
  */
+private data class ActiveSkillCallExecution(
+    val result: NativeToolResult,
+    val didRun: Boolean,
+    val resultShared: Boolean,
+)
+
 internal class NativeActiveSkillChatTools(
     context: Context,
     private val store: LocalSkillLibraryStore,
@@ -104,29 +110,54 @@ internal class NativeActiveSkillChatTools(
     }
 
     suspend fun executeWithReceipt(call: NativeToolCall): NativeToolExecution {
-        val result = execute(call)
+        val execution = executeTracked(call)
         return NativeToolExecution(
-            result = result,
+            result = execution.result,
             receipt = NativeToolReceipt(
                 toolName = call.name,
                 inputScope = "Model-supplied skill input",
                 decision = CapabilityDecision.REQUIRES_USER_INTERACTION,
-                destination = "Current model turn",
-                outcome = if (result.isError) "Not completed" else "Approved and shared",
+                destination = when {
+                    !execution.didRun -> "No destination"
+                    execution.resultShared -> "Current model turn"
+                    else -> "Not shared with model"
+                },
+                outcome = when {
+                    !execution.didRun -> "Not run"
+                    execution.resultShared && execution.result.isError -> "Ran; error shared"
+                    execution.resultShared -> "Ran; result shared"
+                    else -> "Ran; result not shared"
+                },
             ),
         )
     }
 
-    suspend fun execute(call: NativeToolCall): NativeToolResult {
-        val skillName = skillsByTool[call.name] ?: return error(call, "Unknown skill.")
+    suspend fun execute(call: NativeToolCall): NativeToolResult =
+        executeTracked(call).result
+
+    private suspend fun executeTracked(call: NativeToolCall): ActiveSkillCallExecution {
+        val skillName = skillsByTool[call.name]
+            ?: return ActiveSkillCallExecution(error(call, "Unknown skill."), didRun = false, resultShared = false)
         val input = activeSkillChatInput(call.arguments)
-            ?: return error(call, "Pass the skill input as one string field named '$ACTIVE_SKILL_CHAT_INPUT_FIELD'.")
+            ?: return ActiveSkillCallExecution(
+                error(call, "Pass the skill input as one string field named '$ACTIVE_SKILL_CHAT_INPUT_FIELD'."),
+                didRun = false,
+                resultShared = false,
+            )
         val (manifest, bundle) = withContext(Dispatchers.IO) { loadRunnable(skillName) }
-            ?: return error(call, "This skill cannot run here.")
+            ?: return ActiveSkillCallExecution(
+                error(call, "This skill cannot run here."),
+                didRun = false,
+                resultShared = false,
+            )
 
         if (ask(skillName, ActiveSkillChatStage.Run(input)) !is ActiveSkillChatAnswer.Approved) {
             note("Skill $skillName was not run. Input: ${input.take(MAX_TRANSCRIPT_INPUT_CHARS)}")
-            return error(call, "The user declined to run this skill.")
+            return ActiveSkillCallExecution(
+                error(call, "The user declined to run this skill."),
+                didRun = false,
+                resultShared = false,
+            )
         }
         note("Skill $skillName ran with input: ${input.take(MAX_TRANSCRIPT_INPUT_CHARS)}")
         val outcome = try {
@@ -159,13 +190,25 @@ internal class NativeActiveSkillChatTools(
             }
         if (output.length > MAX_NATIVE_TOOL_RESULT_CHARS) {
             note("Skill $skillName result was too large to share.")
-            return error(call, "The skill result is too large to return.")
+            return ActiveSkillCallExecution(
+                error(call, "The skill result is too large to return."),
+                didRun = true,
+                resultShared = false,
+            )
         }
         if (ask(skillName, ActiveSkillChatStage.Result(output, isError, card?.title)) !is ActiveSkillChatAnswer.Approved) {
             note("Skill $skillName result was not shared.")
-            return error(call, "The user chose not to share the skill result.")
+            return ActiveSkillCallExecution(
+                error(call, "The user chose not to share the skill result."),
+                didRun = true,
+                resultShared = false,
+            )
         }
-        return NativeToolResult(call.callId, call.name, output, isError)
+        return ActiveSkillCallExecution(
+            NativeToolResult(call.callId, call.name, output, isError),
+            didRun = true,
+            resultShared = true,
+        )
     }
 
     private suspend fun performActions(skillName: String, outcome: ActiveSkillOutcome.ToolRequests): String {
