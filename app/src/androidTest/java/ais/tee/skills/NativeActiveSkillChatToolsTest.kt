@@ -10,6 +10,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import ais.tee.data.engine.ActiveSkillChatAnswer
 import ais.tee.data.engine.ActiveSkillChatStage
 import ais.tee.data.engine.NativeActiveSkillChatTools
+import ais.tee.data.model.CapabilityDecision
 import ais.tee.data.model.NativeToolCall
 import ais.tee.data.preferences.ActiveSkillsPreferencesStore
 import ais.tee.data.skills.ActiveSkillTrust
@@ -103,6 +104,22 @@ class NativeActiveSkillChatToolsTest {
         assertEquals("1", result.output)
         assertEquals("Trip plan", tools.skillCards.single().title)
         assertEquals("Trip plan", (asked[1] as ActiveSkillChatStage.Result).cardTitle)
+    }
+
+    @Test
+    fun declinedResultSharingStillRecordsThatTheSkillRan() = runBlocking {
+        addTrustedSkill()
+        val tools = tools(ActiveSkillChatAnswer.Approved(), ActiveSkillChatAnswer.Declined)
+        tools.definitions()
+
+        val execution = tools.executeWithReceipt(call("hello"))
+
+        assertTrue(execution.result.isError)
+        assertEquals(CapabilityDecision.REQUIRES_USER_INTERACTION, execution.receipt.decision)
+        assertEquals("Not shared with model", execution.receipt.destination)
+        assertEquals("Ran; result not shared", execution.receipt.outcome)
+        assertTrue(tools.transcriptNotes.any { it.contains("ran with input") })
+        assertTrue(tools.transcriptNotes.any { it.contains("result was not shared") })
     }
 
     @Test
