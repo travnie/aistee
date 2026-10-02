@@ -87,6 +87,7 @@ import ais.tee.data.document.MarkdownDocumentFileAccess
 import ais.tee.data.document.MarkdownTable
 import ais.tee.data.document.MarkdownWorkspaceRecoveryStore
 import ais.tee.data.model.AiProvider
+import ais.tee.data.model.CapabilityDecision
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.NativeChatConversation
@@ -160,6 +161,13 @@ internal fun shouldRenderChatMarkdown(message: ModelChatMessage): Boolean =
 
 internal fun chatBubbleMaxWidth(containerWidth: Dp): Dp =
     (containerWidth - 32.dp).coerceIn(340.dp, 640.dp)
+
+private fun CapabilityDecision.toolReceiptLabel(): String = when (this) {
+    CapabilityDecision.ALLOW -> "Allowed"
+    CapabilityDecision.DENY -> "Denied"
+    CapabilityDecision.ASK -> "Permission required"
+    CapabilityDecision.REQUIRES_USER_INTERACTION -> "User approval"
+}
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 internal fun nativeChatInitialDestinationHistory(
@@ -1973,6 +1981,47 @@ fun ChatMessageItem(
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                             lineHeight = 14.sp
                         )
+                    }
+                }
+
+                if (!isUser && message.toolReceipts.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.small)
+                            .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f))
+                            .padding(8.dp)
+                            .testTag("tool_receipts_${message.id}")
+                    ) {
+                        Text(
+                            text = "Tool activity",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
+                        message.toolReceipts.forEachIndexed { index, receipt ->
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .semantics(mergeDescendants = true) {}
+                                    .testTag("tool_receipt_${message.id}_$index")
+                            ) {
+                                Text(
+                                    text = "${receipt.toolName} · ${receipt.decision.toolReceiptLabel()}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                )
+                                Text(
+                                    text = "${receipt.inputScope} → ${receipt.destination} · ${receipt.outcome}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 10.sp,
+                                    lineHeight = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                 }
 
