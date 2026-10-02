@@ -1623,6 +1623,49 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun appendStreamingToolReceipt(
+        generationId: Long,
+        messageId: String,
+        provider: AiProvider,
+        model: String,
+        receipt: NativeToolReceipt,
+    ) {
+        var updated = false
+        streamingTextBatcher.withExclusiveAccess {
+            if (generationId != activeChatGenerationId.get()) return@withExclusiveAccess
+            flushStreamingGenerationLocked(generationId)
+            val now = System.currentTimeMillis()
+            _uiState.update { state ->
+                val index = state.chatMessages.indexOfFirst { it.id == messageId }
+                val messages = if (index >= 0) {
+                    state.chatMessages.toMutableList().apply {
+                        this[index] = this[index].copy(
+                            toolReceipts = this[index].toolReceipts + receipt,
+                        )
+                    }
+                } else {
+                    state.chatMessages + ModelChatMessage(
+                        id = messageId,
+                        sender = CHAT_ROLE_ASSISTANT,
+                        provider = provider,
+                        modelName = model,
+                        text = "",
+                        isPartial = true,
+                        toolReceipts = listOf(receipt),
+                    )
+                }
+                state.copy(
+                    nativeChat = state.nativeChat.updateActiveConversation { conversation ->
+                        conversation.copy(messages = messages, updatedAtEpochMs = now)
+                    }
+                )
+            }
+            updated = true
+        }
+        // Persist side-effect receipts immediately so Stop cannot erase an action that already ran.
+        if (updated) persistNativeChat()
+    }
+
     private fun appendStreamingDelta(
         generationId: Long,
         messageId: String,
@@ -2117,6 +2160,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             provider,
                             model,
                             delta,
+                        )
+                    },
+                    onToolReceipt = { provider, model, receipt ->
+                        appendStreamingToolReceipt(
+                            generationId,
+                            "stream_${userMessage.id}_${provider.id}",
+                            provider,
+                            model,
+                            receipt,
                         )
                     },
                     onResponse = { generated ->
