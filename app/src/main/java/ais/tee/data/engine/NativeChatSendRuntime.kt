@@ -56,6 +56,7 @@ internal suspend fun executeNativeChatSend(
     request: NativeChatSendRequest,
     aiChatService: AiChatService,
     onTextDelta: (provider: AiProvider, model: String, delta: String) -> Unit = { _, _, _ -> },
+    onToolReceipt: (provider: AiProvider, model: String, receipt: NativeToolReceipt) -> Unit = { _, _, _ -> },
     onResponse: (NativeChatGeneratedResponse) -> Unit = {},
 ): List<NativeChatGeneratedResponse> = coroutineScope {
     suspend fun runProvider(provider: AiProvider): NativeChatGeneratedResponse {
@@ -75,7 +76,10 @@ internal suspend fun executeNativeChatSend(
         val providerReceipts = mutableListOf<NativeToolReceipt>()
         val providerToolExecutor = request.executeTool?.let { execute ->
             suspend { call: NativeToolCall ->
-                execute(call).also { providerReceipts += it.receipt }.result
+                val execution = execute(call)
+                providerReceipts += execution.receipt
+                onToolReceipt(provider, model, execution.receipt)
+                execution.result
             }
         }
         val response = aiChatService.generateResponse(
