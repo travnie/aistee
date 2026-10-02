@@ -1,10 +1,12 @@
 package ais.tee.data.model
 
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 private val NATIVE_TOOL_NAME_REGEX = Regex("^[A-Za-z0-9_-]{1,64}$")
 private const val MAX_NATIVE_TOOL_DESCRIPTION_CHARS = 1_024
+private const val MAX_NATIVE_TOOL_RECEIPT_LABEL_CHARS = 120
 const val MAX_NATIVE_TOOL_RESULT_CHARS = 40_000
 const val MAX_NATIVE_TOOL_ROUNDS = 8
 const val MAX_NATIVE_TOOL_CALLS_PER_ROUND = 8
@@ -67,6 +69,32 @@ data class NativeToolResult(
 
     override fun toString(): String =
         "NativeToolResult(callId=<redacted>, name=$name, output=<redacted>, isError=$isError)"
+}
+
+/**
+ * User-visible metadata for one client-tool execution. Labels stay coarse: never put raw
+ * arguments, outputs, file names, credentials or provider-owned opaque state in a receipt.
+ */
+@Serializable
+data class NativeToolReceipt(
+    val toolName: String,
+    val inputScope: String,
+    val decision: CapabilityDecision,
+    val destination: String,
+    val outcome: String,
+) {
+    init {
+        require(NATIVE_TOOL_NAME_REGEX.matches(toolName)) { "Invalid tool receipt name" }
+        listOf(inputScope, destination, outcome).forEach { label ->
+            require(label.isNotBlank() && label.length <= MAX_NATIVE_TOOL_RECEIPT_LABEL_CHARS) {
+                "Tool receipt labels must be 1-$MAX_NATIVE_TOOL_RECEIPT_LABEL_CHARS characters"
+            }
+        }
+    }
+
+    override fun toString(): String =
+        "NativeToolReceipt(toolName=$toolName, decision=$decision, inputScope=<redacted>, " +
+            "destination=<redacted>, outcome=<redacted>)"
 }
 
 fun validateNativeToolResult(call: NativeToolCall, result: NativeToolResult): NativeToolResult {
