@@ -75,6 +75,14 @@ private data class ActiveSkillActionBatch(
     val audits: List<ActiveSkillActionAudit>,
 )
 
+private data class ActiveSkillRunMaterial(
+    val output: String,
+    val isError: Boolean,
+    val didRun: Boolean,
+    val cardTitle: String?,
+    val actionAudits: List<ActiveSkillActionAudit>,
+)
+
 private data class ActiveSkillCallExecution(
     val result: NativeToolResult,
     val didRun: Boolean,
@@ -162,68 +170,86 @@ internal class NativeActiveSkillChatTools(
                 resultShared = false,
             )
         }
-        val runReport = try {
-            runner.runWithReport(
-                invoker = ActiveSkillInvoker.MODEL,
-                manifest = manifest,
-                bundle = bundle,
-                input = activeSkillUserInput(input),
-                isIncognitoChat = false,
-                isQuickPrivacyOn = quickPrivacyOn(),
-            )
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            null
-        }
-        val didRun = runReport?.sandboxStarted == true
-        if (didRun) {
-            note("Skill $skillName ran with input: ${input.take(MAX_TRANSCRIPT_INPUT_CHARS)}")
-        } else {
-            note("Skill $skillName was blocked before its sandbox started. Input: ${input.take(MAX_TRANSCRIPT_INPUT_CHARS)}")
-        }
-        val outcome = runReport?.outcome ?: ActiveSkillOutcome.Error("The skill could not run.")
-        val actionBatch = when (outcome) {
-            is ActiveSkillOutcome.ToolRequests -> performActions(skillName, outcome)
-            else -> null
-        }
-        val (output, isError) = when (outcome) {
-            is ActiveSkillOutcome.Error -> outcome.message to true
-            // Only the JSON result goes back; the card stays with the user.
-            is ActiveSkillOutcome.Result -> outcome.result.toString() to false
-            is ActiveSkillOutcome.ToolRequests -> checkNotNull(actionBatch).output to false
-        }
-        val actionAudits = actionBatch?.audits.orEmpty()
-        val card = (outcome as? ActiveSkillOutcome.Result)?.card
-            ?.copy(skillName = skillName, bundleDigest = bundle.digest)
-            ?.takeIf { card ->
-                addCard(card).also { kept ->
-                    if (!kept) note("Skill $skillName card \"${card.title}\" was not kept (limit of $ACTIVE_SKILL_MAX_CARDS_PER_MESSAGE per reply).")
-                }
-            }
-        if (output.length > MAX_NATIVE_TOOL_RESULT_CHARS) {
+        val run = runApprovedSkill(skillName, manifest, bundle, input)
+        if (run.output.length > MAX_NATIVE_TOOL_RESULT_CHARS) {
             note("Skill $skillName result was too large to share.")
             return ActiveSkillCallExecution(
                 error(call, "The skill result is too large to return."),
-                didRun = didRun,
+                didRun = run.didRun,
                 resultShared = false,
-                actionAudits = actionAudits,
+                actionAudits = run.actionAudits,
             )
         }
-        if (ask(skillName, ActiveSkillChatStage.Result(output, isError, card?.title)) !is ActiveSkillChatAnswer.Approved) {
+        if (
+            ask(
+                skillName,
+                ActiveSkillChatStage.Result(run.output, run.isError, run.cardTitle),
+            ) !is ActiveSkillChatAnswer.Approved
+        ) {
             note("Skill $skillName result was not shared.")
             return ActiveSkillCallExecution(
                 error(call, "The user chose not to share the skill result."),
-                didRun = didRun,
+                didRun = run.didRun,
                 resultShared = false,
-                actionAudits = actionAudits,
+                actionAudits = run.actionAudits,
             )
         }
         return ActiveSkillCallExecution(
-            NativeToolResult(call.callId, call.name, output, isError),
-            didRun = didRun,
+            NativeToolResult(call.callId, call.name, run.output, run.isError),
+            didRun = run.didRun,
             resultShared = true,
-            actionAudits = actionAudits,
+            actionAudits = run.actionAudits,
+        )
+    }
+
+    private suspend fun runApprovedSkill(
+        skillName: String,
+        manifest: AgentSkillManifest,
+        bundle: ActiveSkillBundle,
+        input: String,
+    ): ActiveSkillRunMaterial {
+        val runReport = runner.runWithReport(
+            invoker = ActiveSkillInvoker.MODEL,
+            manifest = manifest,
+            bundle = bundle,
+            input = activeSkillUserInput(input),
+            isIncognitoChat = false,
+            isQuickPrivacyOn = quickPrivacyOn(),
+        )
+        val didRun = runReport.sandboxStarted
+        note(
+            if (didRun) {
+                "Skill $skillName ran with input: ${input.take(MAX_TRANSCRIPT_INPUT_CHARS)}"
+            } else {
+                "Skill $skillName was blocked before its sandbox started. Input: ${input.take(MAX_TRANSCRIPT_INPUT_CHARS)}"
+            }
+        )
+        val actionBatch = (runReport.outcome as? ActiveSkillOutcome.ToolRequests)
+            ?.let { performActions(skillName, it) }
+        val (output, isError) = when (val outcome = runReport.outcome) {
+            is ActiveSkillOutcome.Error -> outcome.message to true
+            is ActiveSkillOutcome.Result -> outcome.result.toString() to false
+            is ActiveSkillOutcome.ToolRequests -> checkNotNull(actionBatch).output to false
+        }
+        val cardTitle = (runReport.outcome as? ActiveSkillOutcome.Result)?.card
+            ?.copy(skillName = skillName, bundleDigest = bundle.digest)
+            ?.takeIf { card ->
+                addCard(card).also { kept ->
+                    if (!kept) {
+                        note(
+                            "Skill $skillName card \"${card.title}\" was not kept " +
+                                "(limit of $ACTIVE_SKILL_MAX_CARDS_PER_MESSAGE per reply)."
+                        )
+                    }
+                }
+            }
+            ?.title
+        return ActiveSkillRunMaterial(
+            output = output,
+            isError = isError,
+            didRun = didRun,
+            cardTitle = cardTitle,
+            actionAudits = actionBatch?.audits.orEmpty(),
         )
     }
 
@@ -272,24 +298,29 @@ internal class NativeActiveSkillChatTools(
         action: ActiveSkillToolAction,
         result: String,
         approved: Boolean,
-    ): ActiveSkillActionAudit {
-        val target = when (action) {
-            ActiveSkillToolAction.CurrentDateTime -> "current time"
-            is ActiveSkillToolAction.CalendarEvent -> "calendar"
-            is ActiveSkillToolAction.Email -> "email composer"
-            is ActiveSkillToolAction.Notification -> "notification"
-            is ActiveSkillToolAction.Clipboard -> "clipboard"
-        }
-        val outcome = if (!approved) {
-            "declined"
-        } else when (action) {
-            ActiveSkillToolAction.CurrentDateTime -> "read"
-            is ActiveSkillToolAction.CalendarEvent -> if (result.startsWith("Opened the calendar")) "opened" else "unavailable"
-            is ActiveSkillToolAction.Email -> if (result.startsWith("Opened the email composer")) "opened" else "unavailable"
-            is ActiveSkillToolAction.Notification -> if (result.startsWith("Reminder scheduled")) "scheduled" else "blocked"
-            is ActiveSkillToolAction.Clipboard -> if (result.startsWith("Copied to the clipboard")) "copied" else "failed"
-        }
-        return ActiveSkillActionAudit(target, outcome)
+    ): ActiveSkillActionAudit = ActiveSkillActionAudit(
+        target = action.auditTarget(),
+        outcome = if (approved) action.auditOutcome(result) else "declined",
+    )
+
+    private fun ActiveSkillToolAction.auditTarget(): String = when (this) {
+        ActiveSkillToolAction.CurrentDateTime -> "current time"
+        is ActiveSkillToolAction.CalendarEvent -> "calendar"
+        is ActiveSkillToolAction.Email -> "email composer"
+        is ActiveSkillToolAction.Notification -> "notification"
+        is ActiveSkillToolAction.Clipboard -> "clipboard"
+    }
+
+    private fun ActiveSkillToolAction.auditOutcome(result: String): String = when (this) {
+        ActiveSkillToolAction.CurrentDateTime -> "read"
+        is ActiveSkillToolAction.CalendarEvent ->
+            if (result.startsWith("Opened the calendar")) "opened" else "unavailable"
+        is ActiveSkillToolAction.Email ->
+            if (result.startsWith("Opened the email composer")) "opened" else "unavailable"
+        is ActiveSkillToolAction.Notification ->
+            if (result.startsWith("Reminder scheduled")) "scheduled" else "blocked"
+        is ActiveSkillToolAction.Clipboard ->
+            if (result.startsWith("Copied to the clipboard")) "copied" else "failed"
     }
 
     private fun receiptDestination(execution: ActiveSkillCallExecution): String {
