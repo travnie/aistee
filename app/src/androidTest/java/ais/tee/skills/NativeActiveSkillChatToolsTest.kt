@@ -114,7 +114,7 @@ class NativeActiveSkillChatToolsTest {
         val tools = tools(ActiveSkillChatAnswer.Approved(), ActiveSkillChatAnswer.Declined)
         tools.definitions()
 
-        val execution = tools.executeWithReceipt(call("hello"))
+        val execution = tools.executeWithReceipt(call(HELLO_INPUT))
 
         assertTrue(execution.result.isError)
         assertEquals(CapabilityDecision.REQUIRES_USER_INTERACTION, execution.receipt.decision)
@@ -137,7 +137,7 @@ class NativeActiveSkillChatToolsTest {
         })
         tools.definitions()
 
-        val execution = tools.executeWithReceipt(call("hello"))
+        val execution = tools.executeWithReceipt(call(HELLO_INPUT))
 
         assertTrue(execution.result.isError)
         assertEquals("No destination", execution.receipt.destination)
@@ -154,13 +154,13 @@ class NativeActiveSkillChatToolsTest {
         val tools = tools(ActiveSkillChatAnswer.Approved(), ActiveSkillChatAnswer.Approved())
         tools.definitions()
 
-        val execution = tools.executeWithReceipt(call("what time is it"))
+        val execution = tools.executeWithReceipt(call(TIME_INPUT))
 
         assertFalse(execution.result.isError)
         assertTrue(execution.receipt.destination.contains("Native: current time"))
         assertTrue(execution.receipt.outcome.contains("current time: read"))
-        assertFalse(execution.receipt.destination.contains("what time is it"))
-        assertFalse(execution.receipt.outcome.contains("what time is it"))
+        assertFalse(execution.receipt.destination.contains(TIME_INPUT))
+        assertFalse(execution.receipt.outcome.contains(TIME_INPUT))
     }
 
     @Test
@@ -169,7 +169,7 @@ class NativeActiveSkillChatToolsTest {
         val tools = tools(ActiveSkillChatAnswer.Declined)
         tools.definitions()
 
-        val result = tools.execute(call("hello"))
+        val result = tools.execute(call(HELLO_INPUT))
 
         assertTrue(result.isError)
         assertEquals(1, asked.size)
@@ -211,5 +211,7 @@ class NativeActiveSkillChatToolsTest {
 
     private companion object {
         const val SKILL = "echo-skill"
+        const val HELLO_INPUT = "hello"
+        const val TIME_INPUT = "what time is it"
     }
 }
