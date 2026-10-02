@@ -6,6 +6,7 @@ import ais.tee.data.model.MAX_NATIVE_TOOL_RESULT_CHARS
 import ais.tee.data.model.NativeToolCall
 import ais.tee.data.model.NativeToolDefinition
 import ais.tee.data.model.NativeToolResult
+import ais.tee.data.model.NativeToolReceipt
 import ais.tee.data.preferences.ActiveSkillsPreferencesStore
 import ais.tee.data.skills.ACTIVE_SKILL_CHAT_INPUT_FIELD
 import ais.tee.data.skills.ACTIVE_SKILL_MAX_CARDS_PER_MESSAGE
@@ -40,6 +41,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 
 private const val MAX_TRANSCRIPT_INPUT_CHARS = 1_000
+private const val MAX_RECEIPT_SUMMARY_CHARS = 120
 
 /** One step of a model-initiated skill call the user must answer in the chat. */
 sealed interface ActiveSkillChatStage {
@@ -63,6 +65,31 @@ sealed interface ActiveSkillChatAnswer {
  * exact input, confirms each native action and shows the result before it reaches the model.
  * With the active skills switch off nothing is read and no tool is offered.
  */
+private data class ActiveSkillActionAudit(
+    val target: String,
+    val outcome: String,
+)
+
+private data class ActiveSkillActionBatch(
+    val output: String,
+    val audits: List<ActiveSkillActionAudit>,
+)
+
+private data class ActiveSkillRunMaterial(
+    val output: String,
+    val isError: Boolean,
+    val didRun: Boolean,
+    val cardTitle: String?,
+    val actionAudits: List<ActiveSkillActionAudit>,
+)
+
+private data class ActiveSkillCallExecution(
+    val result: NativeToolResult,
+    val didRun: Boolean,
+    val resultShared: Boolean,
+    val actionAudits: List<ActiveSkillActionAudit> = emptyList(),
+)
+
 internal class NativeActiveSkillChatTools(
     context: Context,
     private val store: LocalSkillLibraryStore,
@@ -102,83 +129,227 @@ internal class NativeActiveSkillChatTools(
         }
     }
 
-    suspend fun execute(call: NativeToolCall): NativeToolResult {
-        val skillName = skillsByTool[call.name] ?: return error(call, "Unknown skill.")
+    suspend fun executeWithReceipt(call: NativeToolCall): NativeToolExecution {
+        val execution = executeTracked(call)
+        return NativeToolExecution(
+            result = execution.result,
+            receipt = NativeToolReceipt(
+                toolName = call.name,
+                inputScope = "Model-supplied skill input",
+                decision = CapabilityDecision.REQUIRES_USER_INTERACTION,
+                destination = receiptDestination(execution),
+                outcome = receiptOutcome(execution),
+            ),
+        )
+    }
+
+    suspend fun execute(call: NativeToolCall): NativeToolResult =
+        executeTracked(call).result
+
+    private suspend fun executeTracked(call: NativeToolCall): ActiveSkillCallExecution {
+        val skillName = skillsByTool[call.name]
+            ?: return ActiveSkillCallExecution(error(call, "Unknown skill."), didRun = false, resultShared = false)
         val input = activeSkillChatInput(call.arguments)
-            ?: return error(call, "Pass the skill input as one string field named '$ACTIVE_SKILL_CHAT_INPUT_FIELD'.")
+            ?: return ActiveSkillCallExecution(
+                error(call, "Pass the skill input as one string field named '$ACTIVE_SKILL_CHAT_INPUT_FIELD'."),
+                didRun = false,
+                resultShared = false,
+            )
         val (manifest, bundle) = withContext(Dispatchers.IO) { loadRunnable(skillName) }
-            ?: return error(call, "This skill cannot run here.")
+            ?: return ActiveSkillCallExecution(
+                error(call, "This skill cannot run here."),
+                didRun = false,
+                resultShared = false,
+            )
 
         if (ask(skillName, ActiveSkillChatStage.Run(input)) !is ActiveSkillChatAnswer.Approved) {
             note("Skill $skillName was not run. Input: ${input.take(MAX_TRANSCRIPT_INPUT_CHARS)}")
-            return error(call, "The user declined to run this skill.")
-        }
-        note("Skill $skillName ran with input: ${input.take(MAX_TRANSCRIPT_INPUT_CHARS)}")
-        val outcome = try {
-            runner.run(
-                invoker = ActiveSkillInvoker.MODEL,
-                manifest = manifest,
-                bundle = bundle,
-                input = activeSkillUserInput(input),
-                isIncognitoChat = false,
-                isQuickPrivacyOn = quickPrivacyOn(),
+            return ActiveSkillCallExecution(
+                error(call, "The user declined to run this skill."),
+                didRun = false,
+                resultShared = false,
             )
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            // Shown to the user like any other skill failure; details stay out of the chat.
-            ActiveSkillOutcome.Error("The skill could not run.")
         }
-        val (output, isError) = when (outcome) {
+        val run = runApprovedSkill(skillName, manifest, bundle, input)
+        if (run.output.length > MAX_NATIVE_TOOL_RESULT_CHARS) {
+            note("Skill $skillName result was too large to share.")
+            return ActiveSkillCallExecution(
+                error(call, "The skill result is too large to return."),
+                didRun = run.didRun,
+                resultShared = false,
+                actionAudits = run.actionAudits,
+            )
+        }
+        if (
+            ask(
+                skillName,
+                ActiveSkillChatStage.Result(run.output, run.isError, run.cardTitle),
+            ) !is ActiveSkillChatAnswer.Approved
+        ) {
+            note("Skill $skillName result was not shared.")
+            return ActiveSkillCallExecution(
+                error(call, "The user chose not to share the skill result."),
+                didRun = run.didRun,
+                resultShared = false,
+                actionAudits = run.actionAudits,
+            )
+        }
+        return ActiveSkillCallExecution(
+            NativeToolResult(call.callId, call.name, run.output, run.isError),
+            didRun = run.didRun,
+            resultShared = true,
+            actionAudits = run.actionAudits,
+        )
+    }
+
+    private suspend fun runApprovedSkill(
+        skillName: String,
+        manifest: AgentSkillManifest,
+        bundle: ActiveSkillBundle,
+        input: String,
+    ): ActiveSkillRunMaterial {
+        val runReport = runner.runWithReport(
+            invoker = ActiveSkillInvoker.MODEL,
+            manifest = manifest,
+            bundle = bundle,
+            input = activeSkillUserInput(input),
+            isIncognitoChat = false,
+            isQuickPrivacyOn = quickPrivacyOn(),
+        )
+        val didRun = runReport.sandboxStarted
+        note(
+            if (didRun) {
+                "Skill $skillName ran with input: ${input.take(MAX_TRANSCRIPT_INPUT_CHARS)}"
+            } else {
+                "Skill $skillName was blocked before its sandbox started. Input: ${input.take(MAX_TRANSCRIPT_INPUT_CHARS)}"
+            }
+        )
+        val actionBatch = (runReport.outcome as? ActiveSkillOutcome.ToolRequests)
+            ?.let { performActions(skillName, it) }
+        val (output, isError) = when (val outcome = runReport.outcome) {
             is ActiveSkillOutcome.Error -> outcome.message to true
-            // Only the JSON result goes back; the card stays with the user.
             is ActiveSkillOutcome.Result -> outcome.result.toString() to false
-            is ActiveSkillOutcome.ToolRequests -> performActions(skillName, outcome) to false
+            is ActiveSkillOutcome.ToolRequests -> checkNotNull(actionBatch).output to false
         }
-        val card = (outcome as? ActiveSkillOutcome.Result)?.card
+        val cardTitle = (runReport.outcome as? ActiveSkillOutcome.Result)?.card
             ?.copy(skillName = skillName, bundleDigest = bundle.digest)
             ?.takeIf { card ->
                 addCard(card).also { kept ->
-                    if (!kept) note("Skill $skillName card \"${card.title}\" was not kept (limit of $ACTIVE_SKILL_MAX_CARDS_PER_MESSAGE per reply).")
+                    if (!kept) {
+                        note(
+                            "Skill $skillName card \"${card.title}\" was not kept " +
+                                "(limit of $ACTIVE_SKILL_MAX_CARDS_PER_MESSAGE per reply)."
+                        )
+                    }
                 }
             }
-        if (output.length > MAX_NATIVE_TOOL_RESULT_CHARS) {
-            note("Skill $skillName result was too large to share.")
-            return error(call, "The skill result is too large to return.")
-        }
-        if (ask(skillName, ActiveSkillChatStage.Result(output, isError, card?.title)) !is ActiveSkillChatAnswer.Approved) {
-            note("Skill $skillName result was not shared.")
-            return error(call, "The user chose not to share the skill result.")
-        }
-        return NativeToolResult(call.callId, call.name, output, isError)
+            ?.title
+        return ActiveSkillRunMaterial(
+            output = output,
+            isError = isError,
+            didRun = didRun,
+            cardTitle = cardTitle,
+            actionAudits = actionBatch?.audits.orEmpty(),
+        )
     }
 
-    private suspend fun performActions(skillName: String, outcome: ActiveSkillOutcome.ToolRequests): String {
+    private suspend fun performActions(
+        skillName: String,
+        outcome: ActiveSkillOutcome.ToolRequests,
+    ): ActiveSkillActionBatch {
+        val audits = mutableListOf<ActiveSkillActionAudit>()
         val outcomes = outcome.requests.map { request ->
             val message = when (val validation = validateActiveSkillToolRequest(request)) {
                 is ActiveSkillToolValidation.Invalid -> validation.reason
                 // Only side-effect-free tools (ALLOW) run without a prompt.
                 is ActiveSkillToolValidation.Valid -> if (request.decision == CapabilityDecision.ALLOW) {
-                    ActiveSkillToolPerformer.perform(appContext, validation.action)
+                    ActiveSkillToolPerformer.perform(appContext, validation.action).also { result ->
+                        audits += actionAudit(validation.action, result, approved = true)
+                    }
                 } else {
                     when (val answer = ask(skillName, ActiveSkillChatStage.Action(validation.action))) {
-                        is ActiveSkillChatAnswer.Approved -> answer.actionOutcome ?: "Done."
-                        ActiveSkillChatAnswer.Declined -> "Declined by the user."
+                        is ActiveSkillChatAnswer.Approved -> (answer.actionOutcome ?: "Done.").also { result ->
+                            audits += actionAudit(validation.action, result, approved = true)
+                        }
+                        ActiveSkillChatAnswer.Declined -> "Declined by the user.".also {
+                            audits += actionAudit(validation.action, it, approved = false)
+                        }
                     }
                 }
             }
             request.tool.id to message
         }
-        return buildJsonObject {
-            putJsonArray("actions") {
-                outcomes.forEach { (tool, message) ->
-                    add(buildJsonObject {
-                        put("tool", tool)
-                        put("outcome", message)
-                    })
+        return ActiveSkillActionBatch(
+            output = buildJsonObject {
+                putJsonArray("actions") {
+                    outcomes.forEach { (tool, message) ->
+                        add(buildJsonObject {
+                            put("tool", tool)
+                            put("outcome", message)
+                        })
+                    }
                 }
-            }
-        }.toString()
+            }.toString(),
+            audits = audits,
+        )
+    }
+
+    private fun actionAudit(
+        action: ActiveSkillToolAction,
+        result: String,
+        approved: Boolean,
+    ): ActiveSkillActionAudit = ActiveSkillActionAudit(
+        target = action.auditTarget(),
+        outcome = if (approved) action.auditOutcome(result) else "declined",
+    )
+
+    private fun ActiveSkillToolAction.auditTarget(): String = when (this) {
+        ActiveSkillToolAction.CurrentDateTime -> "current time"
+        is ActiveSkillToolAction.CalendarEvent -> "calendar"
+        is ActiveSkillToolAction.Email -> "email composer"
+        is ActiveSkillToolAction.Notification -> "notification"
+        is ActiveSkillToolAction.Clipboard -> "clipboard"
+    }
+
+    private fun ActiveSkillToolAction.auditOutcome(result: String): String = when (this) {
+        ActiveSkillToolAction.CurrentDateTime -> "read"
+        is ActiveSkillToolAction.CalendarEvent ->
+            if (result.startsWith("Opened the calendar")) "opened" else "unavailable"
+        is ActiveSkillToolAction.Email ->
+            if (result.startsWith("Opened the email composer")) "opened" else "unavailable"
+        is ActiveSkillToolAction.Notification ->
+            if (result.startsWith("Reminder scheduled")) "scheduled" else "blocked"
+        is ActiveSkillToolAction.Clipboard ->
+            if (result.startsWith("Copied to the clipboard")) "copied" else "failed"
+    }
+
+    private fun receiptDestination(execution: ActiveSkillCallExecution): String {
+        if (!execution.didRun) return "No destination"
+        val targets = execution.actionAudits
+            .filter { it.outcome != "declined" }
+            .map(ActiveSkillActionAudit::target)
+            .distinct()
+        return buildList {
+            if (targets.isNotEmpty()) add("Native: ${targets.joinToString(", ")}")
+            add(if (execution.resultShared) "Current model turn" else "Not shared with model")
+        }.joinToString("; ").take(MAX_RECEIPT_SUMMARY_CHARS)
+    }
+
+    private fun receiptOutcome(execution: ActiveSkillCallExecution): String {
+        if (!execution.didRun) return "Not run"
+        val actionSummary = execution.actionAudits
+            .joinToString(", ") { "${it.target}: ${it.outcome}" }
+            .takeIf(String::isNotEmpty)
+        val resultSummary = when {
+            execution.resultShared && execution.result.isError -> "error shared"
+            execution.resultShared -> "result shared"
+            else -> "result not shared"
+        }
+        return buildString {
+            append("Ran")
+            actionSummary?.let { append("; ").append(it) }
+            append("; ").append(resultSummary)
+        }.take(MAX_RECEIPT_SUMMARY_CHARS)
     }
 
     /** Re-reads the skill so an edit after the tool list was built clears trust before it runs. */

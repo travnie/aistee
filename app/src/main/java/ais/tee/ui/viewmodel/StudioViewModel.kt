@@ -137,6 +137,31 @@ private const val STREAMING_UI_FLUSH_INTERVAL_MS = 50L
 private const val NATIVE_CHAT_DRAFT_PERSIST_DELAY_MS = 300L
 private const val MAX_BACKGROUND_JOB_PROMPT_CHARS = 128 * 1024
 
+internal fun upsertStreamingToolReceipt(
+    messages: List<ModelChatMessage>,
+    messageId: String,
+    provider: AiProvider,
+    model: String,
+    receipt: NativeToolReceipt,
+): List<ModelChatMessage> {
+    val index = messages.indexOfFirst { it.id == messageId }
+    return if (index >= 0) {
+        messages.toMutableList().apply {
+            this[index] = this[index].copy(toolReceipts = this[index].toolReceipts + receipt)
+        }
+    } else {
+        messages + ModelChatMessage(
+            id = messageId,
+            sender = CHAT_ROLE_ASSISTANT,
+            provider = provider,
+            modelName = model,
+            text = "",
+            isPartial = true,
+            toolReceipts = listOf(receipt),
+        )
+    }
+}
+
 data class StudioUiState(
     val baseProfile: Profile = PresetProfiles.DefaultBaseProfile,
     val selectedOverlay: ProfileOverlay? = null,
@@ -1623,6 +1648,38 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun appendStreamingToolReceipt(
+        generationId: Long,
+        messageId: String,
+        provider: AiProvider,
+        model: String,
+        receipt: NativeToolReceipt,
+    ) {
+        var updated = false
+        streamingTextBatcher.withExclusiveAccess {
+            if (generationId != activeChatGenerationId.get()) return@withExclusiveAccess
+            flushStreamingGenerationLocked(generationId)
+            val now = System.currentTimeMillis()
+            _uiState.update { state ->
+                val messages = upsertStreamingToolReceipt(
+                    messages = state.chatMessages,
+                    messageId = messageId,
+                    provider = provider,
+                    model = model,
+                    receipt = receipt,
+                )
+                state.copy(
+                    nativeChat = state.nativeChat.updateActiveConversation { conversation ->
+                        conversation.copy(messages = messages, updatedAtEpochMs = now)
+                    }
+                )
+            }
+            updated = true
+        }
+        // Persist side-effect receipts immediately so Stop cannot erase an action that already ran.
+        if (updated) persistNativeChat()
+    }
+
     private fun appendStreamingDelta(
         generationId: Long,
         messageId: String,
@@ -2102,7 +2159,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         allowSingleProviderSimulationFallback = targetProvider != AiProvider.ALL,
                         tools = toolDefinitions,
                         executeTool = { call ->
-                            if (skillTools?.handles(call.name) == true) skillTools.execute(call) else benchTools.execute(call)
+                            if (skillTools?.handles(call.name) == true) {
+                                skillTools.executeWithReceipt(call)
+                            } else {
+                                benchTools.executeWithReceipt(call)
+                            }
                         },
                     ),
                     aiChatService = aiChatService,
@@ -2115,18 +2176,29 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             delta,
                         )
                     },
+                    onToolReceipt = { provider, model, receipt ->
+                        appendStreamingToolReceipt(
+                            generationId,
+                            "stream_${userMessage.id}_${provider.id}",
+                            provider,
+                            model,
+                            receipt,
+                        )
+                    },
                     onResponse = { generated ->
                         val skillNotes = skillTools?.transcriptNotes.orEmpty()
                         val skillCards = skillTools?.skillCards.orEmpty()
+                        val toolReceipts = generated.message.toolReceipts + generated.toolReceipts
                         finishStreamingMessage(
                             generationId,
                             "stream_${userMessage.id}_${generated.provider.id}",
                             generated.provider,
-                            if (skillNotes.isEmpty() && skillCards.isEmpty()) {
+                            if (skillNotes.isEmpty() && skillCards.isEmpty() && toolReceipts.isEmpty()) {
                                 generated.message
                             } else {
                                 generated.message.copy(
                                     activeProfileNotes = generated.message.activeProfileNotes + skillNotes,
+                                    toolReceipts = toolReceipts,
                                     skillCards = skillCards,
                                 )
                             },
