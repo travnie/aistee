@@ -14,10 +14,30 @@ import ais.tee.notifications.nativeChatReplyUserMessageId
 internal fun shouldQueueNativeChatSend(isOnline: Boolean, canSendInBackground: Boolean, text: String): Boolean =
     !isOnline && canSendInBackground && text.isNotBlank() && text.trim().length <= MAX_REPLY_TEXT_CHARS
 
+/** Snapshots staged Project Library provenance for exactly the prompt the user chose to send. */
+internal fun NativeChatConversation.stagedSourceAssetIdsForPrompt(text: String): List<String> =
+    draftSourceAssetIds
+        .takeIf { draft.trim() == text.trim() }
+        ?.toList()
+        .orEmpty()
+
+/** Restores a queued turn without overwriting a draft or staged provenance created meanwhile. */
+internal fun NativeChatConversation.restoreQueuedMessageToDraft(message: ModelChatMessage): NativeChatConversation =
+    copy(
+        draft = if (draft.isBlank()) message.text else message.text + "\n\n" + draft.trimStart(),
+        draftSourceAssetIds = (draftSourceAssetIds + message.sourceAssetIds).distinct(),
+    )
+
 /** Appends the queued user turn; the background job later adds the answers after it. */
-internal fun NativeChatConversation.withQueuedMessage(replyId: String, text: String, now: Long): NativeChatConversation {
+internal fun NativeChatConversation.withQueuedMessage(
+    replyId: String,
+    text: String,
+    now: Long,
+    sourceAssetIds: List<String> = emptyList(),
+): NativeChatConversation {
     val trimmed = text.trim()
     val firstUserTurn = messages.none { it.sender == CHAT_ROLE_USER }
+    val clearsDraft = draft.trim() == trimmed
     return copy(
         title = if (firstUserTurn) nativeConversationTitle(trimmed) else title,
         updatedAtEpochMs = now,
@@ -27,8 +47,10 @@ internal fun NativeChatConversation.withQueuedMessage(replyId: String, text: Str
             text = trimmed,
             timestamp = now,
             isQueued = true,
+            sourceAssetIds = sourceAssetIds.filter { it.isNotBlank() }.distinct(),
         ),
-        draft = if (draft.trim() == trimmed) "" else draft,
+        draft = if (clearsDraft) "" else draft,
+        draftSourceAssetIds = if (clearsDraft) emptyList() else draftSourceAssetIds,
     )
 }
 
