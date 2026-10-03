@@ -16,6 +16,14 @@ fun mergeNativeChatChanges(
         latest.copy(
             title = if (edited.title != original.title) edited.title else latest.title,
             draft = if (edited.draft != original.draft) edited.draft else latest.draft,
+            draftSourceAssetIds = if (
+                edited.draft != original.draft ||
+                edited.draftSourceAssetIds != original.draftSourceAssetIds
+            ) {
+                edited.draftSourceAssetIds
+            } else {
+                latest.draftSourceAssetIds
+            },
             selectedProvider = if (edited.selectedProvider != original.selectedProvider) edited.selectedProvider else latest.selectedProvider,
             selectedModel = if (edited.selectedModel != original.selectedModel) edited.selectedModel else latest.selectedModel,
             includeSystemProfile = if (edited.includeSystemProfile != original.includeSystemProfile) edited.includeSystemProfile else latest.includeSystemProfile,
@@ -39,7 +47,9 @@ fun mergeNativeChatChanges(
     return current.copy(
         activeConversationId = if (incoming.activeConversationId != base.activeConversationId) {
             incoming.activeConversationId
-        } else current.activeConversationId,
+        } else {
+            current.activeConversationId
+        },
         conversations = conversations,
     ).normalized() ?: current
 }
@@ -66,7 +76,9 @@ private fun mergeMessages(
     // visible in the foreground. A later worker merge then rejects the missing user.
     if (base.any { it.id != NATIVE_CHAT_WELCOME_MESSAGE_ID } &&
         incoming.all { it.id == NATIVE_CHAT_WELCOME_MESSAGE_ID }
-    ) return incoming
+    ) {
+        return incoming
+    }
     val before = base.associateBy { it.id }
     val live = current.associateBy { it.id }
     val merged = incoming.mapNotNull { edited ->
