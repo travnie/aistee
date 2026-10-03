@@ -29,6 +29,8 @@ data class NativeChatConversation(
     val updatedAtEpochMs: Long = createdAtEpochMs,
     val messages: List<ModelChatMessage> = emptyList(),
     val draft: String = "",
+    /** Library assets whose exact inserted text is still represented by [draft]. */
+    val draftSourceAssetIds: List<String> = emptyList(),
     val selectedProvider: AiProvider = AiProvider.ALL,
     val selectedModel: String = "all",
     val apiProcessingMode: ApiProcessingMode = ApiProcessingMode.AUTO,
@@ -44,8 +46,9 @@ data class NativeChatConversation(
 ) {
     override fun toString(): String =
         "NativeChatConversation(id=<redacted>, title=<redacted>, messages=${messages.size}, " +
-            "selectedProvider=${selectedProvider.id}, selectedModel=<redacted>, projectId=<redacted>, " +
-            "forked=${forkedFrom != null}, starred=${starredMessageIds.size}, starNotes=${starNotes.size})"
+            "draftSourceAssetIds=${draftSourceAssetIds.size}, selectedProvider=${selectedProvider.id}, " +
+            "selectedModel=<redacted>, projectId=<redacted>, forked=${forkedFrom != null}, " +
+            "starred=${starredMessageIds.size}, starNotes=${starNotes.size})"
 }
 
 /** Where a branch came from: its first [inheritedMessageCount] messages are copies from the source. */
@@ -137,6 +140,7 @@ fun NativeChatConversation.forkAt(
         starredMessageIds = starredMessageIds.mapNotNull(copyIds::get),
         starNotes = starNotes.mapNotNull { (id, note) -> copyIds[id]?.let { it to note } }.toMap(),
         draft = "",
+        draftSourceAssetIds = emptyList(),
         selectedProvider = provider,
         selectedModel = model,
         apiProcessingMode = provider.normalizeApiProcessingMode(apiProcessingMode),
@@ -234,6 +238,10 @@ fun NativeChatArchive.normalized(): NativeChatArchive? {
             },
             apiProcessingMode = provider.normalizeApiProcessingMode(conversation.apiProcessingMode),
             projectId = conversation.projectId.trim().ifEmpty { DEFAULT_PROJECT_ID },
+            draftSourceAssetIds = conversation.draftSourceAssetIds
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .distinct(),
             starredMessageIds = if (conversation.starredMessageIds.isEmpty()) {
                 conversation.starredMessageIds
             } else {
