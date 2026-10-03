@@ -24,6 +24,9 @@ import ais.tee.data.model.openAiResponsesRouteCapabilities
 import ais.tee.data.model.buildBoundedProviderTextTurns
 import ais.tee.data.model.gatewayModelOptions
 import ais.tee.data.model.Profile
+import ais.tee.data.tokenizer.TokenArenaProviderPreflightRequest
+import ais.tee.data.tokenizer.TokenArenaProviderPreflightResult
+import ais.tee.data.tokenizer.withBudget
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -299,6 +302,49 @@ class AiChatService {
     }
 
     /**
+     * Token Arena provider count with a fixed prompt-only request shape.
+     *
+     * Taking the immutable Arena request as one argument keeps its prompt and correlation tag
+     * inseparable. Empty history/system/tools are deliberate so variants in the same provider/model
+     * series differ only by their prompt representation.
+     */
+    internal suspend fun countTokenArenaInputBudget(
+        request: TokenArenaProviderPreflightRequest,
+        provider: AiProvider,
+        model: String,
+        apiKey: String,
+    ): TokenArenaProviderPreflightResult {
+        val budget = when (provider) {
+            AiProvider.GEMINI -> countGeminiInputBudget(
+                prompt = request.prompt,
+                model = model,
+                apiKey = apiKey,
+                systemInstruction = null,
+                conversationHistory = emptyList(),
+                tools = emptyList(),
+                requestTag = request.requestTag,
+            )
+            AiProvider.CLAUDE -> countClaudeInputBudget(
+                prompt = request.prompt,
+                model = model,
+                apiKey = apiKey,
+                systemInstruction = null,
+                conversationHistory = emptyList(),
+                tools = emptyList(),
+                requestTag = request.requestTag,
+            )
+            else -> throw IllegalArgumentException(
+                "Token Arena provider counting is not supported for ${provider.id}"
+            )
+        }
+        return request.withBudget(
+            budget.copy(
+                requestContextFingerprint = request.requestContextFingerprint,
+            )
+        )
+    }
+
+    /**
      * Explicit network preflight for one Gemini native-chat draft. The request body is assembled
      * through the same GenerateContent payload builder used by Send, then handed to countTokens.
      */
@@ -309,17 +355,18 @@ class AiChatService {
         systemInstruction: String?,
         conversationHistory: List<ModelChatMessage>,
         tools: List<NativeToolDefinition>,
+        requestTag: String? = null,
     ): ProviderInputBudgetPreflight = withContext(Dispatchers.IO) {
-        val normalizedPrompt = prompt.trim()
+        val providerPrompt = prompt
         val normalizedModel = resolveEffectiveModel(AiProvider.GEMINI, model)
         val normalizedKey = apiKey.trim()
-        require(normalizedPrompt.isNotEmpty()) { "Gemini prompt is required" }
+        require(providerPrompt.isNotBlank()) { "Gemini prompt is required" }
         require(normalizedModel.isNotEmpty()) { "Gemini model is required" }
         require(normalizedKey.isNotEmpty()) { "Gemini API key is required" }
 
         val generationPayload = buildGeminiGenerateContentPayload(
             contents = buildGeminiContents(
-                prompt = normalizedPrompt,
+                prompt = providerPrompt,
                 conversationHistory = conversationHistory,
                 modelName = normalizedModel,
                 systemInstruction = systemInstruction,
@@ -368,6 +415,7 @@ class AiChatService {
             model = normalizedModel,
             inputTokens = inputTokens,
             inputTokenLimit = inputTokenLimit,
+            requestTag = requestTag,
         )
     }
 
@@ -1858,17 +1906,18 @@ class AiChatService {
         systemInstruction: String?,
         conversationHistory: List<ModelChatMessage>,
         tools: List<NativeToolDefinition>,
+        requestTag: String? = null,
     ): ProviderInputBudgetPreflight = withContext(Dispatchers.IO) {
-        val normalizedPrompt = prompt.trim()
+        val providerPrompt = prompt
         val normalizedModel = resolveEffectiveModel(AiProvider.CLAUDE, model)
         val normalizedKey = apiKey.trim()
-        require(normalizedPrompt.isNotEmpty()) { "Claude prompt is required" }
+        require(providerPrompt.isNotBlank()) { "Claude prompt is required" }
         require(normalizedKey.isNotEmpty()) { "Claude API key is required" }
 
         val metadata = resolveClaudeInputBudgetMetadata(normalizedModel, normalizedKey)
         val inputTokenLimit = checkNotNull(metadata.maxInputTokens)
         val messages = buildClaudeMessages(
-            prompt = normalizedPrompt,
+            prompt = providerPrompt,
             conversationHistory = conversationHistory,
             systemInstruction = systemInstruction,
             modelName = metadata.resolvedModel,
@@ -1901,6 +1950,7 @@ class AiChatService {
             model = metadata.resolvedModel,
             inputTokens = inputTokens,
             inputTokenLimit = inputTokenLimit,
+            requestTag = requestTag,
         )
     }
 

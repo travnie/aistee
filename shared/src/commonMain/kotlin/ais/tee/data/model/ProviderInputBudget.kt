@@ -11,6 +11,10 @@ data class ProviderInputBudgetPreflight(
     val model: String,
     val inputTokens: Int,
     val inputTokenLimit: Int,
+    /** Optional caller-owned correlation tag; providers never interpret it. */
+    val requestTag: String? = null,
+    /** Optional fingerprint of the actual request context used for this count. */
+    val requestContextFingerprint: String? = null,
 ) {
     val remainingTokens: Int get() = inputTokenLimit - inputTokens
     val fits: Boolean get() = remainingTokens >= 0
