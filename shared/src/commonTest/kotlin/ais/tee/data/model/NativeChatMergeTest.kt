@@ -35,6 +35,27 @@ class NativeChatMergeTest {
     }
 
     @Test
+    fun foregroundDraftEditCarriesItsSourceMetadataWithoutDroppingBackgroundTurns() {
+        val background = base.copy(
+            conversations = listOf(chat.copy(messages = listOf(user, reply))),
+        )
+        val foreground = base.copy(
+            conversations = listOf(
+                chat.copy(
+                    draft = "from library",
+                    draftSourceAssetIds = listOf("asset-1"),
+                ),
+            ),
+        )
+
+        val merged = requireNotNull(mergeNativeChatChanges(base, foreground, background).activeConversation)
+
+        assertEquals(listOf(user, reply), merged.messages)
+        assertEquals("from library", merged.draft)
+        assertEquals(listOf("asset-1"), merged.draftSourceAssetIds)
+    }
+
+    @Test
     fun preservesResponsePositionAndForegroundStreamingChanges() {
         val later = user.copy(id = "later", text = "next question")
         val partial = reply.copy(id = "stream", text = "par", isPartial = true)

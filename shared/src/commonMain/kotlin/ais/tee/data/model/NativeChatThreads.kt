@@ -6,6 +6,7 @@ import kotlinx.serialization.json.Json
 const val NATIVE_CHAT_ARCHIVE_VERSION = 1
 const val DEFAULT_NATIVE_CONVERSATION_TITLE = "New conversation"
 const val NATIVE_CHAT_WELCOME_MESSAGE_ID = "welcome_assistant_intro"
+
 /**
  * Marks a message a branch copied from its source: `fork-<new id>/<original id>`. The original id
  * survives nested branches, so feeds can tell copies from the branch's own turns and recognize
@@ -18,6 +19,7 @@ private const val NATIVE_CHAT_FORK_COPY_ROOT_SEPARATOR = '/'
 fun ModelChatMessage.forkRootMessageId(): String =
     if (id.startsWith(NATIVE_CHAT_FORK_COPY_ID_PREFIX)) id.substringAfter(NATIVE_CHAT_FORK_COPY_ROOT_SEPARATOR, id) else id
 private const val MAX_NATIVE_CONVERSATION_TITLE_CHARS = 56
+
 /** Longest note a starred message can carry; notes are one short line, not a second message. */
 const val MAX_NATIVE_STAR_NOTE_CHARS = 140
 
@@ -29,6 +31,8 @@ data class NativeChatConversation(
     val updatedAtEpochMs: Long = createdAtEpochMs,
     val messages: List<ModelChatMessage> = emptyList(),
     val draft: String = "",
+    /** Library assets whose exact inserted text is still represented by [draft]. */
+    val draftSourceAssetIds: List<String> = emptyList(),
     val selectedProvider: AiProvider = AiProvider.ALL,
     val selectedModel: String = "all",
     val apiProcessingMode: ApiProcessingMode = ApiProcessingMode.AUTO,
@@ -44,8 +48,9 @@ data class NativeChatConversation(
 ) {
     override fun toString(): String =
         "NativeChatConversation(id=<redacted>, title=<redacted>, messages=${messages.size}, " +
-            "selectedProvider=${selectedProvider.id}, selectedModel=<redacted>, projectId=<redacted>, " +
-            "forked=${forkedFrom != null}, starred=${starredMessageIds.size}, starNotes=${starNotes.size})"
+            "draftSourceAssetIds=${draftSourceAssetIds.size}, selectedProvider=${selectedProvider.id}, " +
+            "selectedModel=<redacted>, projectId=<redacted>, forked=${forkedFrom != null}, " +
+            "starred=${starredMessageIds.size}, starNotes=${starNotes.size})"
 }
 
 /** Where a branch came from: its first [inheritedMessageCount] messages are copies from the source. */
@@ -65,7 +70,7 @@ data class NativeChatForkOrigin(
 data class NativeChatArchive(
     val version: Int = NATIVE_CHAT_ARCHIVE_VERSION,
     val activeConversationId: String = "",
-    val conversations: List<NativeChatConversation> = emptyList()
+    val conversations: List<NativeChatConversation> = emptyList(),
 ) {
     val activeConversation: NativeChatConversation?
         get() {
@@ -122,10 +127,14 @@ fun NativeChatConversation.forkAt(
         else -> provider.defaultModel
     }
     val copies = inherited.map { message ->
-        if (message.id == NATIVE_CHAT_WELCOME_MESSAGE_ID) message else message.copy(
-            id = NATIVE_CHAT_FORK_COPY_ID_PREFIX + newMessageId() + NATIVE_CHAT_FORK_COPY_ROOT_SEPARATOR +
-                message.forkRootMessageId()
-        )
+        if (message.id == NATIVE_CHAT_WELCOME_MESSAGE_ID) {
+            message
+        } else {
+            message.copy(
+                id = NATIVE_CHAT_FORK_COPY_ID_PREFIX + newMessageId() + NATIVE_CHAT_FORK_COPY_ROOT_SEPARATOR +
+                    message.forkRootMessageId(),
+            )
+        }
     }
     val copyIds = inherited.map { it.id }.zip(copies.map { it.id }).toMap()
     return copy(
@@ -137,6 +146,7 @@ fun NativeChatConversation.forkAt(
         starredMessageIds = starredMessageIds.mapNotNull(copyIds::get),
         starNotes = starNotes.mapNotNull { (id, note) -> copyIds[id]?.let { it to note } }.toMap(),
         draft = "",
+        draftSourceAssetIds = emptyList(),
         selectedProvider = provider,
         selectedModel = model,
         apiProcessingMode = provider.normalizeApiProcessingMode(apiProcessingMode),
@@ -234,6 +244,10 @@ fun NativeChatArchive.normalized(): NativeChatArchive? {
             },
             apiProcessingMode = provider.normalizeApiProcessingMode(conversation.apiProcessingMode),
             projectId = conversation.projectId.trim().ifEmpty { DEFAULT_PROJECT_ID },
+            draftSourceAssetIds = conversation.draftSourceAssetIds
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+                .distinct(),
             starredMessageIds = if (conversation.starredMessageIds.isEmpty()) {
                 conversation.starredMessageIds
             } else {
@@ -259,7 +273,7 @@ fun NativeChatArchive.normalized(): NativeChatArchive? {
 }
 
 fun NativeChatArchive.updateActiveConversation(
-    transform: (NativeChatConversation) -> NativeChatConversation
+    transform: (NativeChatConversation) -> NativeChatConversation,
 ): NativeChatArchive {
     val active = activeConversation ?: return this
     val updated = transform(active)
@@ -267,7 +281,7 @@ fun NativeChatArchive.updateActiveConversation(
         activeConversationId = updated.id,
         conversations = conversations.map { conversation ->
             if (conversation.id == active.id) updated else conversation
-        }
+        },
     )
 }
 
@@ -283,7 +297,7 @@ object NativeChatArchiveCodec {
     fun decode(bytes: ByteArray): NativeChatArchive? = runCatching {
         json.decodeFromString(
             NativeChatArchive.serializer(),
-            bytes.decodeToString(throwOnInvalidSequence = true)
+            bytes.decodeToString(throwOnInvalidSequence = true),
         ).normalized()
     }.getOrNull()
 }

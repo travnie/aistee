@@ -40,6 +40,62 @@ class NativeChatSendQueueTest {
     }
 
     @Test
+    fun queuedTurnCarriesStagedLibrarySourcesAndClearsDraftSources() {
+        val staged = conversation.copy(draftSourceAssetIds = listOf("asset-1", "asset-2"))
+        val queued = staged.withQueuedMessage(
+            "r1",
+            "hello",
+            now = 5L,
+            sourceAssetIds = staged.draftSourceAssetIds,
+        )
+
+        assertEquals(listOf("asset-1", "asset-2"), queued.messages.single().sourceAssetIds)
+        assertTrue(queued.draftSourceAssetIds.isEmpty())
+    }
+
+    @Test
+    fun stagedSourceSnapshotStaysBoundToTheClickedPrompt() {
+        val staged = conversation.copy(draftSourceAssetIds = listOf("asset-1"))
+        val sourceAssetIds = staged.stagedSourceAssetIdsForPrompt(" hello ")
+        val editedWhilePreflightRuns = staged.copy(
+            draft = "different draft",
+            draftSourceAssetIds = listOf("asset-2"),
+        )
+
+        val queued = editedWhilePreflightRuns.withQueuedMessage(
+            "r1",
+            "hello",
+            now = 5L,
+            sourceAssetIds = sourceAssetIds,
+        )
+
+        assertEquals(listOf("asset-1"), queued.messages.single().sourceAssetIds)
+        assertEquals("different draft", queued.draft)
+        assertEquals(listOf("asset-2"), queued.draftSourceAssetIds)
+        assertTrue(staged.stagedSourceAssetIdsForPrompt("different").isEmpty())
+    }
+
+    @Test
+    fun restoringQueuedTurnMergesNewerDraftAndProvenance() {
+        val queuedMessage = ModelChatMessage(
+            id = nativeChatReplyUserMessageId("r1"),
+            sender = CHAT_ROLE_USER,
+            text = "old prompt",
+            isQueued = true,
+            sourceAssetIds = listOf("asset-old"),
+        )
+        val current = conversation.copy(
+            draft = "new draft",
+            draftSourceAssetIds = listOf("asset-new"),
+        )
+
+        val restored = current.restoreQueuedMessageToDraft(queuedMessage)
+
+        assertEquals("old prompt\n\nnew draft", restored.draft)
+        assertEquals(listOf("asset-new", "asset-old"), restored.draftSourceAssetIds)
+    }
+
+    @Test
     fun cancelRemovesOnlyAStillQueuedTurn() {
         val queued = conversation.withQueuedMessage("r1", "hello", now = 5L)
         val (cancelled, removed) = queued.withoutQueuedMessage(nativeChatReplyUserMessageId("r1"))!!

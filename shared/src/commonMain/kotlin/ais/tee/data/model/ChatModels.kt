@@ -1,10 +1,9 @@
 package ais.tee.data.model
 
 import ais.tee.data.skills.ActiveSkillCard
-import kotlin.time.Clock
-
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import kotlin.time.Clock
 
 @Serializable
 enum class WebAiService(
@@ -13,7 +12,7 @@ enum class WebAiService(
     val shortName: String,
     val url: String,
     val description: String,
-    val brandHexColor: Long
+    val brandHexColor: Long,
 ) {
     CLAUDE(
         id = "claude",
@@ -21,7 +20,7 @@ enum class WebAiService(
         shortName = "Claude",
         url = "https://claude.ai",
         description = "Anthropic Claude account chat with Projects & Artifacts",
-        brandHexColor = 0xFFD97706 // Warm Amber
+        brandHexColor = 0xFFD97706, // Warm Amber
     ),
     CHATGPT(
         id = "chatgpt",
@@ -29,7 +28,7 @@ enum class WebAiService(
         shortName = "ChatGPT",
         url = "https://chatgpt.com",
         description = "OpenAI ChatGPT account chat with tools and projects",
-        brandHexColor = 0xFF10B981 // Emerald Green
+        brandHexColor = 0xFF10B981, // Emerald Green
     ),
     GEMINI(
         id = "gemini",
@@ -37,7 +36,7 @@ enum class WebAiService(
         shortName = "Gemini",
         url = "https://gemini.google.com",
         description = "Google Gemini account chat with multimodal and Workspace tools",
-        brandHexColor = 0xFF0EA5E9 // Sky Blue
+        brandHexColor = 0xFF0EA5E9, // Sky Blue
     ),
     DEEPSEEK(
         id = "deepseek",
@@ -45,7 +44,7 @@ enum class WebAiService(
         shortName = "DeepSeek",
         url = "https://chat.deepseek.com",
         description = "DeepSeek web chat with reasoning, coding, and long context",
-        brandHexColor = 0xFF2563EB // Deep Blue
+        brandHexColor = 0xFF2563EB, // Deep Blue
     ),
     KIMI(
         id = "kimi",
@@ -53,7 +52,7 @@ enum class WebAiService(
         shortName = "Kimi",
         url = "https://www.kimi.com",
         description = "Moonshot AI Kimi chat with search, files, agents, and long context",
-        brandHexColor = 0xFF8B5CF6 // Violet
+        brandHexColor = 0xFF8B5CF6, // Violet
     ),
     VIBE(
         id = "vibe",
@@ -61,7 +60,7 @@ enum class WebAiService(
         shortName = "Vibe",
         url = "https://chat.mistral.ai",
         description = "Mistral Vibe account chat, formerly Le Chat, with work and agent tools",
-        brandHexColor = 0xFFFF7000 // Mistral Orange
+        brandHexColor = 0xFFFF7000, // Mistral Orange
     ),
     QWEN(
         id = "qwen",
@@ -69,7 +68,7 @@ enum class WebAiService(
         shortName = "Qwen",
         url = "https://chat.qwen.ai",
         description = "Alibaba Qwen account chat with multimodal, search, and agent capabilities",
-        brandHexColor = 0xFF6366F1 // Indigo
+        brandHexColor = 0xFF6366F1, // Indigo
     ),
     COPILOT(
         id = "copilot",
@@ -77,7 +76,7 @@ enum class WebAiService(
         shortName = "Copilot",
         url = "https://copilot.microsoft.com",
         description = "Microsoft Copilot account chat with web-grounded assistance and Microsoft services",
-        brandHexColor = 0xFF2563EB // Microsoft blue
+        brandHexColor = 0xFF2563EB, // Microsoft blue
     ),
     ZAI(
         id = "zai",
@@ -85,7 +84,7 @@ enum class WebAiService(
         shortName = "Z.ai",
         url = "https://chat.z.ai",
         description = "Z.ai account chat powered by GLM models with chat and agent workflows",
-        brandHexColor = 0xFF7C3AED // Violet
+        brandHexColor = 0xFF7C3AED, // Violet
     ),
     GROK(
         id = "grok",
@@ -93,7 +92,7 @@ enum class WebAiService(
         shortName = "Grok",
         url = "https://grok.com",
         description = "xAI Grok account chat with search, reasoning, files, and multimodal tools",
-        brandHexColor = 0xFF64748B // Slate
+        brandHexColor = 0xFF64748B, // Slate
     ),
     CHARACTER_AI(
         id = "character-ai",
@@ -101,7 +100,7 @@ enum class WebAiService(
         shortName = "Character.AI",
         url = "https://character.ai",
         description = "Character.AI account chat for character-driven conversations",
-        brandHexColor = 0xFF7C3AED // Violet
+        brandHexColor = 0xFF7C3AED, // Violet
     ),
     VENICE(
         id = "venice",
@@ -109,7 +108,7 @@ enum class WebAiService(
         shortName = "Venice",
         url = "https://venice.ai",
         description = "Venice account chat focused on private AI and creative workflows",
-        brandHexColor = 0xFF0F766E // Teal
+        brandHexColor = 0xFF0F766E, // Teal
     ),
     META_AI(
         id = "meta-ai",
@@ -117,8 +116,9 @@ enum class WebAiService(
         shortName = "Meta AI",
         url = "https://www.meta.ai",
         description = "Meta AI account chat hosted at meta.ai",
-        brandHexColor = 0xFF0668E1 // Meta blue
-    );
+        brandHexColor = 0xFF0668E1, // Meta blue
+    ),
+    ;
 
     companion object {
         val primaryChats: List<WebAiService> = listOf(
@@ -127,7 +127,7 @@ enum class WebAiService(
             GEMINI,
             DEEPSEEK,
             KIMI,
-            VIBE
+            VIBE,
         )
 
         val additionalChats: List<WebAiService> = entries.filterNot(primaryChats::contains)
@@ -141,7 +141,7 @@ enum class WebAiService(
 data class WebChatSections(
     val favorites: List<WebAiService>,
     val primary: List<WebAiService>,
-    val additional: List<WebAiService>
+    val additional: List<WebAiService>,
 ) {
     val all: List<WebAiService> get() = favorites + primary + additional
 }
@@ -149,7 +149,7 @@ data class WebChatSections(
 fun webChatSections(favorites: Set<WebAiService>): WebChatSections = WebChatSections(
     favorites = WebAiService.entries.filter(favorites::contains),
     primary = WebAiService.primaryChats.filterNot(favorites::contains),
-    additional = WebAiService.additionalChats.filterNot(favorites::contains)
+    additional = WebAiService.additionalChats.filterNot(favorites::contains),
 )
 
 @Serializable
@@ -160,7 +160,7 @@ enum class AiProvider(
     val defaultModel: String,
     val availableModels: List<String>,
     val description: String,
-    val participatesInDefaultCompare: Boolean = true
+    val participatesInDefaultCompare: Boolean = true,
 ) {
     ALL(
         id = "all",
@@ -168,7 +168,7 @@ enum class AiProvider(
         shortName = "All Models",
         defaultModel = "all",
         availableModels = listOf("all"),
-        description = "Send one prompt concurrently to every configured direct provider"
+        description = "Send one prompt concurrently to every configured direct provider",
     ),
     CLAUDE(
         id = "claude",
@@ -179,9 +179,9 @@ enum class AiProvider(
             "claude-sonnet-5",
             "claude-fable-5",
             "claude-opus-5",
-            "claude-haiku-4-5-20251001"
+            "claude-haiku-4-5-20251001",
         ),
-        description = "Anthropic models for coding, reasoning, writing, and agentic workflows"
+        description = "Anthropic models for coding, reasoning, writing, and agentic workflows",
     ),
     CHATGPT(
         id = "chatgpt",
@@ -192,9 +192,9 @@ enum class AiProvider(
             "gpt-5.6",
             "gpt-5.6-terra",
             "gpt-5.6-luna",
-            "gpt-5.5"
+            "gpt-5.5",
         ),
-        description = "OpenAI GPT models for general text generation, coding, and reasoning"
+        description = "OpenAI GPT models for general text generation, coding, and reasoning",
     ),
     GEMINI(
         id = "gemini",
@@ -205,9 +205,9 @@ enum class AiProvider(
             "gemini-3.7-flash",
             "gemini-3.6-flash",
             "gemini-3.5-flash",
-            "gemini-3.1-pro-preview"
+            "gemini-3.1-pro-preview",
         ),
-        description = "Google multimodal models for coding, agents, reasoning, and long context"
+        description = "Google multimodal models for coding, agents, reasoning, and long context",
     ),
     DEEPSEEK(
         id = "deepseek",
@@ -216,9 +216,9 @@ enum class AiProvider(
         defaultModel = "deepseek-v4-flash",
         availableModels = listOf(
             "deepseek-v4-flash",
-            "deepseek-v4-pro"
+            "deepseek-v4-pro",
         ),
-        description = "DeepSeek V4 models with long context, reasoning, coding, and agent capabilities"
+        description = "DeepSeek V4 models with long context, reasoning, coding, and agent capabilities",
     ),
     KIMI(
         id = "kimi",
@@ -228,9 +228,9 @@ enum class AiProvider(
         availableModels = listOf(
             "kimi-k2.6",
             "kimi-k3",
-            "kimi-k2.7-code"
+            "kimi-k2.7-code",
         ),
-        description = "Moonshot AI models for general chat, frontier reasoning, coding, and long context"
+        description = "Moonshot AI models for general chat, frontier reasoning, coding, and long context",
     ),
     OPENROUTER(
         id = "openrouter",
@@ -239,7 +239,7 @@ enum class AiProvider(
         defaultModel = "openrouter/free",
         availableModels = listOf("openrouter/free"),
         description = "OpenRouter gateway that routes requests across currently available free models",
-        participatesInDefaultCompare = false
+        participatesInDefaultCompare = false,
     ),
     AIHUBMIX(
         id = "aihubmix",
@@ -249,10 +249,10 @@ enum class AiProvider(
         availableModels = listOf(
             "hy3-free",
             "coding-glm-5.3-free",
-            "coding-glm-5.2-free"
+            "coding-glm-5.2-free",
         ),
         description = "AIHubMix gateway for subsidized zero-cost model variants",
-        participatesInDefaultCompare = false
+        participatesInDefaultCompare = false,
     ),
     VERCEL(
         id = "vercel",
@@ -261,8 +261,9 @@ enum class AiProvider(
         defaultModel = "alibaba/qwen3-coder-30b-a3b",
         availableModels = listOf("alibaba/qwen3-coder-30b-a3b"),
         description = "Vercel AI Gateway with a live text-model catalog and account budget controls",
-        participatesInDefaultCompare = false
-    );
+        participatesInDefaultCompare = false,
+    ),
+    ;
 
     companion object {
         val concreteProviders: List<AiProvider> = entries.filter {
@@ -284,7 +285,7 @@ data class ApiKeyConfig(
     val kimiKey: String = "",
     val openRouterKey: String = "",
     val aiHubMixKey: String = "",
-    val vercelAiGatewayKey: String = ""
+    val vercelAiGatewayKey: String = "",
 ) {
     /** API credentials must never appear in logs, crash breadcrumbs or debugger stringification. */
     override fun toString(): String = "ApiKeyConfig(<redacted>)"
@@ -309,7 +310,7 @@ data class GatewayModelCatalogEntry(
     val id: String,
     val inputPriceUsd: Double?,
     val outputPriceUsd: Double?,
-    val supportsTextOutput: Boolean
+    val supportsTextOutput: Boolean,
 )
 
 fun AiProvider.usesLiveGatewayModelCatalog(): Boolean =
@@ -317,7 +318,7 @@ fun AiProvider.usesLiveGatewayModelCatalog(): Boolean =
 
 fun gatewayModelOptions(
     provider: AiProvider,
-    catalog: List<GatewayModelCatalogEntry>
+    catalog: List<GatewayModelCatalogEntry>,
 ): List<String> {
     if (!provider.usesLiveGatewayModelCatalog()) return provider.availableModels
 
@@ -332,7 +333,7 @@ fun gatewayModelOptions(
                 val input = entry.inputPriceUsd ?: Double.POSITIVE_INFINITY
                 val output = entry.outputPriceUsd ?: Double.POSITIVE_INFINITY
                 input + output
-            }.thenBy { it.id }
+            }.thenBy { it.id },
         )
     } else {
         textModels.filter { entry ->
@@ -360,16 +361,19 @@ data class ModelChatMessage(
     val latencyMs: Long? = null,
     val usage: ProviderUsage? = null,
     val activeProfileNotes: List<String> = emptyList(),
+    /** Local Project Library assets explicitly inserted into this user turn. Never sent by id. */
+    val sourceAssetIds: List<String> = emptyList(),
     /** Coarse local receipts for client tools used while producing this reply. */
     val toolReceipts: List<NativeToolReceipt> = emptyList(),
     /** Cards from skills the model called for this reply; shown only to the user. */
     val skillCards: List<ActiveSkillCard> = emptyList(),
-    @Transient val providerReplayState: String? = null
+    @Transient val providerReplayState: String? = null,
 ) {
     /** User text, identifiers, profile notes and opaque replay state are sensitive debug payloads. */
     override fun toString(): String =
         "ModelChatMessage(id=<redacted>, sender=$sender, provider=${provider?.id ?: "none"}, " +
-            "text=<redacted>, activeProfileNotes=<redacted>, toolReceipts=${toolReceipts.size}, " +
+            "text=<redacted>, activeProfileNotes=<redacted>, sourceAssetIds=${sourceAssetIds.size}, " +
+            "toolReceipts=${toolReceipts.size}, " +
             "skillCards=${skillCards.size}, providerReplayState=<redacted>, " +
             "isError=$isError, isSimulated=$isSimulated, isPartial=$isPartial, isImported=$isImported, isQueued=$isQueued)"
 }

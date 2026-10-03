@@ -1,23 +1,21 @@
 package ais.tee.ui.viewmodel
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
+import ais.tee.data.engine.ActiveSkillChatAnswer
+import ais.tee.data.engine.ActiveSkillChatStage
 import ais.tee.data.engine.AiChatService
 import ais.tee.data.engine.AsyncJobBackends
 import ais.tee.data.engine.InstructionRenderer
-import ais.tee.data.engine.ActiveSkillChatAnswer
-import ais.tee.data.engine.ActiveSkillChatStage
 import ais.tee.data.engine.NativeActiveSkillChatTools
 import ais.tee.data.engine.NativeBenchChatTools
 import ais.tee.data.engine.NativeChatSendRequest
-import ais.tee.data.engine.executeNativeChatSend
+import ais.tee.data.engine.NetworkAvailability
 import ais.tee.data.engine.ProfileMerger
 import ais.tee.data.engine.ValidationResult
 import ais.tee.data.engine.YamlParser
+import ais.tee.data.engine.executeNativeChatSend
+import ais.tee.data.model.*
 import ais.tee.data.model.appendToNativeChatDraft
 import ais.tee.data.model.canInsertIntoDraft
-import ais.tee.data.model.*
 import ais.tee.data.preferences.AsyncProviderJobStore
 import ais.tee.data.preferences.NativeChatStore
 import ais.tee.data.preferences.NativeChatWriter
@@ -34,35 +32,35 @@ import ais.tee.data.tokenizer.LocalTokenCounter
 import ais.tee.data.tokenizer.chatContextWarning
 import ais.tee.data.tokenizer.knownChatContextWindowTokens
 import ais.tee.data.tokenizer.planChatContextBudget
+import ais.tee.navigation.QuickActionDestination
+import ais.tee.notifications.NATIVE_CHAT_QUEUED_SEND_TAG
+import ais.tee.notifications.NativeChatConversationShortcuts
+import ais.tee.notifications.NativeChatDirectReply
+import ais.tee.notifications.NativeChatNotificationPublisher
+import ais.tee.notifications.canNativeChatDirectReply
+import ais.tee.notifications.nativeChatConversationIdForShortcut
+import ais.tee.notifications.nativeChatReplyIdFromUserMessageId
+import ais.tee.notifications.nativeChatReplyUserMessageId
 import ais.tee.share.IncomingSharePayload
 import ais.tee.share.PendingWebShare
 import ais.tee.share.claimText
 import ais.tee.share.completeTextClaim
 import ais.tee.share.releaseTextClaim
-import ais.tee.data.engine.NetworkAvailability
-import ais.tee.notifications.NATIVE_CHAT_QUEUED_SEND_TAG
-import ais.tee.notifications.NativeChatDirectReply
-import ais.tee.notifications.canNativeChatDirectReply
-import ais.tee.notifications.nativeChatReplyIdFromUserMessageId
-import ais.tee.notifications.nativeChatReplyUserMessageId
-import androidx.work.WorkManager
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
-import ais.tee.navigation.QuickActionDestination
-import ais.tee.notifications.NativeChatConversationShortcuts
-import ais.tee.notifications.nativeChatConversationIdForShortcut
-import ais.tee.notifications.NativeChatNotificationPublisher
 import ais.tee.widget.NativeChatWidgetUpdater
-import kotlinx.coroutines.CompletableDeferred
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.work.WorkManager
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -74,7 +72,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 data class NativeChatNavigationRequest(
     val id: Long,
-    val conversationId: String
+    val conversationId: String,
 )
 
 data class PendingWebDraft(
@@ -89,7 +87,7 @@ data class PendingWebDraft(
 
 internal fun resolveNativeConversationTarget(
     archive: NativeChatArchive,
-    requestedId: String
+    requestedId: String,
 ): String? = requestedId.trim().takeIf { candidate ->
     candidate.isNotEmpty() && archive.conversations.any { it.id == candidate }
 }
@@ -99,13 +97,13 @@ data class ChatMessage(
     val sender: String, // "user" or "assistant"
     val text: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val notes: List<String> = emptyList()
+    val notes: List<String> = emptyList(),
 )
 
 private data class NativeChatSendPlan(
     val targetProvider: AiProvider,
     val providersToRun: List<AiProvider>,
-    val apiKeys: ApiKeyConfig
+    val apiKeys: ApiKeyConfig,
 )
 
 data class PendingChatContextWarning(
@@ -130,7 +128,7 @@ data class PendingActiveSkillPrompt(
 
 private data class NativeChatPromptContext(
     val systemPrompt: String?,
-    val activeProfile: Profile?
+    val activeProfile: Profile?,
 )
 
 private const val STREAMING_UI_FLUSH_INTERVAL_MS = 50L
@@ -232,7 +230,8 @@ enum class NavigationTab {
     INSTRUCTIONS,
     YAML,
     PLAYGROUND,
-    SKILLS;
+    SKILLS,
+    ;
 
     fun belongsToStudioSection(): Boolean = when (this) {
         STUDIO, INSTRUCTIONS, YAML, PLAYGROUND, SKILLS -> true
@@ -256,15 +255,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         NativeChatWidgetUpdater.onArchiveSaved(application.applicationContext, archive)
     }
     private val localSkillStore = LocalSkillLibraryStore(
-        File(application.noBackupFilesDir, LocalSkillLibraryStore.LIBRARY_DIRECTORY_NAME)
+        File(application.noBackupFilesDir, LocalSkillLibraryStore.LIBRARY_DIRECTORY_NAME),
     )
     private var studioStateWriter: StudioStateWriter? = null
 
     private val _uiState = MutableStateFlow(
         StudioUiState(
             selectedWebService = webChatPreferencesStore.loadSelectedService(),
-            favoriteWebServices = webChatPreferencesStore.loadFavorites()
-        )
+            favoriteWebServices = webChatPreferencesStore.loadFavorites(),
+        ),
     )
     private val pendingGatewayCatalogRefreshes = mutableSetOf<AiProvider>()
     private var chatGenerationJob: Job? = null
@@ -364,7 +363,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             id = "welcome",
             sender = "assistant",
             text = "Hello! I am ready to assist. Adjust personality knobs, overlays, or collaboration policies in the Studio tab, and ask me any question to test how my responses adapt to your style profile.",
-            notes = listOf("Active Profile: $profileName (intensity: ${activeProfile.personality.intensity ?: 1})")
+            notes = listOf("Active Profile: $profileName (intensity: ${activeProfile.personality.intensity ?: 1})"),
         )
         _uiState.update { it.copy(playgroundMessages = listOf(welcomeMsg)) }
     }
@@ -380,14 +379,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 provider = AiProvider.ALL,
                 modelName = "Multi-Model Hub",
                 text = "Welcome to the **AI Chat Hub**! 🚀\n\nHere you can interact with:\n$providerLines\n\n✨ **Compare Mode**: Select *'All Models'* to send your prompt to every configured direct provider concurrently and compare their outputs side-by-side.\n\n⚙️ Tap the **Key icon** in the top bar to connect your live API keys.",
-                activeProfileNotes = listOf("Active System Profile linked from Studio")
-            )
+                activeProfileNotes = listOf("Active System Profile linked from Studio"),
+            ),
         )
     }
 
     private fun createNativeConversation(
         template: NativeChatConversation? = null,
-        now: Long = System.currentTimeMillis()
+        now: Long = System.currentTimeMillis(),
     ): NativeChatConversation = NativeChatConversation(
         id = UUID.randomUUID().toString(),
         createdAtEpochMs = now,
@@ -403,7 +402,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val conversation = createNativeConversation()
         return NativeChatArchive(
             activeConversationId = conversation.id,
-            conversations = listOf(conversation)
+            conversations = listOf(conversation),
         )
     }
 
@@ -453,7 +452,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     state.copy(
                         nativeChat = visible,
                         inputBudgetPreflight = null,
-                    )
+                    ),
                 )
             ) {
                 nativePersistenceBase = refreshed
@@ -477,10 +476,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         applyPendingNativeConversationTarget()
     }
 
-    private fun queueNativeChatSend(conversation: NativeChatConversation, text: String): Boolean {
+    private fun queueNativeChatSend(
+        conversation: NativeChatConversation,
+        text: String,
+        sourceAssetIds: List<String>,
+    ): Boolean {
         val replyId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
-        updateActiveNativeConversation { it.withQueuedMessage(replyId, text, now) }
+        updateActiveNativeConversation {
+            it.withQueuedMessage(replyId, text, now, sourceAssetIds = sourceAssetIds)
+        }
         val queued = NativeChatDirectReply.enqueueQueuedSend(
             context = getApplication(),
             conversationId = conversation.id,
@@ -490,9 +495,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         )
         if (!queued) {
             updateActiveNativeConversation { current ->
-                current.withoutQueuedMessage(nativeChatReplyUserMessageId(replyId))?.first
-                    ?.copy(draft = text)
-                    ?: current
+                current.withoutQueuedMessage(nativeChatReplyUserMessageId(replyId))?.let { (updated, message) ->
+                    updated.restoreQueuedMessageToDraft(message)
+                } ?: current
             }
             showSnackbar("You're offline and this message could not be queued.")
             return false
@@ -510,7 +515,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         updateActiveNativeConversation { conversation ->
             val (updated, message) = conversation.withoutQueuedMessage(messageId) ?: return@updateActiveNativeConversation conversation
             removed = true
-            if (moveToDraft) updated.copy(draft = stageSharedTextInDraftForEdit(updated.draft, message.text)) else updated
+            if (moveToDraft) updated.restoreQueuedMessageToDraft(message) else updated
         }
         if (!removed) showSnackbar("This message is already being sent.")
     }
@@ -556,7 +561,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         val request = NativeChatNavigationRequest(
             id = nativeChatNavigationRequestId.incrementAndGet(),
-            conversationId = _uiState.value.nativeChat.activeConversationId
+            conversationId = _uiState.value.nativeChat.activeConversationId,
         )
         _uiState.update { it.copy(nativeChatNavigationRequest = request) }
     }
@@ -590,11 +595,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 nativeChat = current.nativeChat.copy(
                     conversations = current.nativeChat.conversations.map { conversation ->
                         if (conversation.id == conversationId) {
-                            conversation.copy(draft = stageSharedTextInDraft(conversation.draft, text))
+                            conversation.copy(
+                                draft = stageSharedTextInDraft(conversation.draft, text),
+                                draftSourceAssetIds = emptyList(),
+                            )
                         } else {
                             conversation
                         }
-                    }
+                    },
                 ),
                 inputBudgetPreflight = null,
             )
@@ -642,7 +650,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         switchNativeConversation(conversationId)
         val request = NativeChatNavigationRequest(
             id = nativeChatNavigationRequestId.incrementAndGet(),
-            conversationId = conversationId
+            conversationId = conversationId,
         )
         _uiState.update { it.copy(nativeChatNavigationRequest = request) }
     }
@@ -716,7 +724,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 state.copy(
                     pendingWebDraft = latest?.let { draft ->
                         PendingWebDraft(draft.id, draft.service, draft.text)
-                    }
+                    },
                 )
             } else {
                 state
@@ -751,7 +759,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 state.copy(
                     pendingWebDraft = latest?.let { draft ->
                         PendingWebDraft(draft.id, draft.service, draft.text)
-                    }
+                    },
                 )
             } else {
                 state
@@ -773,7 +781,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             it.copy(
                 incomingShare = payload,
                 incomingShareId = requestId,
-                pendingWebShare = null
+                pendingWebShare = null,
             )
         }
     }
@@ -781,7 +789,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun restoreShareState(
         incomingShare: IncomingSharePayload?,
         incomingShareRequestId: Long,
-        pendingShare: PendingWebShare?
+        pendingShare: PendingWebShare?,
     ) {
         val restoredIncomingId = when {
             incomingShare == null -> 0L
@@ -802,11 +810,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     selectedWebService = pendingShare.service,
                     incomingShare = null,
                     incomingShareId = 0L,
-                    pendingWebShare = pendingShare
+                    pendingWebShare = pendingShare,
                 )
                 incomingShare != null -> state.copy(
                     incomingShare = incomingShare,
-                    incomingShareId = restoredIncomingId
+                    incomingShareId = restoredIncomingId,
                 )
                 else -> state
             }
@@ -828,9 +836,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             if (requestId <= 0L || state.incomingShare == null || state.incomingShareId != requestId) return false
             if (_uiState.compareAndSet(
                     state,
-                    state.copy(incomingShare = null, incomingShareId = 0L)
+                    state.copy(incomingShare = null, incomingShareId = 0L),
                 )
-            ) return true
+            ) {
+                return true
+            }
         }
     }
 
@@ -845,7 +855,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 selectedWebService = service,
                 incomingShare = null,
                 incomingShareId = 0L,
-                pendingWebShare = PendingWebShare(shareId, service, payload)
+                pendingWebShare = PendingWebShare(shareId, service, payload),
             )
         }
         if (routed) webChatPreferencesStore.saveSelectedService(service)
@@ -868,33 +878,33 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         updatePendingWebShare(
             service = service,
             shareId = shareId,
-            predicate = { it.isTextClaimed && it.payload.text != null }
+            predicate = { it.isTextClaimed && it.payload.text != null },
         ) { it.completeTextClaim() }
 
     fun releasePendingWebShareTextClaim(service: WebAiService, shareId: Long): Boolean =
         updatePendingWebShare(
             service = service,
             shareId = shareId,
-            predicate = { it.isTextClaimed }
+            predicate = { it.isTextClaimed },
         ) { it.releaseTextClaim() }
 
     fun consumePendingWebShareUris(
         service: WebAiService,
         shareId: Long,
-        uriStrings: Collection<String>
+        uriStrings: Collection<String>,
     ): Boolean {
         val consumed = uriStrings.toSet()
         if (consumed.isEmpty()) return false
         return updatePendingWebShare(
             service = service,
             shareId = shareId,
-            predicate = { pending -> pending.payload.uriStrings.containsAll(consumed) }
+            predicate = { pending -> pending.payload.uriStrings.containsAll(consumed) },
         ) { pending ->
             val remainingUris = pending.payload.uriStrings.filterNot(consumed::contains)
             val payload = pending.payload.copy(
                 uriStrings = remainingUris,
                 mimeTypeHint = pending.payload.mimeTypeHint.takeIf { remainingUris.isNotEmpty() },
-                isOpenDocument = pending.payload.isOpenDocument && remainingUris.isNotEmpty()
+                isOpenDocument = pending.payload.isOpenDocument && remainingUris.isNotEmpty(),
             )
             if (payload.isEmpty) null else pending.copy(payload = payload)
         }
@@ -907,7 +917,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         service: WebAiService,
         shareId: Long,
         predicate: (PendingWebShare) -> Boolean = { true },
-        transform: (PendingWebShare) -> PendingWebShare?
+        transform: (PendingWebShare) -> PendingWebShare?,
     ): Boolean {
         while (true) {
             val state = _uiState.value
@@ -935,7 +945,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun updateActiveNativeConversation(
         persist: Boolean = true,
-        transform: (NativeChatConversation) -> NativeChatConversation
+        transform: (NativeChatConversation) -> NativeChatConversation,
     ) {
         _uiState.update { state ->
             state.copy(
@@ -958,7 +968,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun updateNativeConversationDraft(draft: String) {
         val state = _uiState.value
         if (!state.isNativeConversationStoreReady || state.activeNativeConversation?.draft == draft) return
-        updateActiveNativeConversation(persist = false) { it.copy(draft = draft) }
+        updateActiveNativeConversation(persist = false) {
+            it.copy(draft = draft, draftSourceAssetIds = emptyList())
+        }
         scheduleNativeChatDraftPersistence()
     }
 
@@ -1061,7 +1073,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (!current.isNativeConversationStoreReady || active?.id != conversationId || active.draft != baseDraft) {
             return false
         }
-        updateNativeConversationDraft(draft)
+        updateActiveNativeConversation(persist = false) { conversation ->
+            conversation.copy(
+                draft = draft,
+                draftSourceAssetIds = (conversation.draftSourceAssetIds + asset.id)
+                    .filter { it.isNotBlank() }
+                    .distinct(),
+            )
+        }
+        scheduleNativeChatDraftPersistence()
         return true
     }
 
@@ -1104,7 +1124,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             state = started.state,
                             createdAtEpochMs = now,
                             errorMessage = started.errorMessage,
-                        )
+                        ),
                     )
                 }
                 if (stored == null) {
@@ -1121,7 +1141,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             "Could not save the job. The remote job was cancelled."
                         } else {
                             "Could not save the job. The remote job may still run."
-                        }
+                        },
                     )
                     return@launch
                 }
@@ -1205,7 +1225,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val now = System.currentTimeMillis()
         val messages = imported.turns.mapIndexed { index, turn ->
             ModelChatMessage(
-                id = "import_${now}_${index}",
+                id = "import_${now}_$index",
                 sender = turn.role,
                 text = turn.text,
                 timestamp = now + index,
@@ -1259,7 +1279,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 current.copy(
                     nativeChat = current.nativeChat.copy(
                         activeConversationId = conversation.id,
-                        conversations = listOf(conversation) + current.nativeChat.conversations
+                        conversations = listOf(conversation) + current.nativeChat.conversations,
                     ),
                     inputBudgetPreflight = null,
                 )
@@ -1288,7 +1308,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             current.copy(
                 nativeChat = current.nativeChat.copy(
                     activeConversationId = branch.id,
-                    conversations = listOf(branch) + current.nativeChat.conversations
+                    conversations = listOf(branch) + current.nativeChat.conversations,
                 ),
                 inputBudgetPreflight = null,
             )
@@ -1322,7 +1342,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 current.copy(
                     nativeChat = current.nativeChat.copy(
                         activeConversationId = conversation.id,
-                        conversations = listOf(conversation) + current.nativeChat.conversations
+                        conversations = listOf(conversation) + current.nativeChat.conversations,
                     ),
                     incognitoConversationId = conversation.id,
                     inputBudgetPreflight = null,
@@ -1386,7 +1406,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             current.copy(
                 nativeChat = current.nativeChat.copy(
                     activeConversationId = activeId,
-                    conversations = conversations
+                    conversations = conversations,
                 ),
                 inputBudgetPreflight = null,
             )
@@ -1462,7 +1482,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     }
                     current.copy(
                         gatewayModelOptions = current.gatewayModelOptions + (provider to models),
-                        nativeChat = nativeChat
+                        nativeChat = nativeChat,
                     )
                 }
                 persistNativeChat()
@@ -1501,7 +1521,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         kimiKey: String = "",
         openRouterKey: String = "",
         aiHubMixKey: String = "",
-        vercelAiGatewayKey: String = ""
+        vercelAiGatewayKey: String = "",
     ) {
         val config = ApiKeyConfig(
             geminiKey = geminiKey.trim(),
@@ -1511,13 +1531,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             kimiKey = kimiKey.trim(),
             openRouterKey = openRouterKey.trim(),
             aiHubMixKey = aiHubMixKey.trim(),
-            vercelAiGatewayKey = vercelAiGatewayKey.trim()
+            vercelAiGatewayKey = vercelAiGatewayKey.trim(),
         )
         val stored = apiKeyStore.save(config)
         _uiState.update {
             it.copy(
                 apiKeyConfig = config,
-                showApiKeyDialog = false
+                showApiKeyDialog = false,
             )
         }
         showSnackbar(if (stored) "API keys stored securely on device." else "API keys updated for this session only.")
@@ -1588,7 +1608,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val messages = state.chatMessages.map { message ->
                     if (message.isPartial) {
                         message.copy(
-                            activeProfileNotes = (message.activeProfileNotes + "Generation stopped").distinct()
+                            activeProfileNotes = (message.activeProfileNotes + "Generation stopped").distinct(),
                         )
                     } else {
                         message
@@ -1599,7 +1619,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         conversation.copy(messages = messages, updatedAtEpochMs = now)
                     },
                     isChatGenerating = false,
-                    activeGeneratingProviders = emptySet()
+                    activeGeneratingProviders = emptySet(),
                 )
             }
             cancelled = true
@@ -1636,14 +1656,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         provider = target.provider,
                         modelName = target.model,
                         text = batch.text,
-                        isPartial = true
+                        isPartial = true,
                     )
                 }
             }
             state.copy(
                 nativeChat = state.nativeChat.updateActiveConversation { conversation ->
                     conversation.copy(messages = messages)
-                }
+                },
             )
         }
     }
@@ -1671,7 +1691,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 state.copy(
                     nativeChat = state.nativeChat.updateActiveConversation { conversation ->
                         conversation.copy(messages = messages, updatedAtEpochMs = now)
-                    }
+                    },
                 )
             }
             updated = true
@@ -1685,14 +1705,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         messageId: String,
         provider: AiProvider,
         model: String,
-        delta: String
+        delta: String,
     ) {
         if (delta.isEmpty()) return
         streamingTextBatcher.withExclusiveAccess {
             if (generationId != activeChatGenerationId.get()) return@withExclusiveAccess
             streamingTextBatcher.append(
                 StreamingTextTarget(generationId, messageId, provider, model),
-                delta
+                delta,
             )
             if (_uiState.value.chatMessages.none { it.id == messageId }) {
                 flushStreamingGenerationLocked(generationId)
@@ -1704,7 +1724,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         generationId: Long,
         messageId: String,
         provider: AiProvider,
-        response: ModelChatMessage
+        response: ModelChatMessage,
     ) {
         var finished = false
         streamingTextBatcher.withExclusiveAccess {
@@ -1724,7 +1744,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     nativeChat = state.nativeChat.updateActiveConversation { conversation ->
                         conversation.copy(messages = messages, updatedAtEpochMs = now)
                     },
-                    activeGeneratingProviders = state.activeGeneratingProviders - provider
+                    activeGeneratingProviders = state.activeGeneratingProviders - provider,
                 )
             }
             finished = true
@@ -1788,7 +1808,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     prompt = prompt,
                     systemInstruction = systemPrompt,
                     history = history,
-                )
+                ),
             )
         }
     }
@@ -1814,7 +1834,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     conversationId = conversationId,
                     provider = state.selectedChatProvider,
                     model = state.selectedChatModel,
-                )
+                ),
             )
         }
         return true
@@ -1836,13 +1856,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         } catch (error: IOException) {
             showSnackbar(
                 (error.message ?: "Could not prepare enabled local skills.") +
-                    " No provider request was sent."
+                    " No provider request was sent.",
             )
             return null
         }
         return NativeChatPromptContext(
             systemPrompt = composeLocalSkillSystemInstruction(profileSystemPrompt, enabledLocalSkills),
-            activeProfile = state.mergedProfile.takeIf { state.includeSystemProfileInChat }
+            activeProfile = state.mergedProfile.takeIf { state.includeSystemProfileInChat },
         )
     }
 
@@ -1861,7 +1881,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             origin.isInputBudgetPreflightRunning ||
             trimmed.isBlank() ||
             provider !in setOf(AiProvider.GEMINI, AiProvider.CLAUDE)
-        ) return false
+        ) {
+            return false
+        }
 
         val apiKey = when (provider) {
             AiProvider.GEMINI -> origin.apiKeyConfig.geminiKey
@@ -1922,14 +1944,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val latest = _uiState.value
                 val stateStillMatches =
                     inputBudgetPreflightId.get() == preflightId &&
-                    !latest.isChatGenerating &&
-                    isSameChatTarget(current, latest) &&
+                        !latest.isChatGenerating &&
+                        isSameChatTarget(current, latest) &&
                         latest.nativeChatDraft == current.nativeChatDraft &&
                         latest.chatMessages == current.chatMessages &&
                         latest.includeSystemProfileInChat == current.includeSystemProfileInChat &&
                         latest.renderedInstructions == current.renderedInstructions &&
                         latest.activeNativeConversation?.projectId ==
-                            current.activeNativeConversation?.projectId &&
+                        current.activeNativeConversation?.projectId &&
                         latest.isActiveConversationIncognito == current.isActiveConversationIncognito
                 if (
                     stateStillMatches &&
@@ -1946,7 +1968,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             state.includeSystemProfileInChat == latest.includeSystemProfileInChat &&
                             state.renderedInstructions == latest.renderedInstructions &&
                             state.activeNativeConversation?.projectId ==
-                                latest.activeNativeConversation?.projectId &&
+                            latest.activeNativeConversation?.projectId &&
                             state.isActiveConversationIncognito == latest.isActiveConversationIncognito
                         ) {
                             state.copy(inputBudgetPreflight = result)
@@ -2036,6 +2058,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         if (trimmed.isBlank() || initialState.isChatGenerating) return false
         val activeConversation = initialState.activeNativeConversation
+        val sourceAssetIds = activeConversation
+            ?.stagedSourceAssetIdsForPrompt(trimmed)
+            .orEmpty()
         // Incognito turns are never queued: the background job would persist the text.
         if (
             activeConversation != null &&
@@ -2047,7 +2072,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             )
         ) {
             if (ignoreContextBudget) {
-                val queued = queueNativeChatSend(activeConversation, trimmed)
+                val queued = queueNativeChatSend(activeConversation, trimmed, sourceAssetIds)
                 if (queued) _uiState.update { it.copy(pendingChatContextWarning = null) }
                 return queued
             }
@@ -2060,7 +2085,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     // Dropped if the user moved to another chat or model while it was counted.
                     if (!isSameChatTarget(initialState, _uiState.value)) return@launch
                     val current = _uiState.value.activeNativeConversation ?: return@launch
-                    if (queueNativeChatSend(current, trimmed)) {
+                    if (queueNativeChatSend(current, trimmed, sourceAssetIds)) {
                         _uiState.update { it.copy(pendingChatContextWarning = null) }
                     }
                 } finally {
@@ -2104,14 +2129,17 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 if (generationId != activeChatGenerationId.get()) return@launch
                 _uiState.update { it.copy(pendingChatContextWarning = null) }
                 val now = System.currentTimeMillis()
-                val userMessage = ModelChatMessage(
-                    id = "user_$now",
-                    sender = CHAT_ROLE_USER,
-                    text = trimmed,
-                    timestamp = now
-                )
+                val userMessageId = "user_$now"
                 _uiState.update { current ->
                     val conversation = current.activeNativeConversation
+                    val draftMatchesPrompt = conversation?.draft?.trim() == trimmed
+                    val userMessage = ModelChatMessage(
+                        id = userMessageId,
+                        sender = CHAT_ROLE_USER,
+                        text = trimmed,
+                        timestamp = now,
+                        sourceAssetIds = sourceAssetIds,
+                    )
                     val firstUserTurn = conversation?.messages?.none { it.sender == CHAT_ROLE_USER } != false
                     current.copy(
                         nativeChat = current.nativeChat.updateActiveConversation { active ->
@@ -2119,10 +2147,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                                 title = if (firstUserTurn) nativeConversationTitle(trimmed) else active.title,
                                 updatedAtEpochMs = now,
                                 messages = active.messages + userMessage,
-                                draft = if (active.draft.trim() == trimmed) "" else active.draft
+                                draft = if (draftMatchesPrompt) "" else active.draft,
+                                draftSourceAssetIds = if (draftMatchesPrompt) {
+                                    emptyList()
+                                } else {
+                                    active.draftSourceAssetIds
+                                },
                             )
                         },
-                        activeGeneratingProviders = providersToRun.toSet()
+                        activeGeneratingProviders = providersToRun.toSet(),
                     )
                 }
                 persistNativeChat()
@@ -2170,7 +2203,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     onTextDelta = { provider, model, delta ->
                         appendStreamingDelta(
                             generationId,
-                            "stream_${userMessage.id}_${provider.id}",
+                            "stream_${userMessageId}_${provider.id}",
                             provider,
                             model,
                             delta,
@@ -2179,7 +2212,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     onToolReceipt = { provider, model, receipt ->
                         appendStreamingToolReceipt(
                             generationId,
-                            "stream_${userMessage.id}_${provider.id}",
+                            "stream_${userMessageId}_${provider.id}",
                             provider,
                             model,
                             receipt,
@@ -2191,7 +2224,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         val toolReceipts = generated.message.toolReceipts + generated.toolReceipts
                         finishStreamingMessage(
                             generationId,
-                            "stream_${userMessage.id}_${generated.provider.id}",
+                            "stream_${userMessageId}_${generated.provider.id}",
                             generated.provider,
                             if (skillNotes.isEmpty() && skillCards.isEmpty() && toolReceipts.isEmpty()) {
                                 generated.message
@@ -2209,11 +2242,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 _uiState.value.activeNativeConversation
                     ?.takeUnless { it.id == _uiState.value.incognitoConversationId }
                     ?.let { conversation ->
-                    NativeChatNotificationPublisher.publishConversation(
-                        getApplication(),
-                        conversation,
-                    )
-                }
+                        NativeChatNotificationPublisher.publishConversation(
+                            getApplication(),
+                            conversation,
+                        )
+                    }
             } finally {
                 streamingTextBatcher.withExclusiveAccess {
                     if (generationId == activeChatGenerationId.get()) {
@@ -2225,7 +2258,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         _uiState.update {
                             it.copy(
                                 isChatGenerating = false,
-                                activeGeneratingProviders = emptySet()
+                                activeGeneratingProviders = emptySet(),
                             )
                         }
                     }
@@ -2244,7 +2277,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setBasePersonality(base: String) {
         val updated = _uiState.value.baseProfile.copy(
-            personality = _uiState.value.baseProfile.personality.copy(base = base)
+            personality = _uiState.value.baseProfile.personality.copy(base = base),
         )
         _uiState.update { it.copy(baseProfile = updated) }
         recompute()
@@ -2252,7 +2285,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setPersonalityIntensity(intensity: Int?) {
         val updated = _uiState.value.baseProfile.copy(
-            personality = _uiState.value.baseProfile.personality.copy(intensity = intensity)
+            personality = _uiState.value.baseProfile.personality.copy(intensity = intensity),
         )
         _uiState.update { it.copy(baseProfile = updated) }
         recompute()
@@ -2266,7 +2299,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             currentMods.remove(name)
         }
         val updated = _uiState.value.baseProfile.copy(
-            personality = _uiState.value.baseProfile.personality.copy(modifiers = currentMods)
+            personality = _uiState.value.baseProfile.personality.copy(modifiers = currentMods),
         )
         _uiState.update { it.copy(baseProfile = updated) }
         recompute()
@@ -2283,7 +2316,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             else -> currentAdapt
         }
         val updated = _uiState.value.baseProfile.copy(
-            personality = _uiState.value.baseProfile.personality.copy(adaptation = updatedAdapt)
+            personality = _uiState.value.baseProfile.personality.copy(adaptation = updatedAdapt),
         )
         _uiState.update { it.copy(baseProfile = updated) }
         recompute()
@@ -2326,7 +2359,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         preferShortParagraphs: Boolean? = null,
         tables: String? = null,
         codeExamples: String? = null,
-        citations: String? = null
+        citations: String? = null,
     ) {
         val current = _uiState.value.baseProfile.output
         val updated = current.copy(
@@ -2335,7 +2368,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             preferShortParagraphs = preferShortParagraphs ?: current.preferShortParagraphs,
             tables = tables ?: current.tables,
             codeExamples = codeExamples ?: current.codeExamples,
-            citations = citations ?: current.citations
+            citations = citations ?: current.citations,
         )
         _uiState.update { it.copy(baseProfile = it.baseProfile.copy(output = updated)) }
         recompute()
@@ -2350,14 +2383,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         baseProfile: Profile,
         customOverlays: List<ProfileOverlay>,
         selectedOverlay: ProfileOverlay?,
-        language: String
+        language: String,
     ) {
         _uiState.update { current ->
             current.copy(
                 baseProfile = baseProfile,
                 availableOverlays = PresetProfiles.BuiltInOverlays + customOverlays,
                 selectedOverlay = selectedOverlay,
-                language = language
+                language = language,
             )
         }
         recompute()
@@ -2367,7 +2400,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update {
             it.copy(
                 baseProfile = PresetProfiles.DefaultBaseProfile,
-                selectedOverlay = null
+                selectedOverlay = null,
             )
         }
         recompute()
@@ -2386,13 +2419,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             modifierOverrides = base.personality.modifiers.filter { (it.value ?: 0) > 0 },
             verification = base.collaboration.verification,
             initiative = base.collaboration.initiative,
-            customNote = "Exported from Aistee."
+            customNote = "Exported from Aistee.",
         )
         val updatedList = _uiState.value.availableOverlays + newOverlay
         _uiState.update {
             it.copy(
                 availableOverlays = updatedList,
-                selectedOverlay = newOverlay
+                selectedOverlay = newOverlay,
             )
         }
         recompute()
@@ -2409,7 +2442,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val userMsg = ChatMessage(
             id = "user_${System.currentTimeMillis()}",
             sender = "user",
-            text = userPrompt
+            text = userPrompt,
         )
 
         val currentList = _uiState.value.playgroundMessages + userMsg
@@ -2430,12 +2463,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 id = "bot_${System.currentTimeMillis()}",
                 sender = "assistant",
                 text = simulatedText,
-                notes = notes
+                notes = notes,
             )
             _uiState.update {
                 it.copy(
                     playgroundMessages = it.playgroundMessages + botMsg,
-                    isSimulating = false
+                    isSimulating = false,
                 )
             }
         }
@@ -2506,7 +2539,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 mergedProfile = merged,
                 renderedInstructions = rendered,
                 validationResult = validation,
-                yamlRepresentation = yaml
+                yamlRepresentation = yaml,
             )
         }
     }
@@ -2581,9 +2614,6 @@ private fun StudioUiState.withoutIncognitoConversation(): StudioUiState {
     val incognitoId = incognitoConversationId ?: return this
     return copy(nativeChat = nativeChat.withoutIncognito(incognitoId), incognitoConversationId = null)
 }
-
-private fun stageSharedTextInDraftForEdit(draft: String, text: String): String =
-    if (draft.isBlank()) text else text + "\n\n" + draft.trimStart()
 
 private data class PendingNativeChatShare(
     val shortcutId: String,
