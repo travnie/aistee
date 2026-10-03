@@ -6,7 +6,8 @@ data class TokenMeasurementSeriesKey(
     val backendLabel: String,
     val encodingLabel: String?,
     val providerId: String?,
-    val modelName: String?
+    val modelName: String?,
+    val requestContextFingerprint: String?,
 )
 
 /** Token delta for one variant against a reference variant within one comparable measurement series. */
@@ -24,16 +25,25 @@ data class TokenArenaTokenDelta(
  * Compare prompt token counts only when the complete measurement identity matches.
  *
  * A local `o200k` result therefore never silently becomes comparable with a provider-reported count,
- * and provider exact/estimate modes remain separate even for the same backend/model. Another encoding
- * or backend also creates a distinct series. Ambiguous duplicate measurements in the same series are
- * skipped rather than choosing one arbitrarily.
+ * and provider exact/estimate modes remain separate even for the same backend/model. Provider
+ * measurements with different surrounding request context also form different series. Another encoding
+ * or backend creates a distinct series. Provider measurements with unknown surrounding context are
+ * excluded from deltas rather than treating two unknown contexts as equivalent. Ambiguous duplicate
+ * measurements in the same series are skipped rather than choosing one arbitrarily.
  */
 fun TokenArenaExperiment.tokenDeltas(referenceVariantId: String): List<TokenArenaTokenDelta> {
     require(variants.any { variant -> variant.id == referenceVariantId }) {
         "Token Arena reference variant must exist in the experiment"
     }
 
-    val measurementsBySeries = tokenMeasurements.groupBy(TokenArenaTokenMeasurement::seriesKey)
+    val measurementsBySeries = tokenMeasurements
+        .mapNotNull { measurement ->
+            measurement.seriesKey()?.let { series -> series to measurement }
+        }
+        .groupBy(
+            keySelector = { (series, _) -> series },
+            valueTransform = { (_, measurement) -> measurement },
+        )
     return variants
         .asSequence()
         .filter { variant -> variant.id != referenceVariantId }
@@ -151,14 +161,21 @@ fun TokenArenaExperiment.liveEfficiencyRanking(
     }
 }
 
-private fun TokenArenaTokenMeasurement.seriesKey(): TokenMeasurementSeriesKey =
-    TokenMeasurementSeriesKey(
+private fun TokenArenaTokenMeasurement.seriesKey(): TokenMeasurementSeriesKey? {
+    val isProviderMeasurement =
+        mode == TokenMeasurementMode.PROVIDER_EXACT ||
+            mode == TokenMeasurementMode.PROVIDER_ESTIMATE
+    if (isProviderMeasurement && requestContextFingerprint.isNullOrBlank()) return null
+
+    return TokenMeasurementSeriesKey(
         mode = mode,
         backendLabel = backendLabel,
         encodingLabel = encodingLabel,
         providerId = providerId,
-        modelName = modelName
+        modelName = modelName,
+        requestContextFingerprint = requestContextFingerprint,
     )
+}
 
 private fun safeLongDelta(value: Long, reference: Long): Long =
     if (value >= reference) value - reference else -(reference - value)

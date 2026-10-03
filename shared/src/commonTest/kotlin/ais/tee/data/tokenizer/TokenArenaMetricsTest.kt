@@ -21,6 +21,12 @@ class TokenArenaMetricsTest {
                 localMeasurement(candidate, 55, "other-encoding"),
                 providerMeasurement(reference, 120, TokenMeasurementMode.PROVIDER_EXACT),
                 providerMeasurement(candidate, 90, TokenMeasurementMode.PROVIDER_EXACT),
+                providerMeasurement(
+                    candidate,
+                    70,
+                    TokenMeasurementMode.PROVIDER_EXACT,
+                    requestContextFingerprint = OTHER_CONTEXT,
+                ),
                 providerMeasurement(reference, 118, TokenMeasurementMode.PROVIDER_ESTIMATE),
                 providerMeasurement(candidate, 92, TokenMeasurementMode.PROVIDER_ESTIMATE)
             )
@@ -45,6 +51,61 @@ class TokenArenaMetricsTest {
         assertEquals(providerExact.series.providerId, providerEstimate.series.providerId)
         assertEquals(providerExact.series.modelName, providerEstimate.series.modelName)
         assertTrue(deltas.none { it.series.encodingLabel == "other-encoding" })
+        assertTrue(deltas.none { it.series.requestContextFingerprint == OTHER_CONTEXT })
+    }
+
+    @Test
+    fun providerCountsWithDifferentRequestContextDoNotShareADeltaSeries() {
+        val reference = variant(REFERENCE_ID, "reference")
+        val candidate = variant(CANDIDATE_ID, "candidate")
+        val experiment = TokenArenaExperiment.create(
+            id = ARENA_ID,
+            intentLabel = "Different provider context",
+            variants = listOf(reference, candidate),
+            tokenMeasurements = listOf(
+                providerMeasurement(
+                    reference,
+                    120,
+                    TokenMeasurementMode.PROVIDER_EXACT,
+                    requestContextFingerprint = "prompt-only:v1",
+                ),
+                providerMeasurement(
+                    candidate,
+                    90,
+                    TokenMeasurementMode.PROVIDER_EXACT,
+                    requestContextFingerprint = "system-profile:v1",
+                ),
+            ),
+        )
+
+        assertTrue(experiment.tokenDeltas(REFERENCE_ID).isEmpty())
+    }
+
+    @Test
+    fun legacyProviderCountsWithoutKnownContextAreExcludedFromDeltas() {
+        val reference = variant(REFERENCE_ID, "reference")
+        val candidate = variant(CANDIDATE_ID, "candidate")
+        val experiment = TokenArenaExperiment.create(
+            id = ARENA_ID,
+            intentLabel = "Unknown provider context",
+            variants = listOf(reference, candidate),
+            tokenMeasurements = listOf(
+                providerMeasurement(
+                    reference,
+                    120,
+                    TokenMeasurementMode.PROVIDER_EXACT,
+                    requestContextFingerprint = null,
+                ),
+                providerMeasurement(
+                    candidate,
+                    90,
+                    TokenMeasurementMode.PROVIDER_EXACT,
+                    requestContextFingerprint = null,
+                ),
+            ),
+        )
+
+        assertTrue(experiment.tokenDeltas(REFERENCE_ID).isEmpty())
     }
 
     @Test
@@ -201,6 +262,7 @@ class TokenArenaMetricsTest {
         variant: TokenArenaVariant,
         tokens: Long,
         mode: TokenMeasurementMode,
+        requestContextFingerprint: String? = PROMPT_ONLY_CONTEXT,
     ) = TokenArenaTokenMeasurement(
         variantId = variant.id,
         promptFingerprint = variant.promptFingerprint,
@@ -208,7 +270,8 @@ class TokenArenaMetricsTest {
         mode = mode,
         backendLabel = PROVIDER_BACKEND,
         providerId = PROVIDER_ID,
-        modelName = MODEL_NAME
+        modelName = MODEL_NAME,
+        requestContextFingerprint = requestContextFingerprint,
     )
 
     private fun observation(
@@ -238,6 +301,8 @@ class TokenArenaMetricsTest {
         private const val PROVIDER_ID = "provider"
         private const val MODEL_NAME = "model"
         private const val PROVIDER_BACKEND = "provider-count-api"
+        private const val PROMPT_ONLY_CONTEXT = "prompt-only:v1"
+        private const val OTHER_CONTEXT = "system:other"
         private const val O200K_ENCODING = "o200k"
         private const val PROMPT_TEXT = "prompt"
     }

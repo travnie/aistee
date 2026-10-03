@@ -13,6 +13,13 @@ enum class TokenMeasurementMode {
     REFERENCE_FALLBACK
 }
 
+enum class TokenArenaProviderInputLimitStatus {
+    NOT_APPLICABLE,
+    UNAVAILABLE,
+    FITS,
+    EXCEEDED,
+}
+
 /** Provenance of a response used by Token Arena efficiency views. */
 @Serializable
 enum class ArenaResponseProvenance {
@@ -56,7 +63,10 @@ data class TokenArenaTokenMeasurement(
     val backendLabel: String,
     val encodingLabel: String? = null,
     val providerId: String? = null,
-    val modelName: String? = null
+    val modelName: String? = null,
+    /** Identity of provider-side context around the variant prompt; null for legacy/local counts. */
+    val requestContextFingerprint: String? = null,
+    val inputTokenLimit: Long? = null,
 ) {
     init {
         require(variantId.isNotBlank()) { "Token measurement variant id must not be blank" }
@@ -76,7 +86,33 @@ data class TokenArenaTokenMeasurement(
                 "Provider token measurements must name provider and model"
             }
         }
+        require(inputTokenLimit == null || inputTokenLimit > 0) {
+            "Provider input token limit must be positive when present"
+        }
+        val isProviderMeasurement =
+            mode == TokenMeasurementMode.PROVIDER_EXACT ||
+                mode == TokenMeasurementMode.PROVIDER_ESTIMATE
+        require(isProviderMeasurement || inputTokenLimit == null) {
+            "Only provider token measurements may carry a provider input limit"
+        }
     }
+
+    val remainingInputTokens: Long?
+        get() = inputTokenLimit?.minus(tokens)
+
+    val providerInputLimitStatus: TokenArenaProviderInputLimitStatus
+        get() {
+            val isProviderMeasurement =
+                mode == TokenMeasurementMode.PROVIDER_EXACT ||
+                    mode == TokenMeasurementMode.PROVIDER_ESTIMATE
+            if (!isProviderMeasurement) return TokenArenaProviderInputLimitStatus.NOT_APPLICABLE
+            val limit = inputTokenLimit ?: return TokenArenaProviderInputLimitStatus.UNAVAILABLE
+            return if (tokens <= limit) {
+                TokenArenaProviderInputLimitStatus.FITS
+            } else {
+                TokenArenaProviderInputLimitStatus.EXCEEDED
+            }
+        }
 }
 
 /** Response-side metrics for one prompt variant. Provider usage remains the canonical usage model. */

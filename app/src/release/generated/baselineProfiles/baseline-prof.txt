@@ -22308,3 +22308,11 @@ SPLais/tee/data/model/NativeToolReceipt$$serializer;->getDescriptor()Lkotlinx/se
 SPLais/tee/ui/screens/ComposableSingletons$ChatScreenKt;->getLambda$1782069352$app()Lkotlin/jvm/functions/Function2;
 SPLais/tee/ui/screens/ComposableSingletons$ChatScreenKt;->getLambda$267040396$app()Lkotlin/jvm/functions/Function2;
 SPLais/tee/ui/screens/ComposableSingletons$ChatScreenKt;->getLambda$376320063$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/web/ProviderWebProfile;-><init>(Ljava/util/Set;Lais/tee/web/ProviderTurnAnchors;Ljava/util/Set;Ljava/util/List;Ljava/util/List;Lais/tee/web/ProviderWebToolbarShortcut;)V
+SPLais/tee/web/ProviderWebProfile;-><init>(Ljava/util/Set;Lais/tee/web/ProviderTurnAnchors;Ljava/util/Set;Ljava/util/List;Ljava/util/List;Lais/tee/web/ProviderWebToolbarShortcut;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+SPLais/tee/web/ProviderWebProfile;->getToolbarShortcut()Lais/tee/web/ProviderWebToolbarShortcut;
+SPLais/tee/web/ProviderWebRegistry;->toolbarShortcut(Lais/tee/data/model/WebAiService;)Lais/tee/web/ProviderWebToolbarShortcut;
+SPLais/tee/web/ProviderWebToolbarShortcut;-><clinit>()V
+SPLais/tee/web/ProviderWebToolbarShortcut;-><init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+PLais/tee/web/ProviderWebToolbarShortcut;->getId()Ljava/lang/String;
+SPLais/tee/web/ProviderWebToolbarShortcut;->getLabel()Ljava/lang/String;
