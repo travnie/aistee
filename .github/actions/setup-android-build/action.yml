@@ -1,0 +1,26 @@
+name: Set up Android build
+description: Set up the JDK and Gradle used by Aistee Android/KMP workflows.
+
+inputs:
+  java-version:
+    description: Temurin JDK version.
+    required: false
+    default: "21"
+  gradle-cache-disabled:
+    description: Disable Gradle dependency/build caching.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up JDK
+      uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java-version }}
+
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+      with:
+        cache-disabled: ${{ inputs.gradle-cache-disabled }}
