@@ -40,6 +40,20 @@ class NativeChatSendQueueTest {
     }
 
     @Test
+    fun queuedTurnCarriesStagedLibrarySourcesAndClearsDraftSources() {
+        val staged = conversation.copy(draftSourceAssetIds = listOf("asset-1", "asset-2"))
+        val queued = staged.withQueuedMessage(
+            "r1",
+            "hello",
+            now = 5L,
+            sourceAssetIds = staged.draftSourceAssetIds,
+        )
+
+        assertEquals(listOf("asset-1", "asset-2"), queued.messages.single().sourceAssetIds)
+        assertTrue(queued.draftSourceAssetIds.isEmpty())
+    }
+
+    @Test
     fun cancelRemovesOnlyAStillQueuedTurn() {
         val queued = conversation.withQueuedMessage("r1", "hello", now = 5L)
         val (cancelled, removed) = queued.withoutQueuedMessage(nativeChatReplyUserMessageId("r1"))!!

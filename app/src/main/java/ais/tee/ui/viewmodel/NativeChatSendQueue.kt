@@ -15,9 +15,15 @@ internal fun shouldQueueNativeChatSend(isOnline: Boolean, canSendInBackground: B
     !isOnline && canSendInBackground && text.isNotBlank() && text.trim().length <= MAX_REPLY_TEXT_CHARS
 
 /** Appends the queued user turn; the background job later adds the answers after it. */
-internal fun NativeChatConversation.withQueuedMessage(replyId: String, text: String, now: Long): NativeChatConversation {
+internal fun NativeChatConversation.withQueuedMessage(
+    replyId: String,
+    text: String,
+    now: Long,
+    sourceAssetIds: List<String> = emptyList(),
+): NativeChatConversation {
     val trimmed = text.trim()
     val firstUserTurn = messages.none { it.sender == CHAT_ROLE_USER }
+    val clearsDraft = draft.trim() == trimmed
     return copy(
         title = if (firstUserTurn) nativeConversationTitle(trimmed) else title,
         updatedAtEpochMs = now,
@@ -27,8 +33,10 @@ internal fun NativeChatConversation.withQueuedMessage(replyId: String, text: Str
             text = trimmed,
             timestamp = now,
             isQueued = true,
+            sourceAssetIds = sourceAssetIds.filter { it.isNotBlank() }.distinct(),
         ),
-        draft = if (draft.trim() == trimmed) "" else draft,
+        draft = if (clearsDraft) "" else draft,
+        draftSourceAssetIds = if (clearsDraft) emptyList() else draftSourceAssetIds,
     )
 }
 

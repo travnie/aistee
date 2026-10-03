@@ -360,6 +360,8 @@ data class ModelChatMessage(
     val latencyMs: Long? = null,
     val usage: ProviderUsage? = null,
     val activeProfileNotes: List<String> = emptyList(),
+    /** Local Project Library assets explicitly inserted into this user turn. Never sent by id. */
+    val sourceAssetIds: List<String> = emptyList(),
     /** Coarse local receipts for client tools used while producing this reply. */
     val toolReceipts: List<NativeToolReceipt> = emptyList(),
     /** Cards from skills the model called for this reply; shown only to the user. */
@@ -369,7 +371,8 @@ data class ModelChatMessage(
     /** User text, identifiers, profile notes and opaque replay state are sensitive debug payloads. */
     override fun toString(): String =
         "ModelChatMessage(id=<redacted>, sender=$sender, provider=${provider?.id ?: "none"}, " +
-            "text=<redacted>, activeProfileNotes=<redacted>, toolReceipts=${toolReceipts.size}, " +
+            "text=<redacted>, activeProfileNotes=<redacted>, sourceAssetIds=${sourceAssetIds.size}, " +
+            "toolReceipts=${toolReceipts.size}, " +
             "skillCards=${skillCards.size}, providerReplayState=<redacted>, " +
             "isError=$isError, isSimulated=$isSimulated, isPartial=$isPartial, isImported=$isImported, isQueued=$isQueued)"
 }

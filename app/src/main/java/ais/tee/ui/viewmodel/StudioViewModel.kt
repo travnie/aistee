@@ -480,7 +480,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private fun queueNativeChatSend(conversation: NativeChatConversation, text: String): Boolean {
         val replyId = UUID.randomUUID().toString()
         val now = System.currentTimeMillis()
-        updateActiveNativeConversation { it.withQueuedMessage(replyId, text, now) }
+        val sourceAssetIds = conversation.draftSourceAssetIds
+            .takeIf { conversation.draft.trim() == text.trim() }
+            .orEmpty()
+        updateActiveNativeConversation {
+            it.withQueuedMessage(replyId, text, now, sourceAssetIds = sourceAssetIds)
+        }
         val queued = NativeChatDirectReply.enqueueQueuedSend(
             context = getApplication(),
             conversationId = conversation.id,
@@ -490,9 +495,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         )
         if (!queued) {
             updateActiveNativeConversation { current ->
-                current.withoutQueuedMessage(nativeChatReplyUserMessageId(replyId))?.first
-                    ?.copy(draft = text)
-                    ?: current
+                current.withoutQueuedMessage(nativeChatReplyUserMessageId(replyId))?.let { (updated, message) ->
+                    updated.copy(
+                        draft = text,
+                        draftSourceAssetIds = message.sourceAssetIds,
+                    )
+                } ?: current
             }
             showSnackbar("You're offline and this message could not be queued.")
             return false
@@ -510,7 +518,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         updateActiveNativeConversation { conversation ->
             val (updated, message) = conversation.withoutQueuedMessage(messageId) ?: return@updateActiveNativeConversation conversation
             removed = true
-            if (moveToDraft) updated.copy(draft = stageSharedTextInDraftForEdit(updated.draft, message.text)) else updated
+            if (moveToDraft) {
+                updated.copy(
+                    draft = stageSharedTextInDraftForEdit(updated.draft, message.text),
+                    draftSourceAssetIds =
+                        (updated.draftSourceAssetIds + message.sourceAssetIds).distinct(),
+                )
+            } else {
+                updated
+            }
         }
         if (!removed) showSnackbar("This message is already being sent.")
     }
@@ -590,7 +606,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 nativeChat = current.nativeChat.copy(
                     conversations = current.nativeChat.conversations.map { conversation ->
                         if (conversation.id == conversationId) {
-                            conversation.copy(draft = stageSharedTextInDraft(conversation.draft, text))
+                            conversation.copy(
+                                draft = stageSharedTextInDraft(conversation.draft, text),
+                                draftSourceAssetIds = emptyList(),
+                            )
                         } else {
                             conversation
                         }
@@ -958,7 +977,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun updateNativeConversationDraft(draft: String) {
         val state = _uiState.value
         if (!state.isNativeConversationStoreReady || state.activeNativeConversation?.draft == draft) return
-        updateActiveNativeConversation(persist = false) { it.copy(draft = draft) }
+        updateActiveNativeConversation(persist = false) {
+            it.copy(draft = draft, draftSourceAssetIds = emptyList())
+        }
         scheduleNativeChatDraftPersistence()
     }
 
@@ -1061,7 +1082,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (!current.isNativeConversationStoreReady || active?.id != conversationId || active.draft != baseDraft) {
             return false
         }
-        updateNativeConversationDraft(draft)
+        updateActiveNativeConversation(persist = false) { conversation ->
+            conversation.copy(
+                draft = draft,
+                draftSourceAssetIds = (conversation.draftSourceAssetIds + asset.id)
+                    .filter { it.isNotBlank() }
+                    .distinct(),
+            )
+        }
+        scheduleNativeChatDraftPersistence()
         return true
     }
 
@@ -2104,14 +2133,20 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 if (generationId != activeChatGenerationId.get()) return@launch
                 _uiState.update { it.copy(pendingChatContextWarning = null) }
                 val now = System.currentTimeMillis()
-                val userMessage = ModelChatMessage(
-                    id = "user_$now",
-                    sender = CHAT_ROLE_USER,
-                    text = trimmed,
-                    timestamp = now
-                )
+                val userMessageId = "user_$now"
                 _uiState.update { current ->
                     val conversation = current.activeNativeConversation
+                    val draftMatchesPrompt = conversation?.draft?.trim() == trimmed
+                    val userMessage = ModelChatMessage(
+                        id = userMessageId,
+                        sender = CHAT_ROLE_USER,
+                        text = trimmed,
+                        timestamp = now,
+                        sourceAssetIds = conversation
+                            ?.draftSourceAssetIds
+                            ?.takeIf { draftMatchesPrompt }
+                            .orEmpty(),
+                    )
                     val firstUserTurn = conversation?.messages?.none { it.sender == CHAT_ROLE_USER } != false
                     current.copy(
                         nativeChat = current.nativeChat.updateActiveConversation { active ->
@@ -2119,7 +2154,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                                 title = if (firstUserTurn) nativeConversationTitle(trimmed) else active.title,
                                 updatedAtEpochMs = now,
                                 messages = active.messages + userMessage,
-                                draft = if (active.draft.trim() == trimmed) "" else active.draft
+                                draft = if (draftMatchesPrompt) "" else active.draft,
+                                draftSourceAssetIds = if (draftMatchesPrompt) {
+                                    emptyList()
+                                } else {
+                                    active.draftSourceAssetIds
+                                },
                             )
                         },
                         activeGeneratingProviders = providersToRun.toSet()
@@ -2170,7 +2210,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     onTextDelta = { provider, model, delta ->
                         appendStreamingDelta(
                             generationId,
-                            "stream_${userMessage.id}_${provider.id}",
+                            "stream_${userMessageId}_${provider.id}",
                             provider,
                             model,
                             delta,
@@ -2179,7 +2219,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     onToolReceipt = { provider, model, receipt ->
                         appendStreamingToolReceipt(
                             generationId,
-                            "stream_${userMessage.id}_${provider.id}",
+                            "stream_${userMessageId}_${provider.id}",
                             provider,
                             model,
                             receipt,
@@ -2191,7 +2231,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         val toolReceipts = generated.message.toolReceipts + generated.toolReceipts
                         finishStreamingMessage(
                             generationId,
-                            "stream_${userMessage.id}_${generated.provider.id}",
+                            "stream_${userMessageId}_${generated.provider.id}",
                             generated.provider,
                             if (skillNotes.isEmpty() && skillCards.isEmpty() && toolReceipts.isEmpty()) {
                                 generated.message
