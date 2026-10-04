@@ -150,7 +150,7 @@ Backends are optional, not the default. If a feature truly needs one, prefer a t
 
 ## Development
 
-Android targets API 35 with minSdk 26. The shared core uses Kotlin Multiplatform; platform UI remains Compose-first and moves into Compose Multiplatform only where it does not weaken native WebView, upload, authentication or secure-storage behavior.
+Android keeps minSdk 26; current compile/target SDK levels are maintained in `app/build.gradle.kts` instead of duplicated here. The shared core uses Kotlin Multiplatform; platform UI remains Compose-first and moves into Compose Multiplatform only where it does not weaken native WebView, upload, authentication or secure-storage behavior.
 
 Mobile UX is a product constraint: long chats must stay responsive, file upload must work, and provider tweaks should reduce wasted chrome/animation without breaking provider pages. Native API keys are encrypted at rest with an Android Keystore-backed AES-GCM key; credentials are never logged or exported.
 
