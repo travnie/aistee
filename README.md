@@ -18,7 +18,7 @@ Aistee combines:
 
 Android also accepts shared text, images and application files. Web content is staged for the selected provider and file delivery requires explicit confirmation.
 
-## Provider support
+## Provider support matrix
 
 **Full** means the Aistee integration is implemented; provider-side login/page changes can still break an embedded web client. **Partial** means a known embedded-flow limitation remains.
 
