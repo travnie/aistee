@@ -7,7 +7,7 @@ Aistee: Kotlin Multiplatform AI workbench; Android is the first shipping client.
 - Improve account-backed WebView chats first unless the task explicitly targets native/API, tools, jobs or another runtime.
 - Keep Aistee local-first and useful without an Aistee account. Cloud sync/hosted identity may be additive, never a prerequisite for local chats, projects, files, settings, import/export or backup.
 - If Aistee consumes `.ai`, use an explicit adapter/import boundary; keep `.ai` canonical upstream.
-- Prefer extending the existing module/runtime/tool registries over parallel implementations.
+- Extend the existing module/runtime/tool registries rather than creating competing registries.
 
 ## Runtime and data boundaries
 
@@ -29,9 +29,7 @@ Aistee: Kotlin Multiplatform AI workbench; Android is the first shipping client.
 - Never intercept, persist, export or log provider passwords, session cookies, OAuth tokens or equivalent account credentials.
 - Treat embedded account pages as untrusted web content; minimize WebView privileges needed for compatibility.
 
-## Workflow
+## Identity and docs
 
-- Inspect current `main`, open PRs and recent changes before overlapping work.
-- Keep one logical change per PR and one maintained source of truth per concern.
 - Use project name `Aistee` and canonical Android application ID `ais.tee`; shared modules use distinct namespaces under that root.
-- Keep docs short. Put durable architecture/runtime rules in focused docs; keep exact versions and fast-moving provider details in maintained config or research files.
+- Keep exact versions and fast-moving provider details in maintained config or research files rather than agent rules.
