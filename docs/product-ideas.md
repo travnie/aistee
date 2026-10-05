@@ -54,6 +54,29 @@ Keep skill source directly inspectable and editable. Importing Markdown must nev
 - Make generated/imported artifacts easy to pin, reopen, edit, export or move into a project.
 - Keep the simple chat flow intact; projects/library features should be additive rather than mandatory ceremony.
 
+### Workspace storage and Docbench integration
+
+Treat Project Library as Aistee's canonical workspace/file layer rather than creating a second Docbench-specific store.
+
+- Evolve the existing Project Library asset model instead of adding a parallel repository. Add durable editing metadata such as asset kind, updated time, content hash, revision, origin/storage reference and optional ETag/conflict state while preserving stable asset IDs and source provenance.
+- Keep local storage authoritative for normal use. Local projects, files, prompts, instructions, skills and generated artifacts remain usable without an Aistee account, network access or cloud sync.
+- Model prompts, system instructions, reusable context, skill sources and generated artifacts as typed workspace assets over the same storage contract instead of separate silos. Keep `trvny/.ai` canonical for portable profiles/instructions/skills; Aistee may link, import or synchronize through an explicit adapter without becoming a competing upstream.
+- Give the shared layer one narrow asset-store contract for list/read/write/search/delete/version operations. The current Android Project Library store becomes the local adapter; platform/cloud adapters must preserve the same ownership and provenance rules.
+- Reuse Docbench as the document editor/transform engine over these assets. Typed transformations should return a small contract such as `kind`, `content`, `warnings` and `sourceIds`; preview and local validation happen before an edited/generated result is saved back to Project Library.
+- Build the Docbench ChatGPT integration as Skills + MCP App/file entrypoints over Docbench's existing parsers and preservation rules. Do not fork another editor or upload host-provided files merely to make the plugin work.
+- If optional cross-device sync is added, keep it on the existing Cloudflare lane: Worker for the narrow sync/auth/MCP control plane, R2 for file bytes, and D1 for metadata, revisions and search/index state. Do not add Vercel storage for the same concern.
+- Defer Durable Objects until a real need for live collaboration, leases or stronger coordination appears. Ordinary optimistic revision/ETag conflict handling should be enough for initial sync.
+- Cloud sync is explicit opt-in. Never silently upload local assets, never make cloud availability a prerequisite for local editing, and keep export/restore possible without the hosted service.
+- Keep remote deletion semantics honest: deleting an Aistee local copy, an Aistee Cloudflare copy and a provider-hosted upload are separate operations with separate receipts.
+
+Suggested implementation order:
+
+1. Project Library v2 editing/revision/origin metadata while keeping current stable asset identity and chat source provenance.
+2. Docbench typed transforms plus preview/save-back into Project Library.
+3. Docbench MCP App and file-entrypoint integration, using host resource reads/writes where supported.
+4. Optional Cloudflare R2 + D1 synchronization behind explicit enablement and conflict handling.
+5. Add richer search/indexing or collaborative coordination only after the simple revision model proves insufficient.
+
 ## Prompt/file tooling borrowed from Docbench
 
 These are Docbench-style capabilities to bring into Aistee, not changes to Docbench itself.
@@ -106,6 +129,7 @@ Treat Aistee's next layer as an LLM and agent workbench rather than another pile
 - **Muse media toolbox:** expose Muse Image, Muse Voice Transcribe and SAM through shared image/audio/media-tool surfaces rather than top-level chat tabs. Generated/edited images, transcripts and segmentation outputs should flow through the same artifact/Project Library model used by other providers.
 - **Muse Glimmer local preset:** support self-hosted Glimmer through the existing local/OpenAI-compatible model boundary when served by a compatible runtime such as vLLM or llama.cpp, with additional runtime adapters where useful. Keep capabilities declared/probed instead of assuming parity with hosted Muse Spark.
 - **Local and remote runtimes:** allow an experimental local host where practical (including a future Termux-backed path), but also support a remote desktop/LAN/VPN runtime so Android can stay the cockpit while a desktop owns Node/Python/Git-heavy execution.
+- **Aistee Bridge:** expose an optional local/LAN OpenAI-compatible endpoint from the device for trusted clients, starting with `/v1/chat/completions` and `/v1/responses`. Pair clients with an explicit connection card/QR, keep routing/funding choices visible, record compact route/token receipts, and never silently fail over from subscription/account usage to metered API billing. Treat Android foreground/battery constraints and server lifetime as product requirements rather than assuming an always-on daemon.
 - **Universal MCP manager:** browse configured servers, connect/disconnect, inspect live status and tools, test calls and expose explicit permissions. Support Streamable HTTP directly where possible and stdio through a capable runtime host.
 - **Lazy tool discovery:** do not dump hundreds of MCP/function schemas into every model context. Add searchable/deferred tool catalogs inspired by DSH MCP-lens-style progressive disclosure and provider-native tool-search mechanisms where available.
 - **Dynamic capability matrix:** maintain one source of truth for model/provider/runtime support for web search, URL context, file search, code execution, computer use, functions, MCP, image/audio and related capabilities. Disable impossible combinations before a request fails remotely.
