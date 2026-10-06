@@ -48,19 +48,9 @@ jobs:
       - name: Set up Android build
         uses: ./.github/actions/setup-android-build
 
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"'             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
       - name: Run Android 16 compact and wide smoke tests
-        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        uses: ./.github/actions/run-android-emulator
         with:
-          api-level: 36
-          arch: x86_64
-          target: google_apis
-          disable-animations: true
           script: |
             ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=ais.tee.TestExpandedWidth --stacktrace
             adb shell wm size 1280x800

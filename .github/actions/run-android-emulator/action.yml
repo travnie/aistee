@@ -1,0 +1,76 @@
+name: Run cached Android emulator
+description: Run an Android emulator workload using a reusable cached AVD snapshot.
+
+inputs:
+  script:
+    description: Shell commands to execute while the emulator is running.
+    required: true
+  api-level:
+    description: Android API level.
+    required: false
+    default: "36"
+  arch:
+    description: Android system image architecture.
+    required: false
+    default: "x86_64"
+  target:
+    description: Android system image target.
+    required: false
+    default: "google_apis"
+  avd-name:
+    description: Stable AVD name used by the cache.
+    required: false
+    default: "aistee-ci"
+
+runs:
+  using: composite
+  steps:
+    - name: Enable KVM
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+
+    - name: Restore Android AVD snapshot
+      id: avd-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.android/avd/*
+          ~/.android/adb*
+        key: android-avd-${{ runner.os }}-${{ inputs.api-level }}-${{ inputs.arch }}-${{ inputs.target }}-runner-v2.38.0-v1
+
+    - name: Create cached AVD snapshot
+      if: steps.avd-cache.outputs.cache-hit != 'true'
+      uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+      with:
+        api-level: ${{ inputs.api-level }}
+        arch: ${{ inputs.arch }}
+        target: ${{ inputs.target }}
+        avd-name: ${{ inputs.avd-name }}
+        force-avd-creation: false
+        disable-animations: false
+        emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+        script: echo "Generated reusable AVD snapshot."
+
+    - name: Save clean Android AVD snapshot
+      if: steps.avd-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.android/avd/*
+          ~/.android/adb*
+        key: ${{ steps.avd-cache.outputs.cache-primary-key }}
+
+    - name: Run emulator workload
+      uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+      with:
+        api-level: ${{ inputs.api-level }}
+        arch: ${{ inputs.arch }}
+        target: ${{ inputs.target }}
+        avd-name: ${{ inputs.avd-name }}
+        force-avd-creation: false
+        disable-animations: true
+        emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+        script: ${{ inputs.script }}
