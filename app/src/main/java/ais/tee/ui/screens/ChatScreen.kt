@@ -1,5 +1,43 @@
 package ais.tee.ui.screens
 
+import ais.tee.R
+import ais.tee.data.document.MarkdownDocumentFileAccess
+import ais.tee.data.document.MarkdownTable
+import ais.tee.data.document.MarkdownWorkspaceRecoveryStore
+import ais.tee.data.model.AiProvider
+import ais.tee.data.model.CHAT_ROLE_USER
+import ais.tee.data.model.CapabilityDecision
+import ais.tee.data.model.MAX_NATIVE_STAR_NOTE_CHARS
+import ais.tee.data.model.ModelChatMessage
+import ais.tee.data.model.NativeChatConversation
+import ais.tee.data.model.NativeChatTimelineMarker
+import ais.tee.data.model.ProjectLibraryArchive
+import ais.tee.data.model.ProjectLibraryAsset
+import ais.tee.data.model.canBeStarred
+import ais.tee.data.model.canInsertIntoDraft
+import ais.tee.data.model.canStartNativeChatFork
+import ais.tee.data.model.clipNativeStarNote
+import ais.tee.data.model.isCompletedAssistantResponse
+import ais.tee.data.model.nativeChatTimeline
+import ais.tee.data.model.quoteIntoNativeChatDraft
+import ais.tee.data.model.renderChatMarkdown
+import ais.tee.data.model.spreadTimelineOffsets
+import ais.tee.data.model.starredMessages
+import ais.tee.data.model.supportedApiProcessingModes
+import ais.tee.data.model.thinNativeChatTimeline
+import ais.tee.data.skills.ActiveSkillCardActivity
+import ais.tee.notifications.NativeChatNotificationPreferences
+import ais.tee.notifications.NativeChatNotificationPreferencesStore
+import ais.tee.notifications.NativeChatNotificationPublisher
+import ais.tee.notifications.NativeChatNotificationSettingsDialog
+import ais.tee.share.copyPlainTextToClipboard
+import ais.tee.ui.theme.*
+import ais.tee.ui.viewmodel.ExternalMarkdownOpenResult
+import ais.tee.ui.viewmodel.MarkdownWorkspaceOrigin
+import ais.tee.ui.viewmodel.MarkdownWorkspaceViewModel
+import ais.tee.ui.viewmodel.NavigationTab
+import ais.tee.ui.viewmodel.StudioUiState
+import ais.tee.ui.viewmodel.StudioViewModel
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
@@ -21,9 +59,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.filled.*
@@ -57,15 +95,14 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -76,47 +113,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.core.content.ContextCompat
-import ais.tee.data.skills.ActiveSkillCardActivity
-import ais.tee.share.copyPlainTextToClipboard
-import ais.tee.R
-import ais.tee.data.document.MarkdownDocumentFileAccess
-import ais.tee.data.document.MarkdownTable
-import ais.tee.data.document.MarkdownWorkspaceRecoveryStore
-import ais.tee.data.model.AiProvider
-import ais.tee.data.model.CapabilityDecision
-import ais.tee.data.model.CHAT_ROLE_USER
-import ais.tee.data.model.ModelChatMessage
-import ais.tee.data.model.NativeChatConversation
-import ais.tee.data.model.ProjectLibraryArchive
-import ais.tee.data.model.ProjectLibraryAsset
-import ais.tee.data.model.NativeChatTimelineMarker
-import ais.tee.data.model.canBeStarred
-import ais.tee.data.model.nativeChatTimeline
-import ais.tee.data.model.quoteIntoNativeChatDraft
-import ais.tee.data.model.canInsertIntoDraft
-import ais.tee.data.model.spreadTimelineOffsets
-import ais.tee.data.model.thinNativeChatTimeline
-import ais.tee.data.model.canStartNativeChatFork
-import ais.tee.data.model.starredMessages
-import ais.tee.data.model.MAX_NATIVE_STAR_NOTE_CHARS
-import ais.tee.data.model.clipNativeStarNote
-import ais.tee.data.model.renderChatMarkdown
-import ais.tee.data.model.isCompletedAssistantResponse
-import ais.tee.data.model.supportedApiProcessingModes
-import ais.tee.notifications.NativeChatNotificationPreferences
-import ais.tee.notifications.NativeChatNotificationPreferencesStore
-import ais.tee.notifications.NativeChatNotificationPublisher
-import ais.tee.notifications.NativeChatNotificationSettingsDialog
-import ais.tee.ui.theme.*
-import ais.tee.ui.viewmodel.ExternalMarkdownOpenResult
-import ais.tee.ui.viewmodel.MarkdownWorkspaceViewModel
-import ais.tee.ui.viewmodel.NavigationTab
-import ais.tee.ui.viewmodel.StudioUiState
-import ais.tee.ui.viewmodel.StudioViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -127,13 +127,15 @@ private const val MAX_CHAT_PROMPT_IMPORT_CHARS = 128 * 1024
 private data class PendingMarkdownAsset(
     val text: String,
     val displayName: String,
-    val sourceDescription: String
+    val sourceDescription: String,
+    val origin: MarkdownWorkspaceOrigin? = null,
+    val markDirty: Boolean = true,
 )
 
 internal fun canOpenResponseAsMarkdown(
     message: ModelChatMessage,
     isPreparingChatMarkdown: Boolean,
-    isWorkspaceBusy: Boolean
+    isWorkspaceBusy: Boolean,
 ): Boolean =
     !isPreparingChatMarkdown &&
         !isWorkspaceBusy &&
@@ -141,12 +143,12 @@ internal fun canOpenResponseAsMarkdown(
 
 internal fun shouldAutoScrollChat(
     previousMessageCount: Int,
-    lastVisibleItemIndex: Int
+    lastVisibleItemIndex: Int,
 ): Boolean = previousMessageCount <= 0 || lastVisibleItemIndex >= previousMessageCount - 2
 
 internal fun shouldShowJumpToLatest(
     totalItemCount: Int,
-    lastVisibleItemIndex: Int
+    lastVisibleItemIndex: Int,
 ): Boolean = totalItemCount > 0 && lastVisibleItemIndex < totalItemCount - 2
 
 internal fun chatMessageContentType(message: ModelChatMessage): String = when {
@@ -171,15 +173,15 @@ private fun CapabilityDecision.toolReceiptLabel(): String = when (this) {
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 internal fun nativeChatInitialDestinationHistory(
-    activeConversationId: String
+    activeConversationId: String,
 ): List<ThreePaneScaffoldDestinationItem<String>> = buildList {
     add(ThreePaneScaffoldDestinationItem(ListDetailPaneScaffoldRole.List))
     activeConversationId.takeIf(String::isNotBlank)?.let { conversationId ->
         add(
             ThreePaneScaffoldDestinationItem(
                 pane = ListDetailPaneScaffoldRole.Detail,
-                contentKey = conversationId
-            )
+                contentKey = conversationId,
+            ),
         )
     }
 }
@@ -189,7 +191,7 @@ internal fun nativeChatInitialDestinationHistory(
 fun ChatScreen(
     viewModel: StudioViewModel,
     uiState: StudioUiState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val navigationScope = rememberCoroutineScope()
     val activeConversationId = uiState.nativeChat.activeConversationId
@@ -197,7 +199,7 @@ fun ChatScreen(
         nativeChatInitialDestinationHistory(activeConversationId)
     }
     val navigator = rememberListDetailPaneScaffoldNavigator<String>(
-        initialDestinationHistory = initialDestinationHistory
+        initialDestinationHistory = initialDestinationHistory,
     )
     val conversations = uiState.nativeChat.conversations.sortedByDescending { it.updatedAtEpochMs }
     val navigationRequest = uiState.nativeChatNavigationRequest
@@ -261,7 +263,7 @@ fun ChatScreen(
                     onNew = ::createConversation,
                     onNewIncognito = ::createIncognitoConversation,
                     onSelect = ::showConversation,
-                    onDelete = ::deleteConversation
+                    onDelete = ::deleteConversation,
                 )
             }
         },
@@ -275,10 +277,10 @@ fun ChatScreen(
                             navigator.navigateTo(ListDetailPaneScaffoldRole.List)
                         }
                     },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
-        }
+        },
     )
 }
 
@@ -289,7 +291,7 @@ private fun NativeChatDetailPane(
     viewModel: StudioViewModel,
     uiState: StudioUiState,
     onOpenConversations: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -304,7 +306,7 @@ private fun NativeChatDetailPane(
     // Tracks the caret for the user's own edits; when the draft changes elsewhere (a quote, an
     // imported draft, another chat), the caret moves to the end so typing continues below it.
     // Keyed by chat so switching to a chat with an identical draft does not inherit the caret.
-    var composerEdit by remember(uiState.activeNativeConversation?.id) { mutableStateOf(TextFieldValue()) }
+    var composerEdit by remember(uiState.nativeChat.activeConversation?.id) { mutableStateOf(TextFieldValue()) }
     val composerValue = if (composerEdit.text == promptInput) {
         composerEdit
     } else {
@@ -326,7 +328,7 @@ private fun NativeChatDetailPane(
     val notificationsDisabledMessage = stringResource(R.string.notification_system_disabled)
     val notificationPermissionDeniedMessage = stringResource(R.string.notification_permission_denied)
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
+        ActivityResultContracts.RequestPermission(),
     ) { granted ->
         val pending = pendingNotificationPreferences ?: return@rememberLauncherForActivityResult
         val saved = if (granted) pending else pending.copy(enabled = false)
@@ -355,13 +357,13 @@ private fun NativeChatDetailPane(
     }
     var viewingTable by remember { mutableStateOf<MarkdownTable?>(null) }
     // Keyed by chat so a quote can never land in a different conversation's draft.
-    var selectingMessage by remember(uiState.activeNativeConversation?.id) { mutableStateOf<ModelChatMessage?>(null) }
+    var selectingMessage by remember(uiState.nativeChat.activeConversation?.id) { mutableStateOf<ModelChatMessage?>(null) }
     var showStarredMessages by remember { mutableStateOf(false) }
     var editingStarNoteId by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingCsvExport by remember { mutableStateOf<String?>(null) }
 
     val csvExportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/csv")
+        ActivityResultContracts.CreateDocument("text/csv"),
     ) { uri ->
         val csv = pendingCsvExport
         pendingCsvExport = null
@@ -380,7 +382,7 @@ private fun NativeChatDetailPane(
     }
 
     val chatMarkdownImportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
+        ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
             scope.launch {
@@ -410,7 +412,9 @@ private fun NativeChatDetailPane(
             markdownWorkspaceViewModel.openExternalText(
                 text = asset.text,
                 displayName = asset.displayName,
-                allowDiscardDirty = allowDiscardDirty
+                allowDiscardDirty = allowDiscardDirty,
+                origin = asset.origin,
+                markDirty = asset.markDirty,
             )
         ) {
             ExternalMarkdownOpenResult.OPENED -> {
@@ -419,10 +423,10 @@ private fun NativeChatDetailPane(
             }
             ExternalMarkdownOpenResult.NEEDS_DISCARD -> pendingMarkdownAsset = asset
             ExternalMarkdownOpenResult.BUSY -> viewModel.showSnackbar(
-                "Markdown workspace is still restoring or busy. Try again when it is ready."
+                "Markdown workspace is still restoring or busy. Try again when it is ready.",
             )
             ExternalMarkdownOpenResult.TOO_LARGE -> viewModel.showSnackbar(
-                "Markdown asset is larger than the 8 MiB workspace limit."
+                "Markdown asset is larger than the 8 MiB workspace limit.",
             )
         }
     }
@@ -463,7 +467,7 @@ private fun NativeChatDetailPane(
         if (markdown.isBlank()) return
         if (markdown.length > MAX_CHAT_PROMPT_IMPORT_CHARS) {
             viewModel.showSnackbar(
-                "Markdown draft is too large to place directly in the chat composer. Keep it as a local asset or use a smaller prompt."
+                "Markdown draft is too large to place directly in the chat composer. Keep it as a local asset or use a smaller prompt.",
             )
             return
         }
@@ -477,15 +481,15 @@ private fun NativeChatDetailPane(
     val isIncognito = uiState.isActiveConversationIncognito
     val canBranchNativeChat =
         !isIncognito && !uiState.isChatGenerating && uiState.isNativeConversationStoreReady
-    val starredMessageIds = uiState.activeNativeConversation?.starredMessageIds.orEmpty().toSet()
-    val starredMessages = uiState.activeNativeConversation?.starredMessages.orEmpty()
-    val starredIdList = uiState.activeNativeConversation?.starredMessageIds.orEmpty()
-    val starNotes = uiState.activeNativeConversation?.starNotes.orEmpty()
+    val starredMessageIds = uiState.nativeChat.activeConversation?.starredMessageIds.orEmpty().toSet()
+    val starredMessages = uiState.nativeChat.activeConversation?.starredMessages.orEmpty()
+    val starredIdList = uiState.nativeChat.activeConversation?.starredMessageIds.orEmpty()
+    val starNotes = uiState.nativeChat.activeConversation?.starNotes.orEmpty()
     // Streaming only appends text to the newest reply in place, which never changes marker positions
     // or user-turn previews, so key on list shape instead of the text-bearing message list.
     val timelineMessages = uiState.chatMessages
     val timelineMarkers = remember(
-        uiState.activeNativeConversation?.id,
+        uiState.nativeChat.activeConversation?.id,
         timelineMessages.size,
         timelineMessages.lastOrNull()?.id,
         starredIdList,
@@ -505,7 +509,7 @@ private fun NativeChatDetailPane(
         "Compare how you analyze edge cases in code",
         "Explain async coroutines in Kotlin vs threads",
         "Critique my tech architecture proposal",
-        "Summarize the key design principles of .ai profiles"
+        "Summarize the key design principles of .ai profiles",
     )
 
     var previousMessageCount by remember { mutableIntStateOf(0) }
@@ -516,7 +520,7 @@ private fun NativeChatDetailPane(
             val layoutInfo = listState.layoutInfo
             shouldShowJumpToLatest(
                 totalItemCount = layoutInfo.totalItemsCount,
-                lastVisibleItemIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                lastVisibleItemIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1,
             )
         }
     }
@@ -528,7 +532,7 @@ private fun NativeChatDetailPane(
         val conversationChanged = previousConversationId != activeConversationId
         val shouldFollow = conversationChanged || shouldAutoScrollChat(
             previousMessageCount = previousMessageCount,
-            lastVisibleItemIndex = lastVisibleItemIndex
+            lastVisibleItemIndex = lastVisibleItemIndex,
         )
         previousConversationId = activeConversationId
         previousMessageCount = currentMessageCount
@@ -540,7 +544,7 @@ private fun NativeChatDetailPane(
     if (showProjectLibrary) {
         ProjectLibraryDialog(
             archive = uiState.projectLibrary,
-            activeProjectId = uiState.activeNativeConversation?.projectId,
+            activeProjectId = uiState.nativeChat.activeConversation?.projectId,
             onSelectProject = { projectId ->
                 if (!viewModel.moveActiveConversationToProject(projectId)) {
                     viewModel.showSnackbar("Could not move this conversation to that project.")
@@ -564,6 +568,11 @@ private fun NativeChatDetailPane(
                                 text = text,
                                 displayName = asset.title,
                                 sourceDescription = "Project Library",
+                                origin = MarkdownWorkspaceOrigin.ProjectLibrary(
+                                    assetId = asset.id,
+                                    revision = asset.revision,
+                                ),
+                                markDirty = false,
                             ),
                             allowDiscardDirty = false,
                         )
@@ -572,7 +581,7 @@ private fun NativeChatDetailPane(
                 }
             },
             onInsertAsset = if (
-                uiState.activeNativeConversation != null && uiState.isNativeConversationStoreReady
+                uiState.nativeChat.activeConversation != null && uiState.isNativeConversationStoreReady
             ) {
                 { asset ->
                     scope.launch {
@@ -705,32 +714,32 @@ private fun NativeChatDetailPane(
             Surface(
                 color = MaterialTheme.colorScheme.surface,
                 tonalElevation = 3.dp,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                 ) {
                     if (isIncognito) {
                         IncognitoChatBanner(
                             onSaveAsNormal = viewModel::saveIncognitoAsNormalConversation,
                             modifier = Modifier
                                 .padding(bottom = 6.dp)
-                                .clip(MaterialTheme.shapes.small)
+                                .clip(MaterialTheme.shapes.small),
                         )
                     }
                     // Top header row
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
                         ) {
                             Box(
                                 modifier = Modifier
@@ -741,17 +750,17 @@ private fun NativeChatDetailPane(
                                             listOf(
                                                 PrimaryDark,
                                                 AccentCyan,
-                                                AccentEmerald
-                                            )
-                                        )
+                                                AccentEmerald,
+                                            ),
+                                        ),
                                     ),
-                                contentAlignment = Alignment.Center
+                                contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.AutoAwesome,
                                     contentDescription = "AI Hub",
                                     tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(20.dp),
                                 )
                             }
                             Column(modifier = Modifier.weight(1f)) {
@@ -760,11 +769,11 @@ private fun NativeChatDetailPane(
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                                 if (isIncognito) IncognitoBadge()
                                 Text(
-                                    text = uiState.activeNativeConversation?.title ?: "Native chat",
+                                    text = uiState.nativeChat.activeConversation?.title ?: "Native chat",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontSize = 11.sp,
@@ -776,17 +785,17 @@ private fun NativeChatDetailPane(
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             IconButton(
                                 onClick = onOpenConversations,
                                 enabled = uiState.isNativeConversationStoreReady,
-                                modifier = Modifier.testTag("btn_native_conversations")
+                                modifier = Modifier.testTag("btn_native_conversations"),
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.History,
                                     contentDescription = "Native conversations",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
 
@@ -794,41 +803,41 @@ private fun NativeChatDetailPane(
                                 onClick = {
                                     viewModel.toggleIncludeSystemProfile(!uiState.includeSystemProfileInChat)
                                 },
-                                modifier = Modifier.testTag("btn_toggle_profile_attachment")
+                                modifier = Modifier.testTag("btn_toggle_profile_attachment"),
                             ) {
                                 Icon(
                                     imageVector = if (uiState.includeSystemProfileInChat) Icons.Default.Psychology else Icons.Outlined.Psychology,
                                     contentDescription = "Toggle System Profile Attachment",
-                                    tint = if (uiState.includeSystemProfileInChat) AccentCyan else MaterialTheme.colorScheme.onSurfaceVariant
+                                    tint = if (uiState.includeSystemProfileInChat) AccentCyan else MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
 
                             IconButton(
                                 onClick = { viewModel.setShowApiKeyDialog(true) },
-                                modifier = Modifier.testTag("btn_api_keys_settings")
+                                modifier = Modifier.testTag("btn_api_keys_settings"),
                             ) {
                                 BadgedBox(
                                     badge = {
                                         val hasAnyKey = uiState.apiKeyConfig.geminiKey.isNotBlank() ||
-                                                uiState.apiKeyConfig.openAiKey.isNotBlank() ||
-                                                uiState.apiKeyConfig.claudeKey.isNotBlank() ||
-                                                uiState.apiKeyConfig.deepseekKey.isNotBlank() ||
-                                                uiState.apiKeyConfig.kimiKey.isNotBlank() ||
-                                                uiState.apiKeyConfig.openRouterKey.isNotBlank() ||
-                                                uiState.apiKeyConfig.aiHubMixKey.isNotBlank() ||
-                                                uiState.apiKeyConfig.vercelAiGatewayKey.isNotBlank()
+                                            uiState.apiKeyConfig.openAiKey.isNotBlank() ||
+                                            uiState.apiKeyConfig.claudeKey.isNotBlank() ||
+                                            uiState.apiKeyConfig.deepseekKey.isNotBlank() ||
+                                            uiState.apiKeyConfig.kimiKey.isNotBlank() ||
+                                            uiState.apiKeyConfig.openRouterKey.isNotBlank() ||
+                                            uiState.apiKeyConfig.aiHubMixKey.isNotBlank() ||
+                                            uiState.apiKeyConfig.vercelAiGatewayKey.isNotBlank()
                                         if (hasAnyKey) {
                                             Badge(
                                                 containerColor = AccentEmerald,
-                                                modifier = Modifier.size(6.dp)
+                                                modifier = Modifier.size(6.dp),
                                             )
                                         }
-                                    }
+                                    },
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Key,
                                         contentDescription = "Configure API Keys",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                             }
@@ -836,17 +845,17 @@ private fun NativeChatDetailPane(
                             Box {
                                 IconButton(
                                     onClick = { showChatActionsMenu = true },
-                                    modifier = Modifier.testTag("btn_chat_more_actions")
+                                    modifier = Modifier.testTag("btn_chat_more_actions"),
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.MoreVert,
                                         contentDescription = "More chat actions",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                                 DropdownMenu(
                                     expanded = showChatActionsMenu,
-                                    onDismissRequest = { showChatActionsMenu = false }
+                                    onDismissRequest = { showChatActionsMenu = false },
                                 ) {
                                     DropdownMenuItem(
                                         text = { Text("Starred messages (${starredMessages.size})") },
@@ -858,7 +867,7 @@ private fun NativeChatDetailPane(
                                             showChatActionsMenu = false
                                             showStarredMessages = true
                                         },
-                                        modifier = Modifier.testTag("btn_starred_messages")
+                                        modifier = Modifier.testTag("btn_starred_messages"),
                                     )
                                     if (
                                         uiState.selectedChatProvider == AiProvider.GEMINI ||
@@ -873,7 +882,7 @@ private fun NativeChatDetailPane(
                                                             "Checking input budget…"
                                                         } else {
                                                             "Check input budget"
-                                                        }
+                                                        },
                                                     )
                                                     Text(
                                                         when (inputBudgetProvider) {
@@ -904,8 +913,8 @@ private fun NativeChatDetailPane(
                                                 viewModel.checkInputBudget(promptInput)
                                             },
                                             modifier = Modifier.testTag(
-                                                "btn_${inputBudgetProvider.id}_input_budget"
-                                            )
+                                                "btn_${inputBudgetProvider.id}_input_budget",
+                                            ),
                                         )
                                     }
                                     DropdownMenuItem(
@@ -920,7 +929,7 @@ private fun NativeChatDetailPane(
                                             showChatActionsMenu = false
                                             useMarkdownDraftAsPrompt()
                                         },
-                                        modifier = Modifier.testTag("btn_use_markdown_prompt")
+                                        modifier = Modifier.testTag("btn_use_markdown_prompt"),
                                     )
                                     DropdownMenuItem(
                                         text = { Text("Open chat as Markdown") },
@@ -937,21 +946,21 @@ private fun NativeChatDetailPane(
                                                     val markdown = withContext(Dispatchers.Default) {
                                                         renderChatMarkdown(
                                                             messages = snapshot,
-                                                            maxUtf8Bytes = MarkdownDocumentFileAccess.MAX_DOCUMENT_BYTES
+                                                            maxUtf8Bytes = MarkdownDocumentFileAccess.MAX_DOCUMENT_BYTES,
                                                         )
                                                     }
                                                     if (markdown == null) {
                                                         viewModel.showSnackbar(
-                                                            "Chat export is larger than the 8 MiB Markdown workspace limit."
+                                                            "Chat export is larger than the 8 MiB Markdown workspace limit.",
                                                         )
                                                     } else {
                                                         openMarkdownAsset(
                                                             asset = PendingMarkdownAsset(
                                                                 text = markdown,
                                                                 displayName = CHAT_MARKDOWN_EXPORT_NAME,
-                                                                sourceDescription = "this chat snapshot"
+                                                                sourceDescription = "this chat snapshot",
                                                             ),
-                                                            allowDiscardDirty = false
+                                                            allowDiscardDirty = false,
                                                         )
                                                     }
                                                 } finally {
@@ -959,7 +968,7 @@ private fun NativeChatDetailPane(
                                                 }
                                             }
                                         },
-                                        modifier = Modifier.testTag("btn_open_chat_markdown")
+                                        modifier = Modifier.testTag("btn_open_chat_markdown"),
                                     )
                                     DropdownMenuItem(
                                         text = { Text("Import Aistee chat Markdown") },
@@ -970,10 +979,10 @@ private fun NativeChatDetailPane(
                                         onClick = {
                                             showChatActionsMenu = false
                                             chatMarkdownImportLauncher.launch(
-                                                arrayOf("text/markdown", "text/plain", "application/octet-stream")
+                                                arrayOf("text/markdown", "text/plain", "application/octet-stream"),
                                             )
                                         },
-                                        modifier = Modifier.testTag("btn_import_chat_markdown")
+                                        modifier = Modifier.testTag("btn_import_chat_markdown"),
                                     )
                                     DropdownMenuItem(
                                         text = { Text("Save chat to Library") },
@@ -990,11 +999,11 @@ private fun NativeChatDetailPane(
                                                         "Saved chat Markdown to Project Library."
                                                     } else {
                                                         "Could not save chat to Project Library."
-                                                    }
+                                                    },
                                                 )
                                             }
                                         },
-                                        modifier = Modifier.testTag("btn_save_chat_library")
+                                        modifier = Modifier.testTag("btn_save_chat_library"),
                                     )
                                     DropdownMenuItem(
                                         text = { Text("Project Library") },
@@ -1006,7 +1015,7 @@ private fun NativeChatDetailPane(
                                             showChatActionsMenu = false
                                             showProjectLibrary = true
                                         },
-                                        modifier = Modifier.testTag("btn_project_library")
+                                        modifier = Modifier.testTag("btn_project_library"),
                                     )
                                     DropdownMenuItem(
                                         text = { Text(stringResource(R.string.notification_settings_menu)) },
@@ -1025,7 +1034,7 @@ private fun NativeChatDetailPane(
                                             notificationPreferences = notificationPreferencesStore.load()
                                             showNotificationSettings = true
                                         },
-                                        modifier = Modifier.testTag("btn_chat_notifications")
+                                        modifier = Modifier.testTag("btn_chat_notifications"),
                                     )
                                     if (!isIncognito) {
                                         DropdownMenuItem(
@@ -1039,7 +1048,7 @@ private fun NativeChatDetailPane(
                                                     viewModel.showSnackbar("This launcher cannot pin chats to the home screen.")
                                                 }
                                             },
-                                            modifier = Modifier.testTag("btn_pin_chat_home_screen")
+                                            modifier = Modifier.testTag("btn_pin_chat_home_screen"),
                                         )
                                     }
                                     DropdownMenuItem(
@@ -1051,7 +1060,7 @@ private fun NativeChatDetailPane(
                                             showChatActionsMenu = false
                                             viewModel.clearChatHistory()
                                         },
-                                        modifier = Modifier.testTag("btn_clear_chat_history")
+                                        modifier = Modifier.testTag("btn_clear_chat_history"),
                                     )
                                 }
                             }
@@ -1064,7 +1073,7 @@ private fun NativeChatDetailPane(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("provider_selector_row")
+                            .testTag("provider_selector_row"),
                     ) {
                         items(AiProvider.entries) { provider ->
                             val isSelected = uiState.selectedChatProvider == provider
@@ -1076,32 +1085,32 @@ private fun NativeChatDetailPane(
                                 label = {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                                     ) {
                                         Icon(
                                             imageVector = getProviderIcon(provider),
                                             contentDescription = null,
                                             tint = if (isSelected) providerColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(14.dp)
+                                            modifier = Modifier.size(14.dp),
                                         )
                                         Text(
                                             text = provider.shortName,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            fontSize = 12.sp
+                                            fontSize = 12.sp,
                                         )
                                     }
                                 },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = providerColor.copy(alpha = 0.15f),
-                                    selectedLabelColor = providerColor
+                                    selectedLabelColor = providerColor,
                                 ),
                                 border = FilterChipDefaults.filterChipBorder(
                                     enabled = true,
                                     selected = isSelected,
                                     selectedBorderColor = providerColor,
-                                    borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                    borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
                                 ),
-                                modifier = Modifier.testTag("chip_provider_${provider.id}")
+                                modifier = Modifier.testTag("chip_provider_${provider.id}"),
                             )
                         }
                     }
@@ -1119,40 +1128,40 @@ private fun NativeChatDetailPane(
                             modifier = Modifier
                                 .clip(MaterialTheme.shapes.small)
                                 .clickable { showModelMenu = true }
-                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
                         ) {
                             Text(
                                 text = "Model: ${uiState.selectedChatModel.ifBlank { "No models" }}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
                             )
                             if (isRefreshingCatalog) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(14.dp),
                                     strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             } else {
                                 Icon(
                                     imageVector = Icons.Default.ArrowDropDown,
                                     contentDescription = "Change Model",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(16.dp),
                                 )
                             }
 
                             DropdownMenu(
                                 expanded = showModelMenu,
-                                onDismissRequest = { showModelMenu = false }
+                                onDismissRequest = { showModelMenu = false },
                             ) {
                                 modelOptions.forEach { model ->
                                     DropdownMenuItem(
                                         text = {
                                             Text(
                                                 text = model,
-                                                fontWeight = if (uiState.selectedChatModel == model) FontWeight.Bold else FontWeight.Normal
+                                                fontWeight = if (uiState.selectedChatModel == model) FontWeight.Bold else FontWeight.Normal,
                                             )
                                         },
                                         onClick = {
@@ -1165,10 +1174,10 @@ private fun NativeChatDetailPane(
                                                     Icons.Default.Check,
                                                     contentDescription = null,
                                                     tint = getProviderColor(uiState.selectedChatProvider),
-                                                    modifier = Modifier.size(16.dp)
+                                                    modifier = Modifier.size(16.dp),
                                                 )
                                             }
-                                        }
+                                        },
                                     )
                                 }
                             }
@@ -1183,7 +1192,7 @@ private fun NativeChatDetailPane(
                                     .clip(MaterialTheme.shapes.small)
                                     .clickable { showApiModeMenu = true }
                                     .padding(horizontal = 4.dp, vertical = 2.dp)
-                                    .testTag("api_processing_mode_menu")
+                                    .testTag("api_processing_mode_menu"),
                             ) {
                                 Text(
                                     text = "API mode: ${uiState.apiProcessingMode.displayName}",
@@ -1251,33 +1260,33 @@ private fun NativeChatDetailPane(
                 tonalElevation = 6.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.ime)
+                    .windowInsetsPadding(WindowInsets.ime),
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                 ) {
                     uiState.pendingActiveSkillPrompt
                         ?.takeIf { it.conversationId == uiState.nativeChat.activeConversationId }
                         ?.let { prompt ->
-                        ActiveSkillChatPromptChip(prompt = prompt, onAnswer = viewModel::answerActiveSkillPrompt)
-                    }
+                            ActiveSkillChatPromptChip(prompt = prompt, onAnswer = viewModel::answerActiveSkillPrompt)
+                        }
                     uiState.pendingChatContextWarning
                         ?.takeIf { it.conversationId == uiState.nativeChat.activeConversationId }
                         ?.let { pending ->
-                        ChatContextWarningBanner(
-                            message = pending.warning.message,
-                            onSendAnyway = { viewModel.sendPendingChatDespiteContextWarning() },
-                            onNewChat = viewModel::movePendingChatToNewConversation,
-                            onDismiss = viewModel::dismissChatContextWarning,
-                        )
-                    }
+                            ChatContextWarningBanner(
+                                message = pending.warning.message,
+                                onSendAnyway = { viewModel.sendPendingChatDespiteContextWarning() },
+                                onNewChat = viewModel::movePendingChatToNewConversation,
+                                onDismiss = viewModel::dismissChatContextWarning,
+                            )
+                        }
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 6.dp)
+                            .padding(bottom = 6.dp),
                     ) {
                         items(samplePrompts) { prompt ->
                             Surface(
@@ -1287,14 +1296,14 @@ private fun NativeChatDetailPane(
                                     .clickable {
                                         viewModel.sendChatMessage(prompt)
                                     }
-                                    .testTag("sample_chat_prompt_${prompt.take(12)}")
+                                    .testTag("sample_chat_prompt_${prompt.take(12)}"),
                             ) {
                                 Text(
                                     text = prompt,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                 )
                             }
                         }
@@ -1303,7 +1312,7 @@ private fun NativeChatDetailPane(
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
                         OutlinedTextField(
                             value = composerValue,
@@ -1327,14 +1336,14 @@ private fun NativeChatDetailPane(
                                     text = destination,
                                     fontSize = 13.sp,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             },
                             maxLines = 4,
                             shape = MaterialTheme.shapes.extraLarge,
                             modifier = Modifier
                                 .weight(1f)
-                                .testTag("chat_input_field")
+                                .testTag("chat_input_field"),
                         )
 
                         FloatingActionButton(
@@ -1351,19 +1360,19 @@ private fun NativeChatDetailPane(
                             elevation = FloatingActionButtonDefaults.elevation(0.dp),
                             modifier = Modifier
                                 .size(48.dp)
-                                .testTag(if (uiState.isChatGenerating) "stop_generation_button" else "send_prompt_button")
+                                .testTag(if (uiState.isChatGenerating) "stop_generation_button" else "send_prompt_button"),
                         ) {
                             Icon(
                                 imageVector = if (uiState.isChatGenerating) Icons.Default.Stop else Icons.Default.Send,
                                 contentDescription = if (uiState.isChatGenerating) "Stop generation" else "Send Prompt",
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(20.dp),
                             )
                         }
                     }
                 }
             }
         },
-        modifier = modifier.fillMaxSize()
+        modifier = modifier.fillMaxSize(),
     ) { innerPadding ->
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val maxBubbleWidth = chatBubbleMaxWidth(maxWidth)
@@ -1373,17 +1382,17 @@ private fun NativeChatDetailPane(
                     start = 16.dp,
                     end = 16.dp,
                     top = innerPadding.calculateTopPadding() + 8.dp,
-                    bottom = innerPadding.calculateBottomPadding() + 8.dp
+                    bottom = innerPadding.calculateBottomPadding() + 8.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 modifier = Modifier
                     .fillMaxSize()
-                    .testTag("chat_message_list")
+                    .testTag("chat_message_list"),
             ) {
                 items(
                     items = uiState.chatMessages,
                     key = { it.id },
-                    contentType = ::chatMessageContentType
+                    contentType = ::chatMessageContentType,
                 ) { message ->
                     ChatMessageItem(
                         message = message,
@@ -1391,7 +1400,7 @@ private fun NativeChatDetailPane(
                         canOpenMarkdown = !isIncognito && canOpenResponseAsMarkdown(
                             message = message,
                             isPreparingChatMarkdown = isPreparingChatMarkdown,
-                            isWorkspaceBusy = markdownUiState.isBusy
+                            isWorkspaceBusy = markdownUiState.isBusy,
                         ),
                         onCopyText = { text ->
                             copyPlainTextToClipboard(
@@ -1407,9 +1416,9 @@ private fun NativeChatDetailPane(
                                 asset = PendingMarkdownAsset(
                                     text = response.text,
                                     displayName = "aistee-${(response.provider ?: AiProvider.GEMINI).id}-response.md",
-                                    sourceDescription = "this AI response"
+                                    sourceDescription = "this AI response",
                                 ),
-                                allowDiscardDirty = false
+                                allowDiscardDirty = false,
                             )
                         },
                         onRetryPrompt = { prompt -> viewModel.sendChatMessage(prompt) },
@@ -1438,11 +1447,11 @@ private fun NativeChatDetailPane(
                                 scope.launch {
                                     val saved = viewModel.saveLongPromptToProjectLibrary(message.text)
                                     viewModel.showSnackbar(
-                                        if (saved != null) "Saved prompt to Library." else "Could not save prompt to Library."
+                                        if (saved != null) "Saved prompt to Library." else "Could not save prompt to Library.",
                                     )
                                 }
                             }
-                        }
+                        },
                     )
                 }
 
@@ -1462,8 +1471,8 @@ private fun NativeChatDetailPane(
                         .align(Alignment.CenterEnd)
                         .padding(
                             top = innerPadding.calculateTopPadding() + 24.dp,
-                            bottom = innerPadding.calculateBottomPadding() + 72.dp
-                        )
+                            bottom = innerPadding.calculateBottomPadding() + 72.dp,
+                        ),
                 )
             }
 
@@ -1473,7 +1482,7 @@ private fun NativeChatDetailPane(
                 exit = fadeOut(),
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 20.dp, bottom = innerPadding.calculateBottomPadding() + 20.dp)
+                    .padding(end = 20.dp, bottom = innerPadding.calculateBottomPadding() + 20.dp),
             ) {
                 SmallFloatingActionButton(
                     onClick = {
@@ -1482,7 +1491,7 @@ private fun NativeChatDetailPane(
                             if (lastIndex >= 0) listState.animateScrollToItem(lastIndex)
                         }
                     },
-                    modifier = Modifier.testTag("btn_jump_to_latest")
+                    modifier = Modifier.testTag("btn_jump_to_latest"),
                 ) {
                     Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Jump to latest message")
                 }
@@ -1496,20 +1505,20 @@ private fun NativeChatDetailPane(
             title = { Text("Replace unsaved Markdown draft?") },
             text = {
                 Text(
-                    "${markdownUiState.displayName} has edits that have not been exported. Discard them and open ${asset.sourceDescription} as a new local Markdown draft?"
+                    "${markdownUiState.displayName} has edits that have not been exported. Discard them and open ${asset.sourceDescription} as a new local Markdown draft?",
                 )
             },
             confirmButton = {
                 Button(
                     onClick = { openMarkdownAsset(asset, allowDiscardDirty = true) },
-                    modifier = Modifier.testTag("btn_confirm_markdown_asset_replace")
+                    modifier = Modifier.testTag("btn_confirm_markdown_asset_replace"),
                 ) {
                     Text("Discard and open")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingMarkdownAsset = null }) { Text("Cancel") }
-            }
+            },
         )
     }
 
@@ -1519,7 +1528,7 @@ private fun NativeChatDetailPane(
             title = { Text("Replace chat prompt?") },
             text = {
                 Text(
-                    "The composer already contains text. Replace it with the current Markdown draft? Nothing will be sent until you tap Send."
+                    "The composer already contains text. Replace it with the current Markdown draft? Nothing will be sent until you tap Send.",
                 )
             },
             confirmButton = {
@@ -1528,14 +1537,14 @@ private fun NativeChatDetailPane(
                         viewModel.updateNativeConversationDraft(markdown)
                         pendingMarkdownPromptReplacement = null
                     },
-                    modifier = Modifier.testTag("btn_confirm_markdown_prompt_replace")
+                    modifier = Modifier.testTag("btn_confirm_markdown_prompt_replace"),
                 ) {
                     Text("Replace")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingMarkdownPromptReplacement = null }) { Text("Cancel") }
-            }
+            },
         )
     }
 
@@ -1560,7 +1569,7 @@ private fun NativeChatDetailPane(
                             "Provider estimate: ${preflight.inputTokens} tokens"
                         } else {
                             "Exact input: ${preflight.inputTokens} tokens"
-                        }
+                        },
                     )
                     Text("Input limit: ${preflight.inputTokenLimit} tokens")
                     Text(
@@ -1604,7 +1613,7 @@ private fun NativeChatDetailPane(
             onDismiss = { viewModel.setShowApiKeyDialog(false) },
             onSave = { gemini, openAi, claude, deepseek, kimi, openRouter, aiHubMix, vercel ->
                 viewModel.saveApiKeys(gemini, openAi, claude, deepseek, kimi, openRouter, aiHubMix, vercel)
-            }
+            },
         )
     }
 }
@@ -1617,7 +1626,7 @@ private fun NativeConversationsPane(
     onNew: () -> Unit,
     onNewIncognito: () -> Unit,
     onSelect: (String) -> Unit,
-    onDelete: (String) -> Unit
+    onDelete: (String) -> Unit,
 ) {
     var pendingDeleteId by remember { mutableStateOf<String?>(null) }
     val pendingDelete = conversations.firstOrNull { it.id == pendingDeleteId }
@@ -1626,26 +1635,26 @@ private fun NativeConversationsPane(
         tonalElevation = 1.dp,
         modifier = Modifier
             .fillMaxSize()
-            .testTag("native_conversations_pane")
+            .testTag("native_conversations_pane"),
     ) {
         Column(
             verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .padding(16.dp)
+                .padding(16.dp),
         ) {
             Text(
                 text = "Native conversations",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
             )
 
             FilledTonalButton(
                 onClick = onNew,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("btn_new_native_conversation")
+                    .testTag("btn_new_native_conversation"),
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
@@ -1655,7 +1664,7 @@ private fun NativeConversationsPane(
                 onClick = onNewIncognito,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("btn_new_incognito_conversation")
+                    .testTag("btn_new_incognito_conversation"),
             ) {
                 Icon(Icons.Outlined.VisibilityOff, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
@@ -1666,7 +1675,7 @@ private fun NativeConversationsPane(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
+                    .weight(1f),
             ) {
                 items(conversations, key = { it.id }) { conversation ->
                     val isActive = conversation.id == activeConversationId
@@ -1674,7 +1683,7 @@ private fun NativeConversationsPane(
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
                         Surface(
                             shape = MaterialTheme.shapes.medium,
@@ -1686,18 +1695,18 @@ private fun NativeConversationsPane(
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable { onSelect(conversation.id) }
-                                .testTag("native_conversation_${conversation.id}")
+                                .testTag("native_conversation_${conversation.id}"),
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             ) {
                                 if (isActive) {
                                     Icon(
                                         Icons.Default.Check,
                                         contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(18.dp),
                                     )
                                 }
                                 Column(modifier = Modifier.weight(1f)) {
@@ -1709,19 +1718,19 @@ private fun NativeConversationsPane(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
+                                        fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
                                     )
                                     Text(
                                         "${conversation.selectedProvider.shortName} • $userTurns ${if (userTurns == 1) "turn" else "turns"}",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
                             }
                         }
                         IconButton(
                             onClick = { pendingDeleteId = conversation.id },
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(40.dp),
                         ) {
                             Icon(Icons.Outlined.Delete, contentDescription = "Delete conversation")
                         }
@@ -1741,14 +1750,14 @@ private fun NativeConversationsPane(
                     onClick = {
                         onDelete(conversation.id)
                         pendingDeleteId = null
-                    }
+                    },
                 ) {
                     Text("Delete")
                 }
             },
             dismissButton = {
                 TextButton(onClick = { pendingDeleteId = null }) { Text("Cancel") }
-            }
+            },
         )
     }
 }
@@ -1769,7 +1778,7 @@ fun ChatMessageItem(
     isStarred: Boolean = false,
     onToggleStar: (() -> Unit)? = null,
     onSelectText: (() -> Unit)? = null,
-    onSaveToLibrary: (() -> Unit)? = null
+    onSaveToLibrary: (() -> Unit)? = null,
 ) {
     val isUser = message.sender == "user"
     val tables = remember(message.id, message.text, message.isPartial, message.isError) {
@@ -1783,12 +1792,12 @@ fun ChatMessageItem(
         modifier = Modifier
             .fillMaxWidth()
             .testTag(if (isUser) "user_message_bubble" else "assistant_message_bubble_${provider.id}"),
-        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
+        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.padding(bottom = 4.dp, start = 4.dp, end = 4.dp)
+            modifier = Modifier.padding(bottom = 4.dp, start = 4.dp, end = 4.dp),
         ) {
             if (!isUser) {
                 Box(
@@ -1796,13 +1805,13 @@ fun ChatMessageItem(
                         .size(18.dp)
                         .clip(CircleShape)
                         .background(providerColor.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = getProviderIcon(provider),
                         contentDescription = null,
                         tint = providerColor,
-                        modifier = Modifier.size(12.dp)
+                        modifier = Modifier.size(12.dp),
                     )
                 }
                 Text(
@@ -1810,7 +1819,7 @@ fun ChatMessageItem(
                     style = MaterialTheme.typography.labelSmall,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = providerColor
+                    color = providerColor,
                 )
                 message.modelName?.let { model ->
                     Text(
@@ -1821,14 +1830,14 @@ fun ChatMessageItem(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         // Long gateway model ids must not squeeze the star button off the row.
-                        modifier = Modifier.weight(1f, fill = false)
+                        modifier = Modifier.weight(1f, fill = false),
                     )
                 }
                 if (message.isSimulated) {
                     Surface(
                         shape = MaterialTheme.shapes.extraSmall,
                         color = MaterialTheme.colorScheme.tertiaryContainer,
-                        modifier = Modifier.testTag("badge_simulated_${message.id}")
+                        modifier = Modifier.testTag("badge_simulated_${message.id}"),
                     ) {
                         Text(
                             text = "SIMULATED",
@@ -1836,7 +1845,7 @@ fun ChatMessageItem(
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
                         )
                     }
                 }
@@ -1846,13 +1855,13 @@ fun ChatMessageItem(
                     style = MaterialTheme.typography.labelSmall,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary,
                 )
                 Icon(
                     imageVector = Icons.Default.Person,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(14.dp),
                 )
             }
             if (onToggleStar != null) {
@@ -1860,13 +1869,13 @@ fun ChatMessageItem(
                     onClick = onToggleStar,
                     modifier = Modifier
                         .size(24.dp)
-                        .testTag("btn_star_${message.id}")
+                        .testTag("btn_star_${message.id}"),
                 ) {
                     Icon(
                         imageVector = if (isStarred) Icons.Filled.Star else Icons.Outlined.StarBorder,
                         contentDescription = if (isStarred) "Unstar message" else "Star message",
                         tint = if (isStarred) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size(14.dp),
                     )
                 }
             }
@@ -1877,7 +1886,7 @@ fun ChatMessageItem(
                 topStart = 16.dp,
                 topEnd = 16.dp,
                 bottomStart = if (isUser) 16.dp else 4.dp,
-                bottomEnd = if (isUser) 4.dp else 16.dp
+                bottomEnd = if (isUser) 4.dp else 16.dp,
             ),
             colors = CardDefaults.cardColors(
                 containerColor = if (isUser) {
@@ -1886,12 +1895,14 @@ fun ChatMessageItem(
                     MaterialTheme.colorScheme.errorContainer
                 } else {
                     MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                }
+                },
             ),
             border = if (!isUser) {
                 BorderStroke(1.dp, providerColor.copy(alpha = 0.25f))
-            } else null,
-            modifier = Modifier.widthIn(max = maxBubbleWidth)
+            } else {
+                null
+            },
+            modifier = Modifier.widthIn(max = maxBubbleWidth),
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
                 val textColor = if (isUser) {
@@ -1918,7 +1929,7 @@ fun ChatMessageItem(
                             TextButton(
                                 onClick = onSaveToLibrary,
                                 colors = ButtonDefaults.textButtonColors(contentColor = textColor),
-                                modifier = Modifier.testTag("btn_save_prompt_${message.id}")
+                                modifier = Modifier.testTag("btn_save_prompt_${message.id}"),
                             ) {
                                 Text("Save to Library")
                             }
@@ -1926,7 +1937,7 @@ fun ChatMessageItem(
                         TextButton(
                             onClick = { isExpanded = !isExpanded },
                             colors = ButtonDefaults.textButtonColors(contentColor = textColor),
-                            modifier = Modifier.testTag("btn_expand_message_${message.id}")
+                            modifier = Modifier.testTag("btn_expand_message_${message.id}"),
                         ) {
                             Text(if (isExpanded) "Show less" else "Show more")
                         }
@@ -1964,7 +1975,7 @@ fun ChatMessageItem(
                                         overflowsPreview = layout.hasVisualOverflow
                                         previewEnd = layout.getLineEnd(layout.lineCount - 1, visibleEnd = true)
                                     }
-                                }
+                                },
                             )
                         }
                     }
@@ -1979,7 +1990,7 @@ fun ChatMessageItem(
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
-                            lineHeight = 14.sp
+                            lineHeight = 14.sp,
                         )
                     }
                 }
@@ -1993,7 +2004,7 @@ fun ChatMessageItem(
                             .clip(MaterialTheme.shapes.small)
                             .background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.35f))
                             .padding(8.dp)
-                            .testTag("tool_receipts_${message.id}")
+                            .testTag("tool_receipts_${message.id}"),
                     ) {
                         Text(
                             text = "Tool activity",
@@ -2006,7 +2017,7 @@ fun ChatMessageItem(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .semantics(mergeDescendants = true) {}
-                                    .testTag("tool_receipt_${message.id}_$index")
+                                    .testTag("tool_receipt_${message.id}_$index"),
                             ) {
                                 Text(
                                     text = "${receipt.toolName} · ${receipt.decision.toolReceiptLabel()}",
@@ -2032,14 +2043,14 @@ fun ChatMessageItem(
                             .fillMaxWidth()
                             .clip(MaterialTheme.shapes.small)
                             .background(MaterialTheme.colorScheme.background.copy(alpha = 0.5f))
-                            .padding(8.dp)
+                            .padding(8.dp),
                     ) {
                         message.activeProfileNotes.forEach { note ->
                             Text(
                                 text = "• $note",
                                 fontSize = 10.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                lineHeight = 14.sp
+                                lineHeight = 14.sp,
                             )
                         }
                     }
@@ -2056,14 +2067,14 @@ fun ChatMessageItem(
                                 .clip(MaterialTheme.shapes.small)
                                 .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f))
                                 .padding(start = 10.dp)
-                                .testTag("skill_card_$index")
+                                .testTag("skill_card_$index"),
                         ) {
                             Text(
                                 text = card.title,
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
                             )
                             TextButton(onClick = { ActiveSkillCardActivity.open(context, card) }) {
                                 Text("Open")
@@ -2077,7 +2088,7 @@ fun ChatMessageItem(
                     Row(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
                         if (tables.isNotEmpty()) {
                             Box {
@@ -2087,13 +2098,13 @@ fun ChatMessageItem(
                                     },
                                     modifier = Modifier
                                         .size(28.dp)
-                                        .testTag("btn_view_table_${message.id}")
+                                        .testTag("btn_view_table_${message.id}"),
                                 ) {
                                     Icon(
                                         imageVector = Icons.Outlined.TableChart,
                                         contentDescription = markdownTableActionLabel(tables.first(), 0, tables.size)
                                             .takeIf { tables.size == 1 } ?: "View tables",
-                                        modifier = Modifier.size(15.dp)
+                                        modifier = Modifier.size(15.dp),
                                     )
                                 }
                                 DropdownMenu(expanded = showTableMenu, onDismissRequest = { showTableMenu = false }) {
@@ -2104,7 +2115,7 @@ fun ChatMessageItem(
                                                 showTableMenu = false
                                                 onViewTable(table)
                                             },
-                                            modifier = Modifier.testTag("btn_view_table_${message.id}_$index")
+                                            modifier = Modifier.testTag("btn_view_table_${message.id}_$index"),
                                         )
                                     }
                                 }
@@ -2115,12 +2126,12 @@ fun ChatMessageItem(
                             enabled = canOpenMarkdown,
                             modifier = Modifier
                                 .size(28.dp)
-                                .testTag("btn_open_response_markdown_${message.id}")
+                                .testTag("btn_open_response_markdown_${message.id}"),
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Description,
                                 contentDescription = "Open response as Markdown",
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(15.dp),
                             )
                         }
                         if (canBranch) {
@@ -2128,13 +2139,13 @@ fun ChatMessageItem(
                                 onClick = onBranch,
                                 modifier = Modifier
                                     .size(28.dp)
-                                    .testTag("btn_branch_from_${message.id}")
+                                    .testTag("btn_branch_from_${message.id}"),
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Outlined.CallSplit,
                                     contentDescription = "Branch from this reply",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(15.dp),
                                 )
                             }
                         }
@@ -2143,25 +2154,25 @@ fun ChatMessageItem(
                                 onClick = onSelectText,
                                 modifier = Modifier
                                     .size(28.dp)
-                                    .testTag("btn_select_text_${message.id}")
+                                    .testTag("btn_select_text_${message.id}"),
                             ) {
                                 Icon(
                                     imageVector = Icons.Outlined.FormatQuote,
                                     contentDescription = "Select text or quote",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(15.dp),
                                 )
                             }
                         }
                         IconButton(
                             onClick = { onCopyText(message.text) },
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(28.dp),
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.ContentCopy,
                                 contentDescription = "Copy message",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(15.dp),
                             )
                         }
                     }
@@ -2175,26 +2186,26 @@ fun ChatMessageItem(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier
                     .padding(top = 2.dp, end = 4.dp)
-                    .testTag("queued_message_${message.id}")
+                    .testTag("queued_message_${message.id}"),
             ) {
                 Icon(
                     Icons.Outlined.CloudOff,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(14.dp),
                 )
                 Text(
                     text = "Will send when you're back online",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 TextButton(
                     onClick = onEditQueued,
-                    modifier = Modifier.testTag("btn_edit_queued_${message.id}")
+                    modifier = Modifier.testTag("btn_edit_queued_${message.id}"),
                 ) { Text("Edit") }
                 TextButton(
                     onClick = onCancelQueued,
-                    modifier = Modifier.testTag("btn_cancel_queued_${message.id}")
+                    modifier = Modifier.testTag("btn_cancel_queued_${message.id}"),
                 ) { Text("Cancel") }
             }
         }
@@ -2209,32 +2220,32 @@ fun GeneratingIndicator(activeProviders: Set<AiProvider>) {
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
             animation = tween(600, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
+            repeatMode = RepeatMode.Reverse,
         ),
-        label = "alpha"
+        label = "alpha",
     )
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
-        horizontalAlignment = Alignment.Start
+        horizontalAlignment = Alignment.Start,
     ) {
         Card(
             shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            )
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            ),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             ) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(16.dp),
                     strokeWidth = 2.dp,
-                    color = AccentCyan
+                    color = AccentCyan,
                 )
                 val providerNames = if (activeProviders.isEmpty()) {
                     "AI Assistant"
@@ -2246,7 +2257,7 @@ fun GeneratingIndicator(activeProviders: Set<AiProvider>) {
                     style = MaterialTheme.typography.bodySmall,
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.graphicsLayer { this.alpha = alpha }
+                    modifier = Modifier.graphicsLayer { this.alpha = alpha },
                 )
             }
         }
@@ -2265,8 +2276,8 @@ fun ApiKeySettingsDialog(
         kimi: String,
         openRouter: String,
         aiHubMix: String,
-        vercel: String
-    ) -> Unit
+        vercel: String,
+    ) -> Unit,
 ) {
     var geminiKey by remember { mutableStateOf(currentKeys.geminiKey) }
     var openAiKey by remember { mutableStateOf(currentKeys.openAiKey) }
@@ -2282,7 +2293,7 @@ fun ApiKeySettingsDialog(
         title = {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Icon(Icons.Default.Key, contentDescription = null, tint = AccentEmerald)
                 Text("AI Provider API Keys", fontWeight = FontWeight.Bold)
@@ -2294,12 +2305,12 @@ fun ApiKeySettingsDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .padding(vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
                     text = "Enter API keys for direct providers and optional gateways. Keys are stored locally on device.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
                 OutlinedTextField(
@@ -2314,7 +2325,7 @@ fun ApiKeySettingsDialog(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("input_gemini_api_key")
+                        .testTag("input_gemini_api_key"),
                 )
 
                 OutlinedTextField(
@@ -2329,7 +2340,7 @@ fun ApiKeySettingsDialog(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("input_openai_api_key")
+                        .testTag("input_openai_api_key"),
                 )
 
                 OutlinedTextField(
@@ -2344,7 +2355,7 @@ fun ApiKeySettingsDialog(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("input_claude_api_key")
+                        .testTag("input_claude_api_key"),
                 )
 
                 OutlinedTextField(
@@ -2359,7 +2370,7 @@ fun ApiKeySettingsDialog(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("input_deepseek_api_key")
+                        .testTag("input_deepseek_api_key"),
                 )
 
                 OutlinedTextField(
@@ -2374,7 +2385,7 @@ fun ApiKeySettingsDialog(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("input_kimi_api_key")
+                        .testTag("input_kimi_api_key"),
                 )
 
                 OutlinedTextField(
@@ -2389,7 +2400,7 @@ fun ApiKeySettingsDialog(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("input_openrouter_api_key")
+                        .testTag("input_openrouter_api_key"),
                 )
 
                 OutlinedTextField(
@@ -2404,7 +2415,7 @@ fun ApiKeySettingsDialog(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("input_aihubmix_api_key")
+                        .testTag("input_aihubmix_api_key"),
                 )
 
                 OutlinedTextField(
@@ -2419,7 +2430,7 @@ fun ApiKeySettingsDialog(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("input_vercel_ai_gateway_key")
+                        .testTag("input_vercel_ai_gateway_key"),
                 )
             }
         },
@@ -2427,7 +2438,7 @@ fun ApiKeySettingsDialog(
             Button(
                 onClick = { onSave(geminiKey, openAiKey, claudeKey, deepseekKey, kimiKey, openRouterKey, aiHubMixKey, vercelAiGatewayKey) },
                 colors = ButtonDefaults.buttonColors(containerColor = AccentEmerald),
-                modifier = Modifier.testTag("btn_save_api_keys")
+                modifier = Modifier.testTag("btn_save_api_keys"),
             ) {
                 Text("Save Keys")
             }
@@ -2435,7 +2446,7 @@ fun ApiKeySettingsDialog(
         dismissButton = {
             TextButton(
                 onClick = onDismiss,
-                modifier = Modifier.testTag("btn_cancel_api_keys")
+                modifier = Modifier.testTag("btn_cancel_api_keys"),
             ) {
                 Text("Cancel")
             }
@@ -2474,7 +2485,6 @@ fun getProviderIcon(provider: AiProvider): ImageVector {
     }
 }
 
-
 @Composable
 private fun ProjectLibraryDialog(
     archive: ProjectLibraryArchive,
@@ -2503,7 +2513,7 @@ private fun ProjectLibraryDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 520.dp)
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(rememberScrollState()),
             ) {
                 Text(
                     "Conversation project",
@@ -2558,7 +2568,7 @@ private fun ProjectLibraryDialog(
                                 Text(asset.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             },
                             supportingContent = {
-                                Text("${asset.mediaType} · ${asset.sizeBytes} B")
+                                Text("${asset.mediaType} · ${asset.sizeBytes} B · rev ${asset.revision}")
                             },
                             trailingContent = {
                                 Row {
@@ -2594,7 +2604,7 @@ private fun IncognitoBadge() {
     Surface(
         shape = MaterialTheme.shapes.extraSmall,
         color = MaterialTheme.colorScheme.inverseSurface,
-        modifier = Modifier.testTag("badge_incognito")
+        modifier = Modifier.testTag("badge_incognito"),
     ) {
         Text(
             text = "INCOGNITO",
@@ -2602,7 +2612,7 @@ private fun IncognitoBadge() {
             style = MaterialTheme.typography.labelSmall,
             fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.inverseOnSurface
+            color = MaterialTheme.colorScheme.inverseOnSurface,
         )
     }
 }
@@ -2613,17 +2623,17 @@ internal fun IncognitoChatBanner(onSaveAsNormal: () -> Unit, modifier: Modifier 
         color = MaterialTheme.colorScheme.inverseSurface,
         modifier = modifier
             .fillMaxWidth()
-            .testTag("banner_incognito_chat")
+            .testTag("banner_incognito_chat"),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp)
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
         ) {
             Icon(
                 Icons.Outlined.VisibilityOff,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.inverseOnSurface,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(18.dp),
             )
             Text(
                 text = "Incognito: not saved, no notifications or widgets. Leaving discards it.",
@@ -2631,11 +2641,11 @@ internal fun IncognitoChatBanner(onSaveAsNormal: () -> Unit, modifier: Modifier 
                 color = MaterialTheme.colorScheme.inverseOnSurface,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 10.dp)
+                    .padding(horizontal = 10.dp),
             )
             TextButton(
                 onClick = onSaveAsNormal,
-                modifier = Modifier.testTag("btn_save_incognito_as_normal")
+                modifier = Modifier.testTag("btn_save_incognito_as_normal"),
             ) {
                 Text("Save as normal chat", color = MaterialTheme.colorScheme.inversePrimary)
             }
@@ -2657,7 +2667,7 @@ internal fun ChatContextWarningBanner(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 6.dp)
-            .testTag("chat_context_warning")
+            .testTag("chat_context_warning"),
     ) {
         Column(modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 8.dp)) {
             Text(text = message, style = MaterialTheme.typography.bodySmall)
@@ -2693,7 +2703,7 @@ private fun StarredMessagesDialog(
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
-                    modifier = Modifier.testTag("starred_messages_list")
+                    modifier = Modifier.testTag("starred_messages_list"),
                 ) {
                     items(messages, key = { it.id }) { message ->
                         val note = notes[message.id]
@@ -2704,7 +2714,7 @@ private fun StarredMessagesDialog(
                                     .clip(MaterialTheme.shapes.small)
                                     .clickable { onJump(message) }
                                     .padding(8.dp)
-                                    .testTag("starred_message_${message.id}")
+                                    .testTag("starred_message_${message.id}"),
                             ) {
                                 Text(
                                     text = if (message.sender == CHAT_ROLE_USER) {
@@ -2713,13 +2723,13 @@ private fun StarredMessagesDialog(
                                         message.provider?.shortName ?: "Assistant"
                                     },
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.colorScheme.primary,
                                 )
                                 Text(
                                     text = message.text.trim(),
                                     style = MaterialTheme.typography.bodySmall,
                                     maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                                 if (note != null) {
                                     Text(
@@ -2727,13 +2737,13 @@ private fun StarredMessagesDialog(
                                         style = MaterialTheme.typography.bodySmall,
                                         fontStyle = FontStyle.Italic,
                                         color = MaterialTheme.colorScheme.tertiary,
-                                        modifier = Modifier.testTag("star_note_${message.id}")
+                                        modifier = Modifier.testTag("star_note_${message.id}"),
                                     )
                                 }
                             }
                             IconButton(
                                 onClick = { onEditNote(message) },
-                                modifier = Modifier.testTag("btn_star_note_${message.id}")
+                                modifier = Modifier.testTag("btn_star_note_${message.id}"),
                             ) {
                                 Icon(
                                     imageVector = Icons.Outlined.Edit,
@@ -2747,7 +2757,7 @@ private fun StarredMessagesDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) { Text("Close") }
-        }
+        },
     )
 }
 
@@ -2769,7 +2779,7 @@ private fun StarNoteDialog(
                 singleLine = true,
                 placeholder = { Text("Why this message matters") },
                 supportingText = { Text("${note.length}/$MAX_NATIVE_STAR_NOTE_CHARS · stays on this device") },
-                modifier = Modifier.fillMaxWidth().testTag("input_star_note")
+                modifier = Modifier.fillMaxWidth().testTag("input_star_note"),
             )
         },
         confirmButton = {
@@ -2779,7 +2789,7 @@ private fun StarNoteDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        },
     )
 }
 
@@ -2801,7 +2811,7 @@ private fun NativeChatTimelineRail(
         modifier = modifier
             .fillMaxHeight()
             .width(NATIVE_CHAT_TIMELINE_TARGET_WIDTH)
-            .testTag("native_chat_timeline")
+            .testTag("native_chat_timeline"),
     ) {
         // Each marker owns a 48x48dp, non-overlapping tap target; only marker rows take touches,
         // so the rest of the rail leaves the message bubbles underneath tappable.
@@ -2844,21 +2854,21 @@ private fun NativeChatTimelineRail(
                         .size(width = NATIVE_CHAT_TIMELINE_TARGET_WIDTH, height = markerSize)
                         .clickable(onClickLabel = description) { onJump(marker) }
                         .semantics { contentDescription = description }
-                        .testTag("timeline_marker_${marker.messageId}")
+                        .testTag("timeline_marker_${marker.messageId}"),
                 ) {
                     if (marker.isStarred) {
                         Icon(
                             imageVector = Icons.Filled.Star,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.tertiary,
-                            modifier = Modifier.size(12.dp)
+                            modifier = Modifier.size(12.dp),
                         )
                     } else {
                         Box(
                             modifier = Modifier
                                 .size(6.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f))
+                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)),
                         )
                     }
                 }
@@ -2922,7 +2932,7 @@ internal fun SelectMessageTextDialog(
                                 false
                             }
                         }
-                        .testTag("select_text_field")
+                        .testTag("select_text_field"),
                 )
             }
         },
@@ -2930,7 +2940,7 @@ internal fun SelectMessageTextDialog(
             TextButton(
                 onClick = { onQuote(excerpt) },
                 enabled = excerpt.isNotBlank(),
-                modifier = Modifier.testTag("btn_quote_selection")
+                modifier = Modifier.testTag("btn_quote_selection"),
             ) {
                 Text(if (hasSelection) "Quote selection" else "Quote all")
             }
@@ -2940,12 +2950,12 @@ internal fun SelectMessageTextDialog(
                 TextButton(
                     onClick = { onCopy(excerpt) },
                     enabled = excerpt.isNotEmpty(),
-                    modifier = Modifier.testTag("btn_copy_selection")
+                    modifier = Modifier.testTag("btn_copy_selection"),
                 ) {
                     Text(if (hasSelection) "Copy selection" else "Copy all")
                 }
                 TextButton(onClick = onDismiss) { Text("Close") }
             }
-        }
+        },
     )
 }

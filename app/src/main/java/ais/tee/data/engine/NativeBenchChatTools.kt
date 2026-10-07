@@ -1,6 +1,5 @@
 package ais.tee.data.engine
 
-import android.content.Context
 import ais.tee.data.codebench.CodebenchBarcodeCodec
 import ais.tee.data.codebench.CodebenchBarcodeFormat
 import ais.tee.data.codebench.CodebenchBarcodeMatrix
@@ -20,25 +19,25 @@ import ais.tee.data.model.DEFAULT_PROJECT_ID
 import ais.tee.data.model.MAX_NATIVE_TOOL_RESULT_CHARS
 import ais.tee.data.model.NativeToolCall
 import ais.tee.data.model.NativeToolDefinition
-import ais.tee.data.model.NativeToolResult
 import ais.tee.data.model.NativeToolReceipt
+import ais.tee.data.model.NativeToolResult
+import ais.tee.data.model.ProjectLibraryAssetKind
+import ais.tee.data.model.ProjectLibraryAssetOrigin
 import ais.tee.data.model.availability
 import ais.tee.data.preferences.BuiltInBenchPreferencesStore
 import ais.tee.data.preferences.ProjectLibraryStore
 import ais.tee.data.security.TextInspector
 import ais.tee.data.tokenizer.LocalTokenCounter
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
-import kotlinx.serialization.json.putJsonObject
 
 private const val FORMAT_STRUCTURED = "docbench_format_structured_text"
 private const val REPAIR_MARKDOWN = "docbench_repair_markdown"
@@ -191,7 +190,7 @@ internal class NativeBenchChatTools(
                 put("changed", result.changed)
                 put("format", format.name.lowercase())
                 put("text", result.text)
-            }
+            },
         )
     }
 
@@ -207,7 +206,7 @@ internal class NativeBenchChatTools(
                 put("changed", result.changed)
                 put("repairedIssueCount", result.repairedIssueCount)
                 put("text", result.text)
-            }
+            },
         )
     }
 
@@ -226,7 +225,7 @@ internal class NativeBenchChatTools(
                 put("changed", normalized != text)
                 put("target", target.name)
                 put("text", normalized)
-            }
+            },
         )
     }
 
@@ -243,18 +242,20 @@ internal class NativeBenchChatTools(
                 put("truncated", inspection.truncated || inspection.findings.size > MAX_INSPECTOR_FINDINGS_FOR_MODEL)
                 putJsonArray("findings") {
                     inspection.findings.take(MAX_INSPECTOR_FINDINGS_FOR_MODEL).forEach { finding ->
-                        add(buildJsonObject {
-                            put("severity", finding.severity.name.lowercase())
-                            put("kind", finding.kind)
-                            put("label", finding.label)
-                            put("detail", finding.detail)
-                            put("line", finding.line)
-                            put("column", finding.column)
-                            put("length", finding.length)
-                        })
+                        add(
+                            buildJsonObject {
+                                put("severity", finding.severity.name.lowercase())
+                                put("kind", finding.kind)
+                                put("label", finding.label)
+                                put("detail", finding.detail)
+                                put("line", finding.line)
+                                put("column", finding.column)
+                                put("length", finding.length)
+                            },
+                        )
                     }
                 }
-            }
+            },
         )
     }
 
@@ -265,7 +266,7 @@ internal class NativeBenchChatTools(
             buildJsonObject {
                 put("encoding", LocalTokenCounter.ENCODING_LABEL)
                 put("tokens", LocalTokenCounter.count(text))
-            }
+            },
         )
     }
 
@@ -293,6 +294,8 @@ internal class NativeBenchChatTools(
             mediaType = "image/svg+xml",
             extension = "svg",
             text = matrix.toSvg(),
+            kind = ProjectLibraryAssetKind.ARTIFACT,
+            origin = ProjectLibraryAssetOrigin.TOOL_OUTPUT,
         ) ?: return errorResult(call, "Could not save generated QR to Project Library.")
         generatedQrAssets++
         return successResult(
@@ -304,7 +307,7 @@ internal class NativeBenchChatTools(
                 put("mediaType", asset.mediaType)
                 put("width", matrix.width)
                 put("height", matrix.height)
-            }
+            },
         )
     }
 
@@ -362,7 +365,8 @@ internal class NativeBenchChatTools(
         FORMAT_STRUCTURED,
         REPAIR_MARKDOWN,
         NORMALIZE_EOL,
-        COUNT_TOKENS -> BuiltInBenchTool.DOCBENCH_DOCUMENT
+        COUNT_TOKENS,
+        -> BuiltInBenchTool.DOCBENCH_DOCUMENT
         INSPECT_TEXT -> BuiltInBenchTool.DOCBENCH_TEXT_INSPECTOR
         GENERATE_QR -> BuiltInBenchTool.CODEBENCH_QR_BARCODE
         else -> null
@@ -387,10 +391,13 @@ internal class NativeBenchChatTools(
             inputSchema = objectSchema(
                 properties = buildJsonObject {
                     put("text", textProperty)
-                    put("format", buildJsonObject {
-                        put("type", "string")
-                        put("enum", JsonArray(listOf("json", "json5", "yaml").map(::JsonPrimitive)))
-                    })
+                    put(
+                        "format",
+                        buildJsonObject {
+                            put("type", "string")
+                            put("enum", JsonArray(listOf("json", "json5", "yaml").map(::JsonPrimitive)))
+                        },
+                    )
                 },
                 required = listOf("text", "format"),
             ),
@@ -411,10 +418,13 @@ internal class NativeBenchChatTools(
             inputSchema = objectSchema(
                 properties = buildJsonObject {
                     put("text", textProperty)
-                    put("target", buildJsonObject {
-                        put("type", "string")
-                        put("enum", JsonArray(listOf("LF", "CRLF", "CR").map(::JsonPrimitive)))
-                    })
+                    put(
+                        "target",
+                        buildJsonObject {
+                            put("type", "string")
+                            put("enum", JsonArray(listOf("LF", "CRLF", "CR").map(::JsonPrimitive)))
+                        },
+                    )
                 },
                 required = listOf("text", "target"),
             ),
@@ -438,20 +448,25 @@ internal class NativeBenchChatTools(
             ),
         )
 
-
         val qrDefinition = NativeToolDefinition(
             name = GENERATE_QR,
             description = "Generate a QR code locally from inline text and save it as an SVG asset in Aistee Project Library. Returns metadata only, not image bytes.",
             inputSchema = objectSchema(
                 properties = buildJsonObject {
-                    put("text", buildJsonObject {
-                        put("type", "string")
-                        put("description", "QR payload, up to 4096 UTF-16 code units.")
-                    })
-                    put("title", buildJsonObject {
-                        put("type", "string")
-                        put("description", "Optional short title for the saved Library asset.")
-                    })
+                    put(
+                        "text",
+                        buildJsonObject {
+                            put("type", "string")
+                            put("description", "QR payload, up to 4096 UTF-16 code units.")
+                        },
+                    )
+                    put(
+                        "title",
+                        buildJsonObject {
+                            put("type", "string")
+                            put("description", "Optional short title for the saved Library asset.")
+                        },
+                    )
                 },
                 required = listOf("text"),
             ),

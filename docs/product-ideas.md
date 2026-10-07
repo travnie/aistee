@@ -58,7 +58,7 @@ Keep skill source directly inspectable and editable. Importing Markdown must nev
 
 Treat Project Library as Aistee's canonical workspace/file layer rather than creating a second Docbench-specific store.
 
-- Evolve the existing Project Library asset model instead of adding a parallel repository. Add durable editing metadata such as asset kind, updated time, content hash, revision, origin/storage reference and optional ETag/conflict state while preserving stable asset IDs and source provenance.
+- **Shipped local foundation:** Project Library schema v2 keeps stable asset IDs while adding editable revisions, updated time, SHA-256 content identity, asset kind/origin and optimistic revision checks. The v1 index migrates in place without moving the existing local asset directory; remote storage references and ETags remain future sync concerns.
 - Keep local storage authoritative for normal use. Local projects, files, prompts, instructions, skills and generated artifacts remain usable without an Aistee account, network access or cloud sync.
 - Model prompts, system instructions, reusable context, skill sources and generated artifacts as typed workspace assets over the same storage contract instead of separate silos. Keep `trvny/.ai` canonical for portable profiles/instructions/skills; Aistee may link, import or synchronize through an explicit adapter without becoming a competing upstream.
 - Give the shared layer one narrow asset-store contract for list/read/write/search/delete/version operations. The current Android Project Library store becomes the local adapter; platform/cloud adapters must preserve the same ownership and provenance rules.
@@ -71,7 +71,7 @@ Treat Project Library as Aistee's canonical workspace/file layer rather than cre
 
 Suggested implementation order:
 
-1. Project Library v2 editing/revision/origin metadata while keeping current stable asset identity and chat source provenance.
+1. **Shipped local foundation:** Project Library v2 editing/revision/hash/origin metadata with stable asset identity, safe v1 migration, conflict-aware Markdown save-back and existing chat source provenance.
 2. Docbench typed transforms plus preview/save-back into Project Library.
 3. Docbench MCP App and file-entrypoint integration, using host resource reads/writes where supported.
 4. Optional Cloudflare R2 + D1 synchronization behind explicit enablement and conflict handling.

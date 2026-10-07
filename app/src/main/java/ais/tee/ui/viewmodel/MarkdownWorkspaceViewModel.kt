@@ -1,9 +1,5 @@
 package ais.tee.ui.viewmodel
 
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import ais.tee.data.document.DocumentDiagnostics
 import ais.tee.data.document.LineEnding
 import ais.tee.data.document.MarkdownDocumentFileAccess
@@ -13,6 +9,10 @@ import ais.tee.data.document.MarkdownWorkspaceRecoveryStore
 import ais.tee.data.document.TextDocument
 import ais.tee.data.document.TextDocumentCodec
 import ais.tee.data.skills.localSkillSourceDigest
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -35,7 +35,12 @@ internal const val MAX_EDITABLE_MARKDOWN_CHARS = 1_000_000
 sealed interface MarkdownWorkspaceOrigin {
     data class LocalSkill(
         val name: String,
-        val sourceDigest: String = ""
+        val sourceDigest: String = "",
+    ) : MarkdownWorkspaceOrigin
+
+    data class ProjectLibrary(
+        val assetId: String,
+        val revision: Long,
     ) : MarkdownWorkspaceOrigin
 }
 
@@ -49,7 +54,7 @@ data class MarkdownWorkspaceUiState(
     val isImporting: Boolean = false,
     val isRecoveryLoading: Boolean = false,
     val openMarkdownRequestId: Long = 0L,
-    val origin: MarkdownWorkspaceOrigin? = null
+    val origin: MarkdownWorkspaceOrigin? = null,
 ) {
     val isBusy: Boolean
         get() = isRecoveryLoading || isExporting || isImporting
@@ -69,14 +74,14 @@ data class MarkdownExportSnapshot(
     val revision: Long,
     val document: TextDocument,
     val displayName: String,
-    val origin: MarkdownWorkspaceOrigin?
+    val origin: MarkdownWorkspaceOrigin?,
 )
 
 enum class ExternalMarkdownOpenResult {
     OPENED,
     NEEDS_DISCARD,
     BUSY,
-    TOO_LARGE
+    TOO_LARGE,
 }
 
 class MarkdownWorkspaceViewModel : ViewModel() {
@@ -180,7 +185,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
                 hadUtf8Bom = document.hadUtf8Bom,
                 displayName = MarkdownDocumentFileAccess.normalizeDisplayName(displayName),
                 isDirty = false,
-                revision = state.revision + 1
+                revision = state.revision + 1,
             )
             true
         }
@@ -193,7 +198,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
         displayName: String = SHARED_MARKDOWN_NAME,
         allowDiscardDirty: Boolean = false,
         origin: MarkdownWorkspaceOrigin? = null,
-        markDirty: Boolean = true
+        markDirty: Boolean = true,
     ): ExternalMarkdownOpenResult {
         if (text.encodeToByteArray().size > MarkdownDocumentFileAccess.MAX_DOCUMENT_BYTES) {
             return ExternalMarkdownOpenResult.TOO_LARGE
@@ -206,6 +211,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
                     origin
                 }
             }
+            is MarkdownWorkspaceOrigin.ProjectLibrary -> origin
             null -> null
         }
 
@@ -221,7 +227,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
                         isDirty = markDirty,
                         revision = state.revision + 1,
                         openMarkdownRequestId = nextOpenMarkdownRequestId++,
-                        origin = resolvedOrigin
+                        origin = resolvedOrigin,
                     )
                     ExternalMarkdownOpenResult.OPENED
                 }
@@ -266,7 +272,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
                 state.copy(
                     hadUtf8Bom = include,
                     isDirty = true,
-                    revision = state.revision + 1
+                    revision = state.revision + 1,
                 )
             }
         }
@@ -291,7 +297,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
                 state.copy(
                     text = repaired.document.text,
                     isDirty = true,
-                    revision = state.revision + 1
+                    revision = state.revision + 1,
                 )
             }
         }
@@ -309,7 +315,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
             revision = state.revision,
             document = documentFrom(state),
             displayName = state.displayName,
-            origin = state.origin
+            origin = state.origin,
         )
         _uiState.value = state.copy(isExporting = true)
         snapshot
@@ -327,7 +333,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
                 else -> state.copy(
                     displayName = MarkdownDocumentFileAccess.normalizeDisplayName(displayName),
                     isDirty = false,
-                    isExporting = false
+                    isExporting = false,
                 )
             }
             current
@@ -338,7 +344,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
 
     fun completeSourceSave(
         snapshot: MarkdownExportSnapshot,
-        persistedOrigin: MarkdownWorkspaceOrigin
+        persistedOrigin: MarkdownWorkspaceOrigin,
     ): Boolean {
         val stillCurrent = synchronized(this) {
             val state = _uiState.value
@@ -350,7 +356,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
                 state.copy(
                     origin = persistedOrigin,
                     isDirty = !current,
-                    isExporting = false
+                    isExporting = false,
                 )
             } else {
                 state.copy(isExporting = false)
@@ -376,8 +382,11 @@ class MarkdownWorkspaceViewModel : ViewModel() {
         val source = when (val origin = state.origin) {
             is MarkdownWorkspaceOrigin.LocalSkill -> MarkdownWorkspaceRecoverySource(
                 localSkillName = origin.name,
-                sourceDigest = origin.sourceDigest
+                sourceDigest = origin.sourceDigest,
             )
+            // Recovered Library drafts are deliberately detached from their source. A stale
+            // process-recovery snapshot must never regain permission to overwrite a newer revision.
+            is MarkdownWorkspaceOrigin.ProjectLibrary -> null
             null -> null
         }
         return MarkdownWorkspaceRecoverySnapshot(
@@ -385,7 +394,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
             hadUtf8Bom = state.hadUtf8Bom,
             displayName = state.displayName,
             isDirty = state.isDirty,
-            source = source
+            source = source,
         )
     }
 
@@ -434,7 +443,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
             hadUtf8Bom = snapshot.hadUtf8Bom,
             displayName = MarkdownDocumentFileAccess.normalizeDisplayName(
                 snapshot.displayName,
-                DEFAULT_MARKDOWN_NAME
+                DEFAULT_MARKDOWN_NAME,
             ),
             isDirty = snapshot.isDirty,
             revision = 1L,
@@ -442,14 +451,14 @@ class MarkdownWorkspaceViewModel : ViewModel() {
             origin = snapshot.source?.let { source ->
                 MarkdownWorkspaceOrigin.LocalSkill(
                     name = source.localSkillName,
-                    sourceDigest = source.sourceDigest
+                    sourceDigest = source.sourceDigest,
                 )
-            }
+            },
         )
 
     private fun documentFrom(state: MarkdownWorkspaceUiState): TextDocument = TextDocument(
         text = state.text,
         hadUtf8Bom = state.hadUtf8Bom,
-        lineEndings = TextDocumentCodec.detectLineEndings(state.text)
+        lineEndings = TextDocumentCodec.detectLineEndings(state.text),
     )
 }

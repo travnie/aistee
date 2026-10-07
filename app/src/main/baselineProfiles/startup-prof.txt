@@ -1,0 +1,5 @@
+SPLais/tee/data/model/LocalProject;->getId()Ljava/lang/String;
+SPLais/tee/data/model/ProjectLibraryKt;->normalizedAssets(Lais/tee/data/model/ProjectLibraryArchive;Ljava/util/Set;)Ljava/util/List;
+SPLais/tee/data/model/ProjectLibraryKt;->normalizedContents(Lais/tee/data/model/ProjectLibraryArchive;J)Lais/tee/data/model/ProjectLibraryArchive;
+SPLais/tee/data/model/ProjectLibraryKt;->normalizedProjectsWithInbox(Lais/tee/data/model/ProjectLibraryArchive;J)Ljava/util/List;
+SPLais/tee/data/preferences/ProjectLibraryStore;->recoverUnavailableAssetRevisions(Lais/tee/data/model/ProjectLibraryArchive;)Lais/tee/data/model/ProjectLibraryArchive;

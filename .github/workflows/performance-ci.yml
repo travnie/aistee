@@ -11,7 +11,7 @@ on: # yamllint disable-line rule:truthy
       - "app/src/main/**"
       - "shared/src/commonMain/**"
       - "shared/src/androidMain/**"
-      - "app/src/**/generated/baselineProfiles/**"
+      - "app/src/**/baselineProfiles/**"
       - "gradle/libs.versions.toml"
       - "gradle.properties"
       - "build.gradle.kts"
@@ -30,7 +30,7 @@ on: # yamllint disable-line rule:truthy
       - "app/src/main/AndroidManifest.xml"
       - "app/src/main/java/ais/tee/AisteeApplication.kt"
       - "app/src/main/java/ais/tee/MainActivity.kt"
-      - "app/src/**/generated/baselineProfiles/**"
+      - "app/src/**/baselineProfiles/**"
       - "gradle/libs.versions.toml"
       - "gradle.properties"
       - "build.gradle.kts"
@@ -108,22 +108,45 @@ jobs:
                   rules.add(rule)
               return sorted(rules)
 
+          def committed_profile_paths(startup: bool) -> list[pathlib.Path]:
+              names = subprocess.check_output(
+                  ["git", "ls-tree", "-r", "--name-only", "HEAD", "app/src"],
+                  text=True,
+              ).splitlines()
+              return [
+                  pathlib.Path(name)
+                  for name in names
+                  if "/baselineProfiles/" in name
+                  and name.endswith(".txt")
+                  and name.endswith("/startup-prof.txt") == startup
+              ]
+
+          def committed_rules(startup: bool) -> set[str]:
+              rules = set()
+              for path in committed_profile_paths(startup):
+                  committed = subprocess.check_output(
+                      ["git", "show", f"HEAD:{path.as_posix()}"],
+                      text=True,
+                  )
+                  rules.update(canonical_rules(committed))
+              return rules
+
           stale = False
-          root = pathlib.Path("app/src/release/generated/baselineProfiles")
-          for name in ("baseline-prof.txt", "startup-prof.txt"):
-              path = root / name
-              committed = subprocess.check_output(
-                  ["git", "show", f"HEAD:{path.as_posix()}"], text=True
-              )
-              committed_rules = set(canonical_rules(committed))
+          generated_root = pathlib.Path("app/src/release/generated/baselineProfiles")
+          for name, startup in (("baseline-prof.txt", False), ("startup-prof.txt", True)):
+              path = generated_root / name
+              expected_rules = committed_rules(startup)
               generated_rules = set(canonical_rules(path.read_text()))
-              missing = sorted(generated_rules - committed_rules)
+              missing = sorted(generated_rules - expected_rules)
               if missing:
                   stale = True
-                  print(f"::error::{name} is missing {len(missing)} generated Aistee rules")
+                  print(
+                      f"::error::{name} is missing {len(missing)} generated Aistee rules "
+                      "across committed profile sources"
+                  )
                   for rule in missing:
                       print(f"+{rule}")
-              extra = committed_rules - generated_rules
+              extra = expected_rules - generated_rules
               if extra:
                   print(
                       f"::notice::{name} keeps {len(extra)} additional stable Aistee rules "

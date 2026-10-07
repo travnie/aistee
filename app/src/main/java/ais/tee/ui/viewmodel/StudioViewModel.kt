@@ -207,20 +207,18 @@ data class StudioUiState(
 ) {
     val isActiveConversationIncognito: Boolean
         get() = incognitoConversationId != null && nativeChat.activeConversationId == incognitoConversationId
-    val activeNativeConversation: NativeChatConversation?
-        get() = nativeChat.activeConversation
     val chatMessages: List<ModelChatMessage>
-        get() = activeNativeConversation?.messages.orEmpty()
+        get() = nativeChat.activeConversation?.messages.orEmpty()
     val nativeChatDraft: String
-        get() = activeNativeConversation?.draft.orEmpty()
+        get() = nativeChat.activeConversation?.draft.orEmpty()
     val selectedChatProvider: AiProvider
-        get() = activeNativeConversation?.selectedProvider ?: AiProvider.ALL
+        get() = nativeChat.activeConversation?.selectedProvider ?: AiProvider.ALL
     val selectedChatModel: String
-        get() = activeNativeConversation?.selectedModel ?: "all"
+        get() = nativeChat.activeConversation?.selectedModel ?: "all"
     val apiProcessingMode: ApiProcessingMode
-        get() = activeNativeConversation?.apiProcessingMode ?: ApiProcessingMode.AUTO
+        get() = nativeChat.activeConversation?.apiProcessingMode ?: ApiProcessingMode.AUTO
     val includeSystemProfileInChat: Boolean
-        get() = activeNativeConversation?.includeSystemProfile ?: true
+        get() = nativeChat.activeConversation?.includeSystemProfile ?: true
 }
 
 enum class NavigationTab {
@@ -618,7 +616,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val state = _uiState.value
         // Incognito chats never reach launcher shortcuts, pinned or not.
         if (state.isActiveConversationIncognito) return false
-        val conversation = state.activeNativeConversation ?: return false
+        val conversation = state.nativeChat.activeConversation ?: return false
         return NativeChatConversationShortcuts.requestPin(getApplication(), conversation.id, conversation.title)
     }
 
@@ -967,7 +965,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun updateNativeConversationDraft(draft: String) {
         val state = _uiState.value
-        if (!state.isNativeConversationStoreReady || state.activeNativeConversation?.draft == draft) return
+        if (!state.isNativeConversationStoreReady || state.nativeChat.activeConversation?.draft == draft) return
         updateActiveNativeConversation(persist = false) {
             it.copy(draft = draft, draftSourceAssetIds = emptyList())
         }
@@ -995,7 +993,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     suspend fun saveActiveChatToProjectLibrary(): ProjectLibraryAsset? {
         if (_uiState.value.isActiveConversationIncognito) return null
-        val conversation = _uiState.value.activeNativeConversation ?: return null
+        val conversation = _uiState.value.nativeChat.activeConversation ?: return null
         val markdown = withContext(Dispatchers.Default) {
             renderChatMarkdown(
                 messages = conversation.messages,
@@ -1009,6 +1007,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 mediaType = "text/markdown",
                 extension = "md",
                 text = markdown,
+                kind = ProjectLibraryAssetKind.DOCUMENT,
+                origin = ProjectLibraryAssetOrigin.CHAT_EXPORT,
             )
         } ?: return null
         reloadProjectLibraryFromDisk()
@@ -1017,7 +1017,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     suspend fun saveTableCsvToProjectLibrary(csv: String): ProjectLibraryAsset? {
         if (_uiState.value.isActiveConversationIncognito) return null
-        val conversation = _uiState.value.activeNativeConversation ?: return null
+        val conversation = _uiState.value.nativeChat.activeConversation ?: return null
         val asset = withContext(Dispatchers.IO) {
             projectLibraryStore.saveTextAsset(
                 projectId = conversation.projectId,
@@ -1025,6 +1025,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 mediaType = "text/csv",
                 extension = "csv",
                 text = csv,
+                kind = ProjectLibraryAssetKind.ARTIFACT,
+                origin = ProjectLibraryAssetOrigin.CHAT_EXPORT,
             )
         } ?: return null
         reloadProjectLibraryFromDisk()
@@ -1034,7 +1036,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     /** Saves one long prompt as a plain-text Library asset in the active chat's project. */
     suspend fun saveLongPromptToProjectLibrary(text: String): ProjectLibraryAsset? {
         if (_uiState.value.isActiveConversationIncognito || !_uiState.value.isProjectLibraryReady) return null
-        val conversation = _uiState.value.activeNativeConversation ?: return null
+        val conversation = _uiState.value.nativeChat.activeConversation ?: return null
         val asset = withContext(Dispatchers.IO) {
             runCatching {
                 projectLibraryStore.saveTextAsset(
@@ -1043,6 +1045,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     mediaType = "text/plain",
                     extension = "txt",
                     text = text,
+                    kind = ProjectLibraryAssetKind.PROMPT,
+                    origin = ProjectLibraryAssetOrigin.LOCAL,
                 )
             }.getOrNull()
         } ?: return null
@@ -1053,23 +1057,39 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     suspend fun loadProjectLibraryAsset(assetId: String): String? =
         withContext(Dispatchers.IO) { projectLibraryStore.loadTextAsset(assetId)?.text }
 
+    suspend fun updateProjectLibraryAssetText(
+        assetId: String,
+        expectedRevision: Long,
+        text: String,
+    ): ProjectLibraryAsset? {
+        val updated = withContext(Dispatchers.IO) {
+            projectLibraryStore.updateTextAsset(
+                assetId = assetId,
+                expectedRevision = expectedRevision,
+                text = text,
+            )
+        } ?: return null
+        reloadProjectLibraryFromDisk()
+        return updated
+    }
+
     /**
      * Appends a text Library asset to the active native chat's draft. Fails rather than writing
      * into another chat if the active conversation or its draft changes while the asset loads.
      */
     suspend fun insertProjectLibraryAssetIntoDraft(asset: ProjectLibraryAsset, maxChars: Int): Boolean {
         val start = _uiState.value
-        val conversationId = start.activeNativeConversation?.id
+        val conversationId = start.nativeChat.activeConversation?.id
         if (conversationId == null || !start.isNativeConversationStoreReady || !asset.canInsertIntoDraft()) return false
         val text = loadProjectLibraryAsset(asset.id) ?: return false
-        val baseDraft = _uiState.value.activeNativeConversation
+        val baseDraft = _uiState.value.nativeChat.activeConversation
             ?.takeIf { it.id == conversationId }
             ?.draft
             ?: return false
         val draft = withContext(Dispatchers.Default) { appendToNativeChatDraft(text, baseDraft, maxChars) }
             ?: return false
         val current = _uiState.value
-        val active = current.activeNativeConversation
+        val active = current.nativeChat.activeConversation
         if (!current.isNativeConversationStoreReady || active?.id != conversationId || active.draft != baseDraft) {
             return false
         }
@@ -1233,7 +1253,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
         val firstUser = messages.firstOrNull { it.sender == CHAT_ROLE_USER } ?: return false
-        val template = _uiState.value.activeNativeConversation
+        val template = _uiState.value.nativeChat.activeConversation
         val conversation = NativeChatConversation(
             id = UUID.randomUUID().toString(),
             title = nativeConversationTitle(firstUser.text),
@@ -1263,6 +1283,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 mediaType = "text/markdown",
                 extension = "md",
                 text = source,
+                kind = ProjectLibraryAssetKind.DOCUMENT,
+                origin = ProjectLibraryAssetOrigin.IMPORTED,
             )
         }
         reloadProjectLibraryFromDisk()
@@ -1272,7 +1294,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun newNativeConversation() {
         if (!_uiState.value.isNativeConversationStoreReady) return
         cancelChatGeneration()
-        val template = _uiState.value.activeNativeConversation
+        val template = _uiState.value.nativeChat.activeConversation
         val conversation = createNativeConversation(template)
         _uiState.update { state ->
             state.withoutIncognitoConversation().let { current ->
@@ -1297,7 +1319,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (!state.isNativeConversationStoreReady || state.isChatGenerating || state.isActiveConversationIncognito) {
             return false
         }
-        val source = state.activeNativeConversation ?: return false
+        val source = state.nativeChat.activeConversation ?: return false
         val branch = source.forkAt(
             messageId = messageId,
             newConversationId = UUID.randomUUID().toString(),
@@ -1335,7 +1357,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun newIncognitoConversation() {
         if (!_uiState.value.isNativeConversationStoreReady) return
         cancelChatGeneration()
-        val template = _uiState.value.activeNativeConversation
+        val template = _uiState.value.nativeChat.activeConversation
         val conversation = createNativeConversation(template).copy(title = INCOGNITO_CONVERSATION_TITLE)
         _uiState.update { state ->
             state.withoutIncognitoConversation().let { current ->
@@ -1950,8 +1972,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         latest.chatMessages == current.chatMessages &&
                         latest.includeSystemProfileInChat == current.includeSystemProfileInChat &&
                         latest.renderedInstructions == current.renderedInstructions &&
-                        latest.activeNativeConversation?.projectId ==
-                        current.activeNativeConversation?.projectId &&
+                        latest.nativeChat.activeConversation?.projectId ==
+                        current.nativeChat.activeConversation?.projectId &&
                         latest.isActiveConversationIncognito == current.isActiveConversationIncognito
                 if (
                     stateStillMatches &&
@@ -1967,8 +1989,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             state.chatMessages == latest.chatMessages &&
                             state.includeSystemProfileInChat == latest.includeSystemProfileInChat &&
                             state.renderedInstructions == latest.renderedInstructions &&
-                            state.activeNativeConversation?.projectId ==
-                            latest.activeNativeConversation?.projectId &&
+                            state.nativeChat.activeConversation?.projectId ==
+                            latest.nativeChat.activeConversation?.projectId &&
                             state.isActiveConversationIncognito == latest.isActiveConversationIncognito
                         ) {
                             state.copy(inputBudgetPreflight = result)
@@ -1999,7 +2021,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private suspend fun prepareInputBudgetToolDefinitions(
         state: StudioUiState,
     ): List<NativeToolDefinition> {
-        val activeProjectId = state.activeNativeConversation?.projectId ?: DEFAULT_PROJECT_ID
+        val activeProjectId = state.nativeChat.activeConversation?.projectId ?: DEFAULT_PROJECT_ID
         val benchTools = NativeBenchChatTools(
             context = getApplication(),
             projectId = activeProjectId,
@@ -2057,7 +2079,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             return false
         }
         if (trimmed.isBlank() || initialState.isChatGenerating) return false
-        val activeConversation = initialState.activeNativeConversation
+        val activeConversation = initialState.nativeChat.activeConversation
         val sourceAssetIds = activeConversation
             ?.stagedSourceAssetIdsForPrompt(trimmed)
             .orEmpty()
@@ -2084,7 +2106,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     if (holdForContextWarning(trimmed, promptContext.systemPrompt, initialState)) return@launch
                     // Dropped if the user moved to another chat or model while it was counted.
                     if (!isSameChatTarget(initialState, _uiState.value)) return@launch
-                    val current = _uiState.value.activeNativeConversation ?: return@launch
+                    val current = _uiState.value.nativeChat.activeConversation ?: return@launch
                     if (queueNativeChatSend(current, trimmed, sourceAssetIds)) {
                         _uiState.update { it.copy(pendingChatContextWarning = null) }
                     }
@@ -2131,7 +2153,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val now = System.currentTimeMillis()
                 val userMessageId = "user_$now"
                 _uiState.update { current ->
-                    val conversation = current.activeNativeConversation
+                    val conversation = current.nativeChat.activeConversation
                     val draftMatchesPrompt = conversation?.draft?.trim() == trimmed
                     val userMessage = ModelChatMessage(
                         id = userMessageId,
@@ -2161,7 +2183,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 persistNativeChat()
                 _uiState.value.nativeChat.activeConversationId.let(::publishNativeConversationShortcut)
                 val currentMessages = _uiState.value.chatMessages
-                val activeProjectId = _uiState.value.activeNativeConversation?.projectId
+                val activeProjectId = _uiState.value.nativeChat.activeConversation?.projectId
                     ?: DEFAULT_PROJECT_ID
                 val benchTools = NativeBenchChatTools(
                     context = getApplication(),
@@ -2239,7 +2261,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     },
                 )
                 reloadProjectLibraryFromDisk()
-                _uiState.value.activeNativeConversation
+                _uiState.value.nativeChat.activeConversation
                     ?.takeUnless { it.id == _uiState.value.incognitoConversationId }
                     ?.let { conversation ->
                         NativeChatNotificationPublisher.publishConversation(
