@@ -1,5 +1,14 @@
 package ais.tee.data.engine
 
+import ais.tee.data.model.AiProvider
+import ais.tee.data.model.AsyncProviderJob
+import ais.tee.data.model.AsyncProviderJobKind
+import ais.tee.data.model.AsyncProviderJobState
+import ais.tee.data.model.ProjectLibraryAssetKind
+import ais.tee.data.model.ProjectLibraryAssetOrigin
+import ais.tee.data.preferences.AsyncProviderJobStore
+import ais.tee.data.preferences.ProjectLibraryStore
+import ais.tee.data.security.ApiKeyStore
 import android.content.Context
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -10,16 +19,9 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import ais.tee.data.model.AiProvider
-import ais.tee.data.model.AsyncProviderJob
-import ais.tee.data.model.AsyncProviderJobKind
-import ais.tee.data.model.AsyncProviderJobState
-import ais.tee.data.preferences.AsyncProviderJobStore
-import ais.tee.data.preferences.ProjectLibraryStore
-import ais.tee.data.security.ApiKeyStore
+import kotlinx.coroutines.CancellationException
 import java.io.IOException
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.CancellationException
 
 private const val INPUT_JOB_ID = "job_id"
 private const val WORK_NAME_PREFIX = "openai-background-job:"
@@ -41,7 +43,7 @@ internal object OpenAiBackgroundJobWork {
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build()
+                    .build(),
             )
             .setBackoffCriteria(
                 BackoffPolicy.LINEAR,
@@ -168,9 +170,11 @@ internal fun persistOpenAiBackgroundSnapshot(
     val updated = store.update(job.id) { persistedJob ->
         if (
             persistedJob.state.isTerminal &&
-            (persistedJob.state != AsyncProviderJobState.SUCCEEDED ||
-                persistedJob.resultAssetId != null ||
-                snapshot.state != AsyncProviderJobState.SUCCEEDED)
+            (
+                persistedJob.state != AsyncProviderJobState.SUCCEEDED ||
+                    persistedJob.resultAssetId != null ||
+                    snapshot.state != AsyncProviderJobState.SUCCEEDED
+                )
         ) {
             return@update persistedJob
         }
@@ -201,6 +205,8 @@ internal fun persistOpenAiBackgroundSnapshot(
                         mediaType = "text/markdown",
                         extension = "md",
                         text = markdown,
+                        kind = ProjectLibraryAssetKind.ARTIFACT,
+                        origin = ProjectLibraryAssetOrigin.JOB_OUTPUT,
                     )
                     ?.id
                 if (resultAssetId == null) {
@@ -220,8 +226,10 @@ internal fun persistOpenAiBackgroundSnapshot(
 
     val shouldRetry =
         !updated.state.isTerminal ||
-            (updated.state == AsyncProviderJobState.SUCCEEDED &&
-                updated.resultAssetId == null &&
-                snapshot.outputText?.isNotBlank() == true)
+            (
+                updated.state == AsyncProviderJobState.SUCCEEDED &&
+                    updated.resultAssetId == null &&
+                    snapshot.outputText?.isNotBlank() == true
+                )
     return AsyncJobRefreshResult(updated, shouldRetry)
 }

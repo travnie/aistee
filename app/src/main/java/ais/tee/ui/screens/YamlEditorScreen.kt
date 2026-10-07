@@ -1,5 +1,13 @@
 package ais.tee.ui.screens
 
+import ais.tee.data.document.MarkdownWorkspaceRecoveryStore
+import ais.tee.data.engine.YamlParser
+import ais.tee.share.copyPlainTextToClipboard
+import ais.tee.ui.theme.AccentEmerald
+import ais.tee.ui.theme.AccentRose
+import ais.tee.ui.viewmodel.MarkdownWorkspaceViewModel
+import ais.tee.ui.viewmodel.StudioUiState
+import ais.tee.ui.viewmodel.StudioViewModel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -22,30 +30,22 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import ais.tee.share.copyPlainTextToClipboard
-import ais.tee.data.document.MarkdownWorkspaceRecoveryStore
-import ais.tee.data.engine.YamlParser
-import ais.tee.ui.theme.AccentEmerald
-import ais.tee.ui.theme.AccentRose
-import ais.tee.ui.viewmodel.MarkdownWorkspaceViewModel
-import ais.tee.ui.viewmodel.StudioUiState
-import ais.tee.ui.viewmodel.StudioViewModel
 
 private enum class YamlDocumentTab(
     val label: String,
     val fileLabel: String,
-    val languageLabel: String
+    val languageLabel: String,
 ) {
     COMPOSED("Composed Profile", "profile.yaml (Effective Composed Output)", "YAML"),
     OVERLAY("Active Overlay", "profile.overlay.yaml (Private Downstream Layer)", "YAML"),
-    SCHEMA("Schema", "style-profile.schema.json", "JSON")
+    SCHEMA("Schema", "style-profile.schema.json", "JSON"),
 }
 
 @Composable
 fun YamlEditorScreen(
     viewModel: StudioViewModel,
     uiState: StudioUiState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -75,14 +75,14 @@ fun YamlEditorScreen(
                 selected = selectedDocumentTool == 0,
                 onClick = { selectedDocumentTool = 0 },
                 text = { Text("YAML profile") },
-                icon = { Icon(Icons.Default.Code, contentDescription = null) }
+                icon = { Icon(Icons.Default.Code, contentDescription = null) },
             )
             Tab(
                 selected = selectedDocumentTool == 1,
                 onClick = { selectedDocumentTool = 1 },
                 text = { Text("Markdown") },
                 icon = { Icon(Icons.Default.Description, contentDescription = null) },
-                modifier = Modifier.testTag("documents_markdown_tab")
+                modifier = Modifier.testTag("documents_markdown_tab"),
             )
         }
 
@@ -92,17 +92,22 @@ fun YamlEditorScreen(
                     viewModel = viewModel,
                     uiState = uiState,
                     selectedTabIndex = selectedYamlTabIndex,
-                    onSelectedTab = { selectedYamlTabIndex = it }
+                    onSelectedTab = { selectedYamlTabIndex = it },
                 )
             } else {
                 Column(modifier = Modifier.fillMaxSize()) {
                     LocalSkillWorkspaceSourceBar(
                         workspaceViewModel = markdownWorkspaceViewModel,
-                        onMessage = viewModel::showSnackbar
+                        onMessage = viewModel::showSnackbar,
+                    )
+                    ProjectLibraryWorkspaceSourceBar(
+                        workspaceViewModel = markdownWorkspaceViewModel,
+                        onSave = viewModel::updateProjectLibraryAssetText,
+                        onMessage = viewModel::showSnackbar,
                     )
                     MarkdownWorkspaceScreen(
                         workspaceViewModel = markdownWorkspaceViewModel,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }
@@ -117,7 +122,7 @@ private fun YamlProfileLayersScreen(
     uiState: StudioUiState,
     selectedTabIndex: Int,
     onSelectedTab: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val selectedTab = YamlDocumentTab.entries[selectedTabIndex]
@@ -134,26 +139,26 @@ private fun YamlProfileLayersScreen(
                         sensitive = true,
                     )
                     viewModel.showSnackbar("Copied YAML to clipboard!")
-                }
+                },
             )
         },
-        modifier = modifier
+        modifier = modifier,
     ) { innerPadding ->
         LazyColumn(
             contentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
                 top = innerPadding.calculateTopPadding(),
-                bottom = innerPadding.calculateBottomPadding() + 80.dp
+                bottom = innerPadding.calculateBottomPadding() + 80.dp,
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
         ) {
             item { YamlValidationCard(uiState) }
             item {
                 YamlLayerTabs(
                     selectedIndex = selectedTabIndex,
-                    onSelected = onSelectedTab
+                    onSelected = onSelectedTab,
                 )
             }
             item { YamlDocumentCard(selectedTab, yamlText) }
@@ -171,7 +176,7 @@ private fun YamlProfileTopBar(onCopy: () -> Unit) {
                 Text(
                     "Recursive composition engine with schema v0.2",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },
@@ -180,11 +185,11 @@ private fun YamlProfileTopBar(onCopy: () -> Unit) {
                 Icon(
                     imageVector = Icons.Default.ContentCopy,
                     contentDescription = "Copy YAML",
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = MaterialTheme.colorScheme.primary,
                 )
             }
         },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
     )
 }
 
@@ -196,25 +201,25 @@ private fun YamlValidationCard(uiState: StudioUiState) {
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = accent.copy(alpha = 0.15f)),
         border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = 0.4f)),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Icon(
                 imageVector = if (isValid) Icons.Default.CheckCircle else Icons.Default.Warning,
                 contentDescription = null,
                 tint = accent,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(24.dp),
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = if (isValid) "Schema Validation Passed" else "Validation Error Found",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = accent
+                    color = accent,
                 )
                 Text(
                     text = if (isValid) {
@@ -223,7 +228,7 @@ private fun YamlValidationCard(uiState: StudioUiState) {
                         uiState.validationResult.errors.joinToString(", ")
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
@@ -236,13 +241,13 @@ private fun YamlLayerTabs(selectedIndex: Int, onSelected: (Int) -> Unit) {
         selectedTabIndex = selectedIndex,
         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         contentColor = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.clip(MaterialTheme.shapes.medium)
+        modifier = Modifier.clip(MaterialTheme.shapes.medium),
     ) {
         YamlDocumentTab.entries.forEachIndexed { index, tab ->
             Tab(
                 selected = selectedIndex == index,
                 onClick = { onSelected(index) },
-                text = { Text(tab.label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+                text = { Text(tab.label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) },
             )
         }
     }
@@ -254,19 +259,19 @@ private fun YamlDocumentCard(tab: YamlDocumentTab, yamlText: String) {
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(2.dp),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = tab.fileLabel,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary,
                 )
                 Surface(shape = MaterialTheme.shapes.extraSmall, color = MaterialTheme.colorScheme.surfaceVariant) {
                     Text(
@@ -274,7 +279,7 @@ private fun YamlDocumentCard(tab: YamlDocumentTab, yamlText: String) {
                         style = MaterialTheme.typography.labelSmall,
                         fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                     )
                 }
             }
@@ -285,14 +290,14 @@ private fun YamlDocumentCard(tab: YamlDocumentTab, yamlText: String) {
                     .clip(MaterialTheme.shapes.small)
                     .background(MaterialTheme.colorScheme.background)
                     .horizontalScroll(rememberScrollState())
-                    .padding(12.dp)
+                    .padding(12.dp),
             ) {
                 Text(
                     text = yamlText,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
                     lineHeight = 18.sp,
-                    color = MaterialTheme.colorScheme.onBackground
+                    color = MaterialTheme.colorScheme.onBackground,
                 )
             }
         }

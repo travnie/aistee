@@ -1,24 +1,26 @@
 package ais.tee.data.engine
 
+import ais.tee.data.model.AsyncProviderJob
+import ais.tee.data.model.AsyncProviderJobKind
+import ais.tee.data.model.AsyncProviderJobState
+import ais.tee.data.model.ProjectLibraryAssetKind
+import ais.tee.data.model.ProjectLibraryAssetOrigin
+import ais.tee.data.model.needsPolling
+import ais.tee.data.preferences.AsyncProviderJobStore
+import ais.tee.data.preferences.ProjectLibraryStore
 import android.content.Context
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
 import androidx.work.ListenableWorker
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import ais.tee.data.model.AsyncProviderJob
-import ais.tee.data.model.AsyncProviderJobKind
-import ais.tee.data.model.AsyncProviderJobState
-import ais.tee.data.model.needsPolling
-import ais.tee.data.preferences.AsyncProviderJobStore
-import ais.tee.data.preferences.ProjectLibraryStore
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import java.util.concurrent.TimeUnit
 
 private const val INPUT_JOB_ID = "job_id"
 private const val INPUT_MAX_ATTEMPTS = "max_poll_attempts"
@@ -36,7 +38,7 @@ internal object BatchJobWork {
                 Data.Builder()
                     .putString(INPUT_JOB_ID, jobId)
                     .putInt(INPUT_MAX_ATTEMPTS, maxAutomaticPollAttempts.coerceAtLeast(1))
-                    .build()
+                    .build(),
             )
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setInitialDelay(1, TimeUnit.MINUTES)
@@ -191,6 +193,8 @@ internal fun persistBatchResult(
                         mediaType = "text/markdown",
                         extension = "md",
                         text = batchResultMarkdown(resultLabel, savedDescription, model, output),
+                        kind = ProjectLibraryAssetKind.ARTIFACT,
+                        origin = ProjectLibraryAssetOrigin.JOB_OUTPUT,
                     )
                     ?.id
                 savedAssetId = resultAssetId

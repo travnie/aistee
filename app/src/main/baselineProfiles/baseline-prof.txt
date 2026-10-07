@@ -1,0 +1,9 @@
+SPLais/tee/data/model/ProjectLibraryKt;->normalizedAssets(Lais/tee/data/model/ProjectLibraryArchive;Ljava/util/Set;)Ljava/util/List;
+SPLais/tee/data/model/ProjectLibraryKt;->normalizedContents(Lais/tee/data/model/ProjectLibraryArchive;J)Lais/tee/data/model/ProjectLibraryArchive;
+SPLais/tee/data/model/ProjectLibraryKt;->normalizedProjectsWithInbox(Lais/tee/data/model/ProjectLibraryArchive;J)Ljava/util/List;
+PLais/tee/data/preferences/ProjectLibraryStore;->encodeText(Ljava/lang/String;)[B
+PLais/tee/data/preferences/ProjectLibraryStore;->readVerifiedAssetBytes(Lais/tee/data/model/ProjectLibraryAsset;)[B
+SPLais/tee/data/preferences/ProjectLibraryStore;->readVerifiedBytes(Lais/tee/data/model/ProjectLibraryAsset;)[B
+SPLais/tee/data/preferences/ProjectLibraryStore;->recoverUnavailableAssetRevisions(Lais/tee/data/model/ProjectLibraryArchive;)Lais/tee/data/model/ProjectLibraryArchive;
+PLais/tee/data/preferences/ProjectLibraryStore;->syncDirectory(Ljava/io/File;)Z
+PLais/tee/data/preferences/ProjectLibraryStore;->writeRevisionBytes(Ljava/io/File;Ljava/io/File;[B)Z

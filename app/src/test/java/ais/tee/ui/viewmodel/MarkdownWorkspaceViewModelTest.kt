@@ -20,6 +20,10 @@ class MarkdownWorkspaceViewModelTest {
         const val EXTERNAL_TEXT = "shared text"
         const val LOCAL_SKILL_NAME = "release-checklist"
         const val SKILL_FILE_NAME = "SKILL.md"
+        const val PROJECT_LIBRARY_ASSET_ID = "asset-1"
+        const val EDITED_LIBRARY_TEXT = "edited"
+        const val VERSION_TWO = "version two"
+        const val FILL_TEXT = "a"
     }
 
     @Test
@@ -99,14 +103,14 @@ class MarkdownWorkspaceViewModelTest {
         val viewModel = MarkdownWorkspaceViewModel()
         viewModel.updateText("version one")
         val snapshot = requireNotNull(viewModel.beginExport())
-        viewModel.updateText("version two")
+        viewModel.updateText(VERSION_TWO)
 
         assertFalse(viewModel.completeExport(snapshot, "snapshot.md"))
 
         val state = viewModel.uiState.value
         assertTrue(state.isDirty)
         assertFalse(state.isExporting)
-        assertEquals("version two", state.text)
+        assertEquals(VERSION_TWO, state.text)
     }
 
     @Test
@@ -136,8 +140,8 @@ class MarkdownWorkspaceViewModelTest {
                 text = EXTERNAL_TEXT,
                 displayName = SKILL_FILE_NAME,
                 origin = MarkdownWorkspaceOrigin.LocalSkill(LOCAL_SKILL_NAME),
-                markDirty = false
-            )
+                markDirty = false,
+            ),
         )
 
         val state = viewModel.uiState.value
@@ -183,7 +187,7 @@ class MarkdownWorkspaceViewModelTest {
         val savedText = "version one"
         viewModel.updateText(savedText)
         val snapshot = requireNotNull(viewModel.beginExport())
-        viewModel.updateText("version two")
+        viewModel.updateText(VERSION_TWO)
         val persistedOrigin = localSkillOrigin(savedText)
 
         assertFalse(viewModel.completeSourceSave(snapshot, persistedOrigin))
@@ -191,7 +195,7 @@ class MarkdownWorkspaceViewModelTest {
         val state = viewModel.uiState.value
         assertTrue(state.isDirty)
         assertFalse(state.isExporting)
-        assertEquals("version two", state.text)
+        assertEquals(VERSION_TWO, state.text)
         assertEquals(persistedOrigin, state.origin)
     }
 
@@ -234,13 +238,13 @@ class MarkdownWorkspaceViewModelTest {
 
         assertEquals(
             ExternalMarkdownOpenResult.NEEDS_DISCARD,
-            viewModel.openExternalText(EXTERNAL_TEXT)
+            viewModel.openExternalText(EXTERNAL_TEXT),
         )
         assertEquals("keep this draft", viewModel.uiState.value.text)
 
         assertEquals(
             ExternalMarkdownOpenResult.OPENED,
-            viewModel.openExternalText(EXTERNAL_TEXT, allowDiscardDirty = true)
+            viewModel.openExternalText(EXTERNAL_TEXT, allowDiscardDirty = true),
         )
         val state = viewModel.uiState.value
         assertEquals(EXTERNAL_TEXT, state.text)
@@ -264,11 +268,67 @@ class MarkdownWorkspaceViewModelTest {
     @Test
     fun oversizedExternalTextIsRejectedWithoutChangingTheDraft() {
         val viewModel = MarkdownWorkspaceViewModel()
-        val oversized = "a".repeat(MarkdownDocumentFileAccess.MAX_DOCUMENT_BYTES + 1)
+        val oversized = FILL_TEXT.repeat(MarkdownDocumentFileAccess.MAX_DOCUMENT_BYTES + 1)
 
         assertEquals(ExternalMarkdownOpenResult.TOO_LARGE, viewModel.openExternalText(oversized))
         assertEquals("", viewModel.uiState.value.text)
         assertFalse(viewModel.uiState.value.isDirty)
+    }
+
+    @Test
+    fun projectLibrarySourceSaveAdvancesBoundRevision() {
+        val viewModel = MarkdownWorkspaceViewModel()
+        assertEquals(
+            ExternalMarkdownOpenResult.OPENED,
+            viewModel.openExternalText(
+                text = EXTERNAL_TEXT,
+                displayName = PROMPT_NAME,
+                origin = MarkdownWorkspaceOrigin.ProjectLibrary(assetId = PROJECT_LIBRARY_ASSET_ID, revision = 3L),
+                markDirty = false,
+            ),
+        )
+        assertTrue(viewModel.updateText(EDITED_LIBRARY_TEXT))
+
+        val snapshot = requireNotNull(viewModel.beginExport())
+        assertTrue(
+            viewModel.completeSourceSave(
+                snapshot = snapshot,
+                persistedOrigin = MarkdownWorkspaceOrigin.ProjectLibrary(
+                    assetId = PROJECT_LIBRARY_ASSET_ID,
+                    revision = 4L,
+                ),
+            ),
+        )
+
+        assertFalse(viewModel.uiState.value.isDirty)
+        assertEquals(
+            MarkdownWorkspaceOrigin.ProjectLibrary(assetId = PROJECT_LIBRARY_ASSET_ID, revision = 4L),
+            viewModel.uiState.value.origin,
+        )
+    }
+
+    @Test
+    fun projectLibraryRecoveryDetachesStaleSourceBinding() {
+        val viewModel = MarkdownWorkspaceViewModel()
+        assertEquals(
+            ExternalMarkdownOpenResult.OPENED,
+            viewModel.openExternalText(
+                text = EXTERNAL_TEXT,
+                displayName = PROMPT_NAME,
+                origin = MarkdownWorkspaceOrigin.ProjectLibrary(assetId = PROJECT_LIBRARY_ASSET_ID, revision = 7L),
+                markDirty = false,
+            ),
+        )
+        assertTrue(viewModel.updateText(EDITED_LIBRARY_TEXT))
+
+        val recovery = viewModel.recoverySnapshot()
+        assertNull(recovery.source)
+
+        val restored = MarkdownWorkspaceViewModel()
+        assertTrue(restored.restoreRecovery(recovery))
+        assertEquals(EDITED_LIBRARY_TEXT, restored.uiState.value.text)
+        assertTrue(restored.uiState.value.isDirty)
+        assertNull(restored.uiState.value.origin)
     }
 
     @Test
@@ -278,7 +338,7 @@ class MarkdownWorkspaceViewModelTest {
             text = "# recovered",
             hadUtf8Bom = true,
             displayName = PROMPT_NAME,
-            isDirty = true
+            isDirty = true,
         )
 
         assertTrue(viewModel.restoreRecovery(recovered))
@@ -302,22 +362,22 @@ class MarkdownWorkspaceViewModelTest {
             isDirty = true,
             source = MarkdownWorkspaceRecoverySource(
                 localSkillName = LOCAL_SKILL_NAME,
-                sourceDigest = digest
-            )
+                sourceDigest = digest,
+            ),
         )
 
         assertTrue(viewModel.restoreRecovery(recovered))
 
         assertEquals(
             MarkdownWorkspaceOrigin.LocalSkill(LOCAL_SKILL_NAME, digest),
-            viewModel.uiState.value.origin
+            viewModel.uiState.value.origin,
         )
     }
 
     @Test
     fun interactiveEditsStopAtTheEditorThreshold() {
         val viewModel = MarkdownWorkspaceViewModel()
-        val maximumInteractiveDraft = "a".repeat(MAX_EDITABLE_MARKDOWN_CHARS)
+        val maximumInteractiveDraft = FILL_TEXT.repeat(MAX_EDITABLE_MARKDOWN_CHARS)
 
         assertTrue(viewModel.updateText(maximumInteractiveDraft))
         assertFalse(viewModel.updateText(maximumInteractiveDraft + "x"))
@@ -327,7 +387,7 @@ class MarkdownWorkspaceViewModelTest {
     @Test
     fun largeImportedDocumentsStayReadOnlyButExportable() {
         val viewModel = MarkdownWorkspaceViewModel()
-        val largeText = "a".repeat(MAX_EDITABLE_MARKDOWN_CHARS + 1)
+        val largeText = FILL_TEXT.repeat(MAX_EDITABLE_MARKDOWN_CHARS + 1)
         val document = TextDocumentCodec.decodeUtf8(largeText.encodeToByteArray())
 
         viewModel.completeImportAfterBegin("large.md", document)
@@ -358,7 +418,7 @@ class MarkdownWorkspaceViewModelTest {
     fun missingProviderDisplayNameKeepsPickerFallback() {
         assertEquals(
             "picked-name.md",
-            MarkdownDocumentFileAccess.resolveDisplayName(null, "picked-name.md")
+            MarkdownDocumentFileAccess.resolveDisplayName(null, "picked-name.md"),
         )
     }
 
@@ -379,7 +439,7 @@ class MarkdownWorkspaceViewModelTest {
     private fun localSkillOrigin(source: String): MarkdownWorkspaceOrigin.LocalSkill =
         MarkdownWorkspaceOrigin.LocalSkill(
             name = LOCAL_SKILL_NAME,
-            sourceDigest = localSkillSourceDigest(source)
+            sourceDigest = localSkillSourceDigest(source),
         )
 
     private fun boundSkillWorkspace(): MarkdownWorkspaceViewModel =
@@ -390,14 +450,14 @@ class MarkdownWorkspaceViewModelTest {
                     text = EXTERNAL_TEXT,
                     displayName = SKILL_FILE_NAME,
                     origin = MarkdownWorkspaceOrigin.LocalSkill(LOCAL_SKILL_NAME),
-                    markDirty = false
-                )
+                    markDirty = false,
+                ),
             )
         }
 
     private fun MarkdownWorkspaceViewModel.completeImportAfterBegin(
         name: String,
-        document: TextDocument
+        document: TextDocument,
     ) {
         assertTrue(beginImport())
         assertTrue(completeImport(name, document))

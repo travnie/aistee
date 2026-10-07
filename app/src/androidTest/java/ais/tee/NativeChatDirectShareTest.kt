@@ -42,12 +42,12 @@ class NativeChatDirectShareTest {
 
         ActivityScenario.launch<MainActivity>(shareIntent("Shared note", nativeChatConversationShortcutId(targetId))).use { scenario ->
             val state = awaitState(scenario) {
-                it.nativeChat.activeConversationId == targetId && it.activeNativeConversation?.draft == "Shared note"
+                it.nativeChat.activeConversationId == targetId && it.nativeChat.activeConversation?.draft == "Shared note"
             }
             assertNotEquals(otherId, state.nativeChat.activeConversationId)
             assertFalse(state.isChatGenerating)
             assertEquals(null, state.incomingShare)
-            assertFalse(state.activeNativeConversation!!.messages.any { it.sender == CHAT_ROLE_USER })
+            assertFalse(state.nativeChat.activeConversation!!.messages.any { it.sender == CHAT_ROLE_USER })
         }
     }
 
@@ -58,7 +58,7 @@ class NativeChatDirectShareTest {
         ActivityScenario.launch<MainActivity>(shareIntent("Fallback note", "native-chat:unknown")).use { scenario ->
             val state = awaitState(scenario) { it.incomingShare?.text == "Fallback note" }
             assertEquals(activeId, state.nativeChat.activeConversationId)
-            assertNotEquals("Fallback note", state.activeNativeConversation?.draft)
+            assertNotEquals("Fallback note", state.nativeChat.activeConversation?.draft)
             scenario.onActivity { it.studioViewModel().dismissIncomingShare() }
         }
     }

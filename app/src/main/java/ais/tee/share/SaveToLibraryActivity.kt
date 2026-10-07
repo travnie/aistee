@@ -1,5 +1,9 @@
 package ais.tee.share
 
+import ais.tee.data.model.DEFAULT_PROJECT_ID
+import ais.tee.data.model.ProjectLibraryAssetOrigin
+import ais.tee.data.preferences.ProjectLibraryStore
+import ais.tee.security.AppLockExempt
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -10,13 +14,10 @@ import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
-import ais.tee.data.model.DEFAULT_PROJECT_ID
-import ais.tee.data.preferences.ProjectLibraryStore
-import ais.tee.security.AppLockExempt
-import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 
 private const val MAX_TITLE_CHARS = 80
 private const val FALLBACK_TITLE = "Shared text"
@@ -99,6 +100,7 @@ class SaveToLibraryActivity : ComponentActivity(), AppLockExempt {
             mediaType = shared.mediaType,
             extension = shared.extension,
             text = shared.text,
+            origin = ProjectLibraryAssetOrigin.SHARED,
         )
         return if (saved != null) "Saved to Aistee Library (Inbox)." else "Could not save to Aistee Library."
     }
