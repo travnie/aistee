@@ -161,7 +161,7 @@ Integration notes for the open `ACCOUNT_PLAN` credential lifecycle; nothing belo
 
 ### Manual/account verification (later)
 
-- [ ] **Turn anchors (blocks Web timeline/stars):** on device, open a long chat in ChatGPT, Claude and Gemini, open Provider diagnostics, copy each `turns=user N/assistant M/stable-id K` line and compare with the real message counts. Mismatch or `0` means the selector needs fixing before any timeline/star UI.
+- [ ] **Turn anchors (blocks Web timeline/stars):** on device, open a long chat in ChatGPT, Claude and Gemini, open Provider diagnostics, copy each `turns=user N/assistant M/stable-id K` line and compare with the real message counts. A `user` or `assistant` count that is `0` or differs from the real count means that selector needs fixing before any timeline UI. `stable-id` is only probed for ChatGPT: there it must match the turn total before stars ship (a `0` still allows a timeline); for Claude and Gemini `stable-id 0` is expected and they stay timeline-only.
 - [ ] Verify embedded sign-in and file upload for Qwen, Copilot, Z.ai, Grok, Character.AI, Venice and Meta AI.
 - [ ] Add generation/unread tracking for newer web providers only after stable provider-scoped controls are verified.
 
