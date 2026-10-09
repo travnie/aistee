@@ -144,7 +144,7 @@ Integration notes for the open `ACCOUNT_PLAN` credential lifecycle; nothing belo
 - **Sign-out:** POST the refresh token to the discovery `revocation_endpoint` with the issued client ID, retry on network/5xx failures, then clear tokens. Keep the client-ID mapping and host ID for later sign-in; if revocation is unconfirmed, say so and link ChatGPT Settings.
 - **Usage:** link to ChatGPT Settings → Usage. Plus plans share one five-hour limit across all apps using the plan, so surface limit errors as plan limits, not app bugs.
 
-**Pending decision, not yet policy:** `AGENTS.md` forbids persisting provider OAuth tokens, so implementation needs an explicit exception approved by the maintainer first. Proposed wording: "Narrow exception: Aistee's own Sign in with ChatGPT grant (user-authorized in a Custom Tab, not intercepted) may be persisted Keystore-encrypted, excluded from backup/export and never logged." WebView provider sessions stay off-limits either way.
+**Policy:** `AGENTS.md` carries a narrow exception for this grant only: persisted Keystore-encrypted, excluded from backup/export, never logged. WebView provider sessions, cookies and tokens stay off-limits.
 
 ## Web/account-chat TODO
 
@@ -161,6 +161,7 @@ Integration notes for the open `ACCOUNT_PLAN` credential lifecycle; nothing belo
 
 ### Manual/account verification (later)
 
+- [ ] **Turn anchors (blocks Web timeline/stars):** on device, open a long chat in ChatGPT, Claude and Gemini, open Provider diagnostics, copy each `turns=user N/assistant M/stable-id K` line and compare with the real message counts. Mismatch or `0` means the selector needs fixing before any timeline/star UI.
 - [ ] Verify embedded sign-in and file upload for Qwen, Copilot, Z.ai, Grok, Character.AI, Venice and Meta AI.
 - [ ] Add generation/unread tracking for newer web providers only after stable provider-scoped controls are verified.
 
