@@ -4,6 +4,8 @@ import ais.tee.data.model.ProjectLibraryArchive
 import ais.tee.data.model.ProjectLibraryAsset
 import ais.tee.ui.screens.ProjectLibrarySourceChips
 import ais.tee.ui.theme.AisteeTheme
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -34,11 +36,13 @@ class ProjectLibrarySourceChipsScreenshotTest {
         var opened = ""
         composeRule.setContent {
             AisteeTheme {
-                ProjectLibrarySourceChips(
+                Surface(color = MaterialTheme.colorScheme.background) {
+                    ProjectLibrarySourceChips(
                     sourceIds = listOf("example", "removed"),
                     archive = ProjectLibraryArchive(assets = listOf(asset)),
-                    onOpenAsset = { opened = it.id },
-                )
+                        onOpenAsset = { opened = it.id },
+                    )
+                }
             }
         }
         composeRule.onNodeWithTag("library_source_chip_0").assertIsDisplayed().performClick()
