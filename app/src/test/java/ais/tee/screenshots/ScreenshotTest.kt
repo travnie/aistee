@@ -18,6 +18,8 @@ import ais.tee.ui.viewmodel.MarkdownWorkspaceViewModel
 import ais.tee.ui.viewmodel.StudioUiState
 import ais.tee.ui.viewmodel.StudioViewModel
 import android.app.Application
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -97,7 +99,8 @@ class ScreenshotTest {
 
     @Test
     fun localLibrarySourceChips() = capture("library_source_chips") {
-        ProjectLibrarySourceChips(
+        Surface(color = MaterialTheme.colorScheme.background) {
+            ProjectLibrarySourceChips(
             sourceIds = listOf("example", "missing"),
             archive = ProjectLibraryArchive(assets = listOf(
                 ProjectLibraryAsset(
@@ -106,8 +109,9 @@ class ScreenshotTest {
                     sizeBytes = 48, createdAtEpochMs = 1,
                 ),
             )),
-            onOpenAsset = {},
-        )
+                onOpenAsset = {},
+            )
+        }
     }
 
     @Test fun benchTools() = capture("bench_tools") { BenchToolsScreen() }
