@@ -69,7 +69,8 @@ jobs:
             ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=ais.tee.TestExpandedWidth --stacktrace
             mkdir -p out
             ./gradlew :app:installDebug --stacktrace
-            adb shell am start -W -n ais.tee/.MainActivity
+            adb shell pm clear ais.tee
+            adb shell am start -S -W -n ais.tee/.MainActivity
             sleep 8
             adb exec-out screencap -p > out/app-compact.png
             adb shell wm size 1280x800
