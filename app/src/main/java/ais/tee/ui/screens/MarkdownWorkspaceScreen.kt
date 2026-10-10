@@ -62,7 +62,9 @@ private const val WORKSPACE_ANALYSIS_DEBOUNCE_MS = 360L
 private const val MAX_TOKENIZED_CHARS = 1_000_000
 private const val LARGE_PREVIEW_CHUNK_CHARS = 16 * 1024
 private const val MAX_DIRECT_SHARE_BYTES = 128 * 1024
-private val MARKDOWN_IMPORT_MIME_TYPES = arrayOf("text/markdown", "text/plain", "application/octet-stream")
+// SAF providers often advertise JSON, YAML and extensionless text with non-text MIME types.
+// The shared bounded UTF-8 reader rejects invalid encodings; never auto-execute imported content.
+private val WORKSPACE_IMPORT_MIME_TYPES = arrayOf("*/*")
 
 private sealed class PendingDestructiveWorkspaceAction {
     data object New : PendingDestructiveWorkspaceAction()
@@ -167,7 +169,7 @@ fun MarkdownWorkspaceScreen(
         }
     }
     val exportLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/markdown")
+        CreateWorkspaceTextDocument()
     ) { uri ->
         if (uri != null) {
             val snapshot = workspaceViewModel.beginExport()
@@ -176,7 +178,7 @@ fun MarkdownWorkspaceScreen(
                     exportWorkspaceDocument(
                         context = context,
                         uri = uri,
-                        fallbackName = snapshot.displayName.ensureMarkdownExtension(),
+                        fallbackName = workspaceExportFileName(snapshot.displayName),
                         snapshot = snapshot,
                         viewModel = workspaceViewModel,
                         snackbarHostState = snackbarHostState
@@ -189,7 +191,7 @@ fun MarkdownWorkspaceScreen(
     fun launchImportPicker() {
         if (!workspaceViewModel.beginImport()) return
         try {
-            importLauncher.launch(MARKDOWN_IMPORT_MIME_TYPES)
+            importLauncher.launch(WORKSPACE_IMPORT_MIME_TYPES)
         } catch (_: ActivityNotFoundException) {
             workspaceViewModel.cancelImport()
             scope.launch { snackbarHostState.showSnackbar("No document picker is available.") }
@@ -234,13 +236,13 @@ fun MarkdownWorkspaceScreen(
         if (exceedsDirectShareLimit) {
             scope.launch {
                 snackbarHostState.showSnackbar(
-                    "This Markdown draft is too large for direct text sharing. Export it as a file, then share the exported document."
+                    "This draft is too large for direct text sharing. Export it as a file, then share the document."
                 )
             }
             return
         }
         try {
-            shareMarkdownText(context, uiState.text, uiState.displayName.ensureMarkdownExtension())
+            shareMarkdownText(context, uiState.text, workspaceExportFileName(uiState.displayName))
         } catch (_: ActivityNotFoundException) {
             scope.launch { snackbarHostState.showSnackbar("No app is available to share Markdown text.") }
         }
@@ -408,7 +410,7 @@ fun MarkdownWorkspaceScreen(
                         showRecents = true
                     }
                 },
-                onExport = { exportLauncher.launch(uiState.displayName.ensureMarkdownExtension()) },
+                onExport = { exportLauncher.launch(workspaceExportFileName(uiState.displayName)) },
                 onShare = ::shareCurrentMarkdown,
                 onFormat = ::requestWorkspaceTransform
             )
@@ -475,14 +477,14 @@ private fun MarkdownWorkspaceTopBar(
                 Icon(Icons.Default.NoteAdd, contentDescription = "New Markdown draft")
             }
             IconButton(onClick = onImport, enabled = !uiState.isBusy, modifier = Modifier.testTag("markdown_import")) {
-                Icon(Icons.Default.FolderOpen, contentDescription = "Import Markdown document")
+                Icon(Icons.Default.FolderOpen, contentDescription = "Import text or configuration file")
             }
             Box {
                 IconButton(
                     onClick = { showMoreActions = true },
                     modifier = Modifier.testTag("markdown_more")
                 ) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "More Markdown actions")
+                    Icon(Icons.Default.MoreVert, contentDescription = "More document actions")
                 }
                 DropdownMenu(
                     expanded = showMoreActions,
@@ -515,7 +517,7 @@ private fun MarkdownWorkspaceTopBar(
                         )
                     }
                     DropdownMenuItem(
-                        text = { Text("Export Markdown") },
+                        text = { Text("Export text file") },
                         leadingIcon = { Icon(Icons.Default.SaveAs, contentDescription = null) },
                         enabled = !uiState.isBusy,
                         onClick = {
@@ -577,8 +579,8 @@ private fun MarkdownWorkspaceBody(
                 enabled = !uiState.isEditorLocked,
                 modifier = Modifier.fillMaxWidth().weight(1f).testTag("markdown_editor"),
                 textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
-                label = { Text("Markdown") },
-                placeholder = { Text("# Start writing…") }
+                label = { Text("Text / code") },
+                placeholder = { Text("Type or paste text…") }
             )
         }
     }
@@ -706,7 +708,7 @@ private fun shareMarkdownText(context: Context, text: String, displayName: Strin
         putExtra(Intent.EXTRA_TEXT, text)
         putExtra(Intent.EXTRA_TITLE, displayName)
     }
-    context.startActivity(Intent.createChooser(shareIntent, "Share Markdown"))
+    context.startActivity(Intent.createChooser(shareIntent, "Share text"))
 }
 
 private fun importFailureMessage(error: Throwable): String = when (error) {
@@ -748,7 +750,7 @@ private fun RecentMarkdownDocumentsSheet(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Recent Markdown", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Recent documents", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(
                 "Shortcuts to the original documents. Pinned shortcuts stay at the top and are protected from normal recent-file eviction; file contents are not copied into this list.",
                 style = MaterialTheme.typography.bodySmall,
@@ -939,5 +941,3 @@ private fun TextInspectorSummary(safety: TextInspectionResult) {
     }
 }
 
-private fun String.ensureMarkdownExtension(): String =
-    if (endsWith(".md", ignoreCase = true) || endsWith(".markdown", ignoreCase = true)) this else "$this.md"
