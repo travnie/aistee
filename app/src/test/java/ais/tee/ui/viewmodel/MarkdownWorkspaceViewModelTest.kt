@@ -75,7 +75,7 @@ class MarkdownWorkspaceViewModelTest {
         val viewModel = MarkdownWorkspaceViewModel()
         assertTrue(viewModel.updateText("~~~\nold"))
         val revision = viewModel.uiState.value.revision
-        assertTrue(viewModel.updateText("newer"))
+        assertTrue(viewModel.updateText("""{"new":true}"""))
 
         assertFalse(viewModel.applyTransformedText(revision, "~~~\nold\n~~~"))
         assertEquals("newer", viewModel.uiState.value.text)
@@ -350,7 +350,7 @@ class MarkdownWorkspaceViewModelTest {
     @Test
     fun androidDocumentImportAllowsExplicitSourceSaveAndUpdatesDigest() {
         val viewModel = MarkdownWorkspaceViewModel()
-        val initial = TextDocumentCodec.decodeUtf8("{\\"version\\":1}".encodeToByteArray())
+        val initial = TextDocumentCodec.decodeUtf8("""{"version":1}""".encodeToByteArray())
         val origin = MarkdownWorkspaceOrigin.AndroidDocument(
             uriString = "content://provider/file-1",
             sourceDigest = "old-sha256",
@@ -380,7 +380,7 @@ class MarkdownWorkspaceViewModelTest {
         assertNull(snapshot.source)
         val restored = MarkdownWorkspaceViewModel()
         assertTrue(restored.restoreRecovery(snapshot))
-        assertEquals("{\\"new\\":true}", restored.uiState.value.text)
+        assertEquals("""{"new":true}""", restored.uiState.value.text)
         assertNull(restored.uiState.value.origin)
     }
 
