@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.androidx.baselineprofile)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.roborazzi)
 }
 
 // Release signing is opt-in. GitHub Actions injects these values from repository
@@ -72,6 +73,12 @@ android {
     buildFeatures {
         compose = true
     }
+    // Robolectric (JVM screenshots) needs merged resources on the unit-test classpath.
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 baselineProfile {
@@ -112,6 +119,12 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.rhino)
+    // JVM screenshots (Roborazzi on Robolectric): `./gradlew :app:recordRoborazziDebug`
+    // writes PNGs to app/build/outputs/roborazzi without an emulator.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.ui.test.junit4)
 
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
