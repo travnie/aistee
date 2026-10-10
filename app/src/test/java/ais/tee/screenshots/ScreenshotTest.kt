@@ -87,8 +87,10 @@ class ScreenshotTest {
     @Test fun yamlEditor() = studio("yaml_editor") { vm, state -> YamlEditorScreen(vm, state) }
 
     @Test
-    fun markdownWorkspace() =
-        capture("markdown_workspace") { MarkdownWorkspaceScreen(workspaceViewModel = MarkdownWorkspaceViewModel()) }
+    fun markdownWorkspace() {
+        val viewModel = MarkdownWorkspaceViewModel()
+        capture("markdown_workspace") { MarkdownWorkspaceScreen(workspaceViewModel = viewModel) }
+    }
 
     @Test fun benchTools() = capture("bench_tools") { BenchToolsScreen() }
 
