@@ -541,6 +541,30 @@ private fun NativeChatDetailPane(
         }
     }
 
+    fun openLibrarySource(asset: ProjectLibraryAsset) {
+        scope.launch {
+            val text = viewModel.loadProjectLibraryAsset(asset.id)
+            if (text == null) {
+                viewModel.showSnackbar("Library source is no longer available.")
+            } else {
+                openMarkdownAsset(
+                    PendingMarkdownAsset(
+                        text = text,
+                        displayName = asset.title,
+                        sourceDescription = "Project Library (current version)",
+                        origin = MarkdownWorkspaceOrigin.ProjectLibrary(
+                            assetId = asset.id,
+                            revision = asset.revision,
+                        ),
+                        markDirty = false,
+                    ),
+                    allowDiscardDirty = false,
+                )
+                showProjectLibrary = false
+            }
+        }
+    }
+
     if (showProjectLibrary) {
         ProjectLibraryDialog(
             archive = uiState.projectLibrary,
@@ -557,29 +581,7 @@ private fun NativeChatDetailPane(
                     }
                 }
             },
-            onOpenAsset = { asset ->
-                scope.launch {
-                    val text = viewModel.loadProjectLibraryAsset(asset.id)
-                    if (text == null) {
-                        viewModel.showSnackbar("Could not open Library asset.")
-                    } else {
-                        openMarkdownAsset(
-                            PendingMarkdownAsset(
-                                text = text,
-                                displayName = asset.title,
-                                sourceDescription = "Project Library",
-                                origin = MarkdownWorkspaceOrigin.ProjectLibrary(
-                                    assetId = asset.id,
-                                    revision = asset.revision,
-                                ),
-                                markDirty = false,
-                            ),
-                            allowDiscardDirty = false,
-                        )
-                        showProjectLibrary = false
-                    }
-                }
-            },
+            onOpenAsset = ::openLibrarySource,
             onInsertAsset = if (
                 uiState.nativeChat.activeConversation != null && uiState.isNativeConversationStoreReady
             ) {
@@ -1282,6 +1284,16 @@ private fun NativeChatDetailPane(
                                 onDismiss = viewModel::dismissChatContextWarning,
                             )
                         }
+                    uiState.nativeChat.activeConversation?.draftSourceAssetIds
+                        ?.takeIf { promptInput.isNotBlank() && it.isNotEmpty() }
+                        ?.let { sourceIds ->
+                            ProjectLibrarySourceChips(
+                                sourceIds = sourceIds,
+                                archive = uiState.projectLibrary,
+                                onOpenAsset = ::openLibrarySource,
+                                modifier = Modifier.padding(bottom = 4.dp),
+                            )
+                        }
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier
@@ -1411,6 +1423,8 @@ private fun NativeChatDetailPane(
                             )
                             viewModel.showSnackbar("Copied to clipboard")
                         },
+                        sourceLibrary = uiState.projectLibrary,
+                        onOpenLibraryAsset = ::openLibrarySource,
                         onOpenMarkdown = { response ->
                             openMarkdownAsset(
                                 asset = PendingMarkdownAsset(
@@ -1779,6 +1793,8 @@ fun ChatMessageItem(
     onToggleStar: (() -> Unit)? = null,
     onSelectText: (() -> Unit)? = null,
     onSaveToLibrary: (() -> Unit)? = null,
+    sourceLibrary: ProjectLibraryArchive = ProjectLibraryArchive(),
+    onOpenLibraryAsset: (ProjectLibraryAsset) -> Unit = {},
 ) {
     val isUser = message.sender == "user"
     val tables = remember(message.id, message.text, message.isPartial, message.isError) {
@@ -1879,6 +1895,15 @@ fun ChatMessageItem(
                     )
                 }
             }
+        }
+
+        if (isUser && message.sourceAssetIds.isNotEmpty()) {
+            ProjectLibrarySourceChips(
+                sourceIds = message.sourceAssetIds,
+                archive = sourceLibrary,
+                onOpenAsset = onOpenLibraryAsset,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
         }
 
         Card(
