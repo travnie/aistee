@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,6 +27,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ais.tee.data.document.DocumentDiagnostic
 import ais.tee.data.document.DocumentDiagnosticKind
 import ais.tee.data.document.DocumentDiagnostics
+import ais.tee.data.document.DocbenchMarkdownRepairAction
+import ais.tee.data.document.DocbenchMarkdownRepairActionResult
 import ais.tee.data.document.LineEnding
 import ais.tee.data.document.LineEndingCounts
 import ais.tee.data.document.MarkdownDocumentFileAccess
@@ -35,6 +38,10 @@ import ais.tee.data.document.MarkdownStructureDiagnostics
 import ais.tee.data.document.RecentMarkdownDocument
 import ais.tee.data.document.TextDocument
 import ais.tee.data.document.TextDocumentCodec
+import ais.tee.data.model.BenchToolPermission
+import ais.tee.data.model.BenchToolSurface
+import ais.tee.data.model.BuiltInBenchTool
+import ais.tee.data.preferences.BuiltInBenchPreferencesStore
 import ais.tee.data.security.TextInspectionResult
 import ais.tee.data.security.TextInspector
 import ais.tee.data.tokenizer.LocalTokenCounter
@@ -61,6 +68,12 @@ private sealed class PendingDestructiveWorkspaceAction {
     data class Recent(val document: RecentMarkdownDocument) : PendingDestructiveWorkspaceAction()
 }
 
+private data class MarkdownRepairPreview(
+    val revision: Long,
+    val text: String,
+    val count: Int,
+)
+
 private data class MarkdownWorkspaceAnalysis(
     val lineEndings: LineEndingCounts,
     val diagnostics: List<DocumentDiagnostic>,
@@ -80,9 +93,11 @@ fun MarkdownWorkspaceScreen(
     val uiState by workspaceViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val recentStore = remember(context) { MarkdownRecentDocumentsStore(context.applicationContext) }
+    val benchPreferences = remember(context) { BuiltInBenchPreferencesStore(context.applicationContext) }
     var recentDocuments by remember { mutableStateOf<List<RecentMarkdownDocument>>(emptyList()) }
     var showRecents by remember { mutableStateOf(false) }
     var pendingDestructiveAction by remember { mutableStateOf<PendingDestructiveWorkspaceAction?>(null) }
+    var repairPreview by remember { mutableStateOf<MarkdownRepairPreview?>(null) }
     val analysis by rememberMarkdownWorkspaceAnalysis(
         text = uiState.text,
         hadUtf8Bom = uiState.hadUtf8Bom,
@@ -212,6 +227,92 @@ fun MarkdownWorkspaceScreen(
         }
     }
 
+
+    fun requestMarkdownRepair() {
+        val draft = workspaceViewModel.uiState.value
+        if (draft.isBusy || draft.isEditorLocked) return
+        if (BuiltInBenchTool.DOCBENCH_DOCUMENT !in benchPreferences.loadEnabledTools()) {
+            scope.launch { snackbarHostState.showSnackbar("Enable Docbench Document in Benches first.") }
+            return
+        }
+        scope.launch {
+            val result = withContext(Dispatchers.Default) {
+                DocbenchMarkdownRepairAction.execute(
+                    text = draft.text,
+                    surface = BenchToolSurface.COMPANION_UI,
+                    isEnabled = true,
+                    grantedPermissions = setOf(BenchToolPermission.READ_USER_SELECTED_CONTENT),
+                )
+            }
+            if (workspaceViewModel.uiState.value.revision != draft.revision) {
+                snackbarHostState.showSnackbar("The draft changed. Preview the repair again.")
+                return@launch
+            }
+            when (result) {
+                is DocbenchMarkdownRepairActionResult.Completed -> when {
+                    !result.changed -> snackbarHostState.showSnackbar("No repair needed.")
+                    result.text.length > MAX_EDITABLE_MARKDOWN_CHARS ->
+                        snackbarHostState.showSnackbar("The repair exceeds the editor size limit.")
+                    else -> repairPreview = MarkdownRepairPreview(
+                        revision = draft.revision,
+                        text = result.text,
+                        count = result.repairedIssueCount,
+                    )
+                }
+                is DocbenchMarkdownRepairActionResult.Rejected ->
+                    snackbarHostState.showSnackbar(result.message)
+                is DocbenchMarkdownRepairActionResult.Blocked ->
+                    snackbarHostState.showSnackbar("Docbench repair is blocked by tool policy.")
+            }
+        }
+    }
+
+    repairPreview?.let { preview ->
+        AlertDialog(
+            onDismissRequest = { repairPreview = null },
+            title = { Text("Preview fence repair") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Close ${preview.count} Markdown fence(s). The source is not saved automatically.")
+                    Text("Repaired draft ending:", style = MaterialTheme.typography.labelMedium)
+                    SelectionContainer {
+                        Text(
+                            preview.text.takeLast(900),
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState()),
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = uiState.revision == preview.revision && !uiState.isBusy,
+                    onClick = {
+                        val enabled = BuiltInBenchTool.DOCBENCH_DOCUMENT in benchPreferences.loadEnabledTools()
+                        val applied = enabled && workspaceViewModel.applyTransformedText(
+                            expectedRevision = preview.revision,
+                            text = preview.text,
+                        )
+                        repairPreview = null
+                        scope.launch {
+                            snackbarHostState.showSnackbar(
+                                when {
+                                    !enabled -> "Docbench was disabled. No changes applied."
+                                    applied -> "Applied to draft. Save a Library source separately."
+                                    else -> "The draft changed. No changes applied."
+                                }
+                            )
+                        }
+                    },
+                    modifier = Modifier.testTag("markdown_repair_apply"),
+                ) { Text("Apply to draft") }
+            },
+            dismissButton = {
+                TextButton(onClick = { repairPreview = null }) { Text("Cancel") }
+            },
+        )
+    }
+
     pendingDestructiveAction?.let { action ->
         DiscardWorkspaceChangesDialog(
             onDismiss = { pendingDestructiveAction = null },
@@ -278,6 +379,7 @@ fun MarkdownWorkspaceScreen(
                 }
             },
             onNormalize = { workspaceViewModel.normalizeLineEndings(it) },
+            onRepair = ::requestMarkdownRepair,
             onUtf8BomChange = { workspaceViewModel.setUtf8Bom(it) },
             modifier = Modifier.fillMaxSize().padding(innerPadding)
         )
@@ -377,6 +479,7 @@ private fun MarkdownWorkspaceBody(
     analysis: MarkdownWorkspaceAnalysis?,
     onTextChange: (String) -> Unit,
     onNormalize: (LineEnding) -> Unit,
+    onRepair: () -> Unit,
     onUtf8BomChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -395,7 +498,8 @@ private fun MarkdownWorkspaceBody(
         WorkspaceDiagnostics(
             analysis = analysis,
             canNormalize = !uiState.isEditorLocked,
-            onNormalize = onNormalize
+            onNormalize = onNormalize,
+            onRepair = onRepair,
         )
         if (uiState.isLargeDocumentReadOnly) {
             LargeMarkdownPreview(uiState.text, Modifier.fillMaxWidth().weight(1f))
@@ -676,7 +780,8 @@ private fun MetadataChip(label: String) {
 private fun WorkspaceDiagnostics(
     analysis: MarkdownWorkspaceAnalysis?,
     canNormalize: Boolean,
-    onNormalize: (LineEnding) -> Unit
+    onNormalize: (LineEnding) -> Unit,
+    onRepair: () -> Unit,
 ) {
     if (analysis == null) {
         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -700,7 +805,16 @@ private fun WorkspaceDiagnostics(
                 }
             }
             nul?.let { NulDiagnostic(it) }
-            markdownStructure?.takeUnless { it.isValid }?.let { MarkdownStructureSummary(it) }
+            markdownStructure?.takeUnless { it.isValid }?.let { issues ->
+                MarkdownStructureSummary(issues)
+                if (issues.issues.any { it.repairable }) {
+                    TextButton(
+                        onClick = onRepair,
+                        enabled = canNormalize,
+                        modifier = Modifier.testTag("markdown_repair_preview"),
+                    ) { Text("Preview fence repair") }
+                }
+            }
             if (safety.hasFindings) TextInspectorSummary(safety)
         }
     }
