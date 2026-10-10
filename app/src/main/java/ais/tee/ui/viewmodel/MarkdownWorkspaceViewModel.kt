@@ -262,6 +262,27 @@ class MarkdownWorkspaceViewModel : ViewModel() {
         return changed
     }
 
+    fun applyTransformedText(expectedRevision: Long, text: String): Boolean {
+        val applied = synchronized(this) {
+            val state = _uiState.value
+            if (
+                state.revision != expectedRevision || state.isBusy || state.isEditorLocked ||
+                state.text == text || text.length > MAX_EDITABLE_MARKDOWN_CHARS
+            ) {
+                false
+            } else {
+                _uiState.value = state.copy(
+                    text = text,
+                    isDirty = true,
+                    revision = state.revision + 1,
+                )
+                true
+            }
+        }
+        if (applied) scheduleRecovery()
+        return applied
+    }
+
     fun setUtf8Bom(include: Boolean): Boolean {
         var changed = false
         _uiState.update { state ->

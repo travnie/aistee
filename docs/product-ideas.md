@@ -72,7 +72,7 @@ Treat Project Library as Aistee's canonical workspace/file layer rather than cre
 Suggested implementation order:
 
 1. **Shipped local foundation:** Project Library v2 editing/revision/hash/origin metadata with stable asset identity, safe v1 migration, conflict-aware Markdown save-back and existing chat source provenance.
-2. Docbench typed transforms plus preview/save-back into Project Library.
+2. Docbench typed transforms plus preview/save-back into Project Library. **First slice shipped:** Markdown Workspace previews Docbench fence repairs and applies them to a revision-checked local draft; bound Project Library files still use conflict-aware Save source. Other transforms and shared result metadata remain open.
 3. Docbench MCP App and file-entrypoint integration, using host resource reads/writes where supported.
 4. Optional Cloudflare R2 + D1 synchronization behind explicit enablement and conflict handling.
 5. Add richer search/indexing or collaborative coordination only after the simple revision model proves insufficient.

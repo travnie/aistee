@@ -54,6 +54,46 @@ class MarkdownWorkspaceViewModelTest {
     }
 
     @Test
+    fun docbenchRepairEditsBoundLibraryDraftWithoutSavingSource() {
+        val viewModel = MarkdownWorkspaceViewModel()
+        val origin = MarkdownWorkspaceOrigin.ProjectLibrary(PROJECT_LIBRARY_ASSET_ID, 4L)
+        assertEquals(
+            ExternalMarkdownOpenResult.OPENED,
+            viewModel.openExternalText("~~~\ncode", PROMPT_NAME, origin = origin, markDirty = false),
+        )
+        val revision = viewModel.uiState.value.revision
+
+        assertTrue(viewModel.applyTransformedText(revision, "~~~\ncode\n~~~"))
+        assertEquals("~~~\ncode\n~~~", viewModel.uiState.value.text)
+        assertTrue(viewModel.uiState.value.isDirty)
+        assertEquals(origin, viewModel.uiState.value.origin)
+        assertEquals(revision + 1, viewModel.uiState.value.revision)
+    }
+
+    @Test
+    fun staleDocbenchPreviewDoesNotOverwriteNewerDraft() {
+        val viewModel = MarkdownWorkspaceViewModel()
+        assertTrue(viewModel.updateText("~~~\nold"))
+        val revision = viewModel.uiState.value.revision
+        assertTrue(viewModel.updateText("newer"))
+
+        assertFalse(viewModel.applyTransformedText(revision, "~~~\nold\n~~~"))
+        assertEquals("newer", viewModel.uiState.value.text)
+    }
+
+    @Test
+    fun docbenchRepairCannotEditBusyOrOversizedDraft() {
+        val viewModel = MarkdownWorkspaceViewModel()
+        assertTrue(viewModel.updateText("~~~\ntext"))
+        val revision = viewModel.uiState.value.revision
+        val snapshot = requireNotNull(viewModel.beginExport())
+        assertFalse(viewModel.applyTransformedText(revision, "~~~\ntext\n~~~"))
+        viewModel.failExport(snapshot)
+        assertFalse(viewModel.applyTransformedText(revision, "x".repeat(MAX_EDITABLE_MARKDOWN_CHARS + 1)))
+        assertFalse(viewModel.applyTransformedText(revision, "~~~\ntext"))
+    }
+
+    @Test
     fun explicitUtf8BomChoiceUpdatesExportMetadata() {
         val viewModel = MarkdownWorkspaceViewModel()
         val document = TextDocumentCodec.decodeUtf8("# prompt".encodeToByteArray())
