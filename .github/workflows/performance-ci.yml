@@ -154,4 +154,9 @@ jobs:
                   )
 
           if stale:
+              print(
+                  "::error::Regenerate Baseline Profiles and commit the updated "
+                  "app/src/release/generated/baselineProfiles/*.txt files "
+                  "(see docs/android-performance.md)"
+              )
               sys.exit(1)
