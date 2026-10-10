@@ -42,6 +42,14 @@ sealed interface MarkdownWorkspaceOrigin {
         val assetId: String,
         val revision: Long,
     ) : MarkdownWorkspaceOrigin
+
+    /** A SAF document explicitly opened in this session. Never restore this write binding. */
+    data class AndroidDocument(
+        val uriString: String,
+        val sourceDigest: String,
+    ) : MarkdownWorkspaceOrigin {
+        override fun toString(): String = "MarkdownWorkspaceOrigin.AndroidDocument(<redacted>)"
+    }
 }
 
 data class MarkdownWorkspaceUiState(
@@ -176,7 +184,11 @@ class MarkdownWorkspaceViewModel : ViewModel() {
         }
     }
 
-    fun completeImport(displayName: String, document: TextDocument): Boolean {
+    fun completeImport(
+        displayName: String,
+        document: TextDocument,
+        origin: MarkdownWorkspaceOrigin.AndroidDocument? = null,
+    ): Boolean {
         val changed = synchronized(this) {
             val state = _uiState.value
             if (!state.isImporting) return@synchronized false
@@ -186,6 +198,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
                 displayName = MarkdownDocumentFileAccess.normalizeDisplayName(displayName),
                 isDirty = false,
                 revision = state.revision + 1,
+                origin = origin,
             )
             true
         }
@@ -212,6 +225,7 @@ class MarkdownWorkspaceViewModel : ViewModel() {
                 }
             }
             is MarkdownWorkspaceOrigin.ProjectLibrary -> origin
+            is MarkdownWorkspaceOrigin.AndroidDocument -> origin
             null -> null
         }
 
@@ -407,7 +421,8 @@ class MarkdownWorkspaceViewModel : ViewModel() {
             )
             // Recovered Library drafts are deliberately detached from their source. A stale
             // process-recovery snapshot must never regain permission to overwrite a newer revision.
-            is MarkdownWorkspaceOrigin.ProjectLibrary -> null
+            is MarkdownWorkspaceOrigin.ProjectLibrary,
+            is MarkdownWorkspaceOrigin.AndroidDocument -> null
             null -> null
         }
         return MarkdownWorkspaceRecoverySnapshot(

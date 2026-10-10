@@ -50,6 +50,7 @@ import ais.tee.ui.viewmodel.MAX_EDITABLE_MARKDOWN_CHARS
 import ais.tee.ui.viewmodel.MarkdownExportSnapshot
 import ais.tee.ui.viewmodel.MarkdownWorkspaceUiState
 import ais.tee.ui.viewmodel.MarkdownWorkspaceOrigin
+import kotlinx.coroutines.NonCancellable
 import ais.tee.ui.viewmodel.MarkdownWorkspaceViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -134,7 +135,9 @@ fun MarkdownWorkspaceScreen(
             workspaceViewModel.cancelImport()
         } else {
             scope.launch {
-                val importedName = importWorkspaceDocument(context, uri, workspaceViewModel, snackbarHostState)
+                val importedName = importWorkspaceDocument(
+                    context, uri, workspaceViewModel, snackbarHostState, bindSource = true
+                )
                 if (importedName != null) {
                     val wasRetained = recentStore.hasReadPermission(uri)
                     val retained = recentStore.retainReadPermission(uri)
@@ -144,7 +147,7 @@ fun MarkdownWorkspaceScreen(
                         recorded != null && recorded.any { it.uriString == uri.toString() } -> {
                             recentDocuments = recorded
                             snackbarHostState.showSnackbar(
-                                "Imported $importedName and added it to Recents; original file stays untouched."
+                                "Opened $importedName. Original changes only when you select Save source."
                             )
                         }
                         recorded != null -> {
@@ -250,6 +253,53 @@ fun MarkdownWorkspaceScreen(
 
 
 
+    fun saveOpenedSource() {
+        val snapshot = workspaceViewModel.beginExport() ?: return
+        val origin = snapshot.origin as? MarkdownWorkspaceOrigin.AndroidDocument
+        if (origin == null) {
+            workspaceViewModel.failExport(snapshot)
+            return
+        }
+        scope.launch {
+            val result = runCatching {
+                withContext(NonCancellable + Dispatchers.IO) {
+                    val uri = Uri.parse(origin.uriString)
+                    val source = MarkdownDocumentFileAccess.import(context, uri)
+                    if (MarkdownDocumentFileAccess.sourceDigest(source.document) != origin.sourceDigest) {
+                        throw IOException("The source changed outside Aistee. Reopen it or export a copy.")
+                    }
+                    MarkdownDocumentFileAccess.export(context, uri, snapshot.document)
+                    MarkdownDocumentFileAccess.sourceDigest(snapshot.document)
+                }
+            }
+            result.fold(
+                onSuccess = { savedDigest ->
+                    val current = workspaceViewModel.completeSourceSave(
+                        snapshot,
+                        origin.copy(sourceDigest = savedDigest),
+                    )
+                    snackbarHostState.showSnackbar(
+                        if (current) "Saved changes to the opened file."
+                        else "Saved an earlier draft; newer edits are still unsaved."
+                    )
+                },
+                onFailure = { error ->
+                    workspaceViewModel.failExport(snapshot)
+                    if (error is CancellationException) throw error
+                    snackbarHostState.showSnackbar(
+                        when {
+                            error is SecurityException ->
+                                "No write access to this file. Reopen it with permission or export a copy."
+                            error is IOException && error.message?.startsWith("The source changed outside Aistee") == true ->
+                                "The file changed outside Aistee. Reopen it or export a copy."
+                            else -> "Could not save the opened file. The draft is still available; export a copy."
+                        }
+                    )
+                },
+            )
+        }
+    }
+
     fun requestWorkspaceTransform(kind: DocbenchWorkspaceTransformKind) {
         val draft = workspaceViewModel.uiState.value
         if (draft.isBusy || draft.isEditorLocked || draft.text.isEmpty()) return
@@ -346,7 +396,9 @@ fun MarkdownWorkspaceScreen(
                                             "Applied to draft. Use Save source to update the Project Library asset."
                                         is MarkdownWorkspaceOrigin.LocalSkill ->
                                             "Applied to draft. Use Save source to update the local skill."
-                                        null -> "Applied to draft. Use Export Markdown to save it as a file."
+                                        is MarkdownWorkspaceOrigin.AndroidDocument ->
+                                            "Applied to draft. Use Save source to update the opened file."
+                                        null -> "Applied to draft. Use Export text file to save a copy."
                                     }
                                     else -> "The draft changed. No changes applied."
                                 }
@@ -411,6 +463,7 @@ fun MarkdownWorkspaceScreen(
                     }
                 },
                 onExport = { exportLauncher.launch(workspaceExportFileName(uiState.displayName)) },
+                onSaveSource = ::saveOpenedSource,
                 onShare = ::shareCurrentMarkdown,
                 onFormat = ::requestWorkspaceTransform
             )
@@ -446,6 +499,7 @@ private fun MarkdownWorkspaceTopBar(
     onImport: () -> Unit,
     onRecent: () -> Unit,
     onExport: () -> Unit,
+    onSaveSource: () -> Unit,
     onShare: () -> Unit,
     onFormat: (DocbenchWorkspaceTransformKind) -> Unit,
 ) {
@@ -514,6 +568,18 @@ private fun MarkdownWorkspaceTopBar(
                                 onFormat(kind)
                             },
                             modifier = Modifier.testTag("markdown_format_${kind.formatName.lowercase()}"),
+                        )
+                    }
+                    if (uiState.origin is MarkdownWorkspaceOrigin.AndroidDocument) {
+                        DropdownMenuItem(
+                            text = { Text("Save source") },
+                            leadingIcon = { Icon(Icons.Default.Save, contentDescription = null) },
+                            enabled = uiState.isDirty && !uiState.isBusy && !uiState.isLargeDocumentReadOnly,
+                            onClick = {
+                                showMoreActions = false
+                                onSaveSource()
+                            },
+                            modifier = Modifier.testTag("workspace_save_android_source"),
                         )
                     }
                     DropdownMenuItem(
@@ -656,12 +722,22 @@ private suspend fun importWorkspaceDocument(
     uri: Uri,
     viewModel: MarkdownWorkspaceViewModel,
     snackbarHostState: SnackbarHostState,
-    onFailure: (Throwable) -> Unit = {}
+    onFailure: (Throwable) -> Unit = {},
+    bindSource: Boolean = false,
 ): String? {
     val result = runCatching { MarkdownDocumentFileAccess.import(context, uri) }
     return result.fold(
         onSuccess = { opened ->
-            opened.displayName.takeIf { viewModel.completeImport(opened.displayName, opened.document) }
+            opened.displayName.takeIf {
+                viewModel.completeImport(
+                    opened.displayName,
+                    opened.document,
+                    origin = if (bindSource) MarkdownWorkspaceOrigin.AndroidDocument(
+                        uriString = uri.toString(),
+                        sourceDigest = MarkdownDocumentFileAccess.sourceDigest(opened.document),
+                    ) else null,
+                )
+            }
         },
         onFailure = { error ->
             viewModel.cancelImport()

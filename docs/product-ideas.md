@@ -14,7 +14,8 @@ The ideas are inspired by observed workflows in other AI/document apps and by to
 ## Markdown workspace / prompt vault
 
 - The same local text workspace also supports small manual edits of UTF-8 configuration/source files during AI-assisted coding. Android SAF may label JSON, YAML or extensionless text with non-text MIME types, so offer all files in the picker but read them only through the existing bounded, strict UTF-8 decoder.
-- Preserve imported filenames and file extensions on export, including `.json`, `.json5`, `.yaml`, `.yml`, `.xml`, `.toml`, `.env` and extensionless text. Use the correct output MIME when known; do not force all text into `.md`. Exports remain explicit new files and never silently overwrite the selected source.
+- Preserve imported filenames and file extensions on export, including `.py`, `.sh`, `.json`, `.json5`, `.yaml`, `.yml`, `.xml`, `.toml`, `.env` and extensionless text. Use the correct output MIME when known; do not force all text into `.md`. Exports remain explicit new files and never silently overwrite the selected source.
+- Allow explicit Save source for a document opened with Android SAF in the current session. Re-read and compare the original UTF-8 byte digest (including BOM) before overwriting; reject external changes. After process recovery, keep the local draft but detach the original-file write binding. Android SAF may not guarantee atomic overwrites; export a copy for important scripts.
 - Treat local `.md` files as editable source-of-truth assets, not one-shot attachments.
 - Create, open, edit, save and Save As Markdown from inside Aistee.
 - Keep recent/search/favorite or pinned prompt files for fast reuse.
