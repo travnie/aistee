@@ -2,6 +2,7 @@ package ais.tee.data.document
 
 import android.content.Context
 import android.net.Uri
+import ais.tee.data.skills.sha256Hex
 
 internal typealias OpenedMarkdownDocument = OpenedTextDocument
 
@@ -16,6 +17,9 @@ internal object MarkdownDocumentFileAccess {
 
     suspend fun export(context: Context, uri: Uri, document: TextDocument) =
         TextDocumentFileAccess.export(context, uri, document)
+
+    /** Hash the exact UTF-8 bytes, including original BOM and line-ending choice. */
+    fun sourceDigest(document: TextDocument): String = sha256Hex(TextDocumentCodec.encodeUtf8(document))
 
     fun displayName(context: Context, uri: Uri, fallback: String = FALLBACK_NAME): String =
         TextDocumentFileAccess.displayName(context, uri, markdownFallback(fallback))

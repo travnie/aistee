@@ -348,6 +348,43 @@ class MarkdownWorkspaceViewModelTest {
     }
 
     @Test
+    fun androidDocumentImportAllowsExplicitSourceSaveAndUpdatesDigest() {
+        val viewModel = MarkdownWorkspaceViewModel()
+        val initial = TextDocumentCodec.decodeUtf8("{\\"version\\":1}".encodeToByteArray())
+        val origin = MarkdownWorkspaceOrigin.AndroidDocument(
+            uriString = "content://provider/file-1",
+            sourceDigest = "old-sha256",
+        )
+        assertTrue(viewModel.beginImport())
+        assertTrue(viewModel.completeImport("script.py", initial, origin))
+        assertEquals(origin, viewModel.uiState.value.origin)
+        assertFalse(viewModel.uiState.value.canChangeUtf8Bom)
+        assertTrue(viewModel.updateText("print('hello')"))
+        val snapshot = requireNotNull(viewModel.beginExport())
+        val saved = origin.copy(sourceDigest = "new-sha256")
+        assertTrue(viewModel.completeSourceSave(snapshot, saved))
+        assertFalse(viewModel.uiState.value.isDirty)
+        assertEquals(saved, viewModel.uiState.value.origin)
+        assertEquals("script.py", viewModel.uiState.value.displayName)
+        assertFalse(saved.toString().contains("provider"))
+    }
+
+    @Test
+    fun androidDocumentRecoveryDetachesWriteBinding() {
+        val viewModel = MarkdownWorkspaceViewModel()
+        val origin = MarkdownWorkspaceOrigin.AndroidDocument("content://provider/file-2", "digest")
+        assertTrue(viewModel.beginImport())
+        assertTrue(viewModel.completeImport("config.json", TextDocumentCodec.decodeUtf8("{}".encodeToByteArray()), origin))
+        assertTrue(viewModel.updateText("{\\"new\\":true}"))
+        val snapshot = viewModel.recoverySnapshot()
+        assertNull(snapshot.source)
+        val restored = MarkdownWorkspaceViewModel()
+        assertTrue(restored.restoreRecovery(snapshot))
+        assertEquals("{\\"new\\":true}", restored.uiState.value.text)
+        assertNull(restored.uiState.value.origin)
+    }
+
+    @Test
     fun projectLibraryRecoveryDetachesStaleSourceBinding() {
         val viewModel = MarkdownWorkspaceViewModel()
         assertEquals(
