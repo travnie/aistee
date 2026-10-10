@@ -27,8 +27,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import ais.tee.data.document.DocumentDiagnostic
 import ais.tee.data.document.DocumentDiagnosticKind
 import ais.tee.data.document.DocumentDiagnostics
-import ais.tee.data.document.DocbenchMarkdownRepairAction
-import ais.tee.data.document.DocbenchMarkdownRepairActionResult
+import ais.tee.data.document.DocbenchWorkspaceTransformAction
+import ais.tee.data.document.DocbenchWorkspaceTransformKind
+import ais.tee.data.document.DocbenchWorkspaceTransformResult
 import ais.tee.data.document.LineEnding
 import ais.tee.data.document.LineEndingCounts
 import ais.tee.data.document.MarkdownDocumentFileAccess
@@ -69,10 +70,9 @@ private sealed class PendingDestructiveWorkspaceAction {
     data class Recent(val document: RecentMarkdownDocument) : PendingDestructiveWorkspaceAction()
 }
 
-private data class MarkdownRepairPreview(
+private data class WorkspaceTransformPreview(
     val revision: Long,
-    val text: String,
-    val count: Int,
+    val result: DocbenchWorkspaceTransformResult.Completed,
 )
 
 private data class MarkdownWorkspaceAnalysis(
@@ -98,7 +98,7 @@ fun MarkdownWorkspaceScreen(
     var recentDocuments by remember { mutableStateOf<List<RecentMarkdownDocument>>(emptyList()) }
     var showRecents by remember { mutableStateOf(false) }
     var pendingDestructiveAction by remember { mutableStateOf<PendingDestructiveWorkspaceAction?>(null) }
-    var repairPreview by remember { mutableStateOf<MarkdownRepairPreview?>(null) }
+    var transformPreview by remember { mutableStateOf<WorkspaceTransformPreview?>(null) }
     val analysis by rememberMarkdownWorkspaceAnalysis(
         text = uiState.text,
         hadUtf8Bom = uiState.hadUtf8Bom,
@@ -229,72 +229,92 @@ fun MarkdownWorkspaceScreen(
     }
 
 
-    fun requestMarkdownRepair() {
+
+    fun requestWorkspaceTransform(kind: DocbenchWorkspaceTransformKind) {
         val draft = workspaceViewModel.uiState.value
-        if (draft.isBusy || draft.isEditorLocked) return
+        if (draft.isBusy || draft.isEditorLocked || draft.text.isEmpty()) return
         if (BuiltInBenchTool.DOCBENCH_DOCUMENT !in benchPreferences.loadEnabledTools()) {
             scope.launch { snackbarHostState.showSnackbar("Enable Docbench Document in Benches first.") }
             return
         }
         scope.launch {
             val result = withContext(Dispatchers.Default) {
-                DocbenchMarkdownRepairAction.execute(
+                DocbenchWorkspaceTransformAction.execute(
                     text = draft.text,
+                    kind = kind,
                     surface = BenchToolSurface.COMPANION_UI,
-                    isEnabled = true,
+                    isEnabled = BuiltInBenchTool.DOCBENCH_DOCUMENT in benchPreferences.loadEnabledTools(),
                     grantedPermissions = setOf(BenchToolPermission.READ_USER_SELECTED_CONTENT),
+                    sourceIds = when (val origin = draft.origin) {
+                        is MarkdownWorkspaceOrigin.ProjectLibrary -> listOf(origin.assetId)
+                        else -> emptyList()
+                    },
                 )
             }
             if (workspaceViewModel.uiState.value.revision != draft.revision) {
-                snackbarHostState.showSnackbar("The draft changed. Preview the repair again.")
+                snackbarHostState.showSnackbar("The draft changed. Preview the transform again.")
                 return@launch
             }
             when (result) {
-                is DocbenchMarkdownRepairActionResult.Completed -> when {
-                    !result.changed -> snackbarHostState.showSnackbar("No repair needed.")
-                    result.text.length > MAX_EDITABLE_MARKDOWN_CHARS ->
-                        snackbarHostState.showSnackbar("The repair exceeds the editor size limit.")
-                    else -> repairPreview = MarkdownRepairPreview(
-                        revision = draft.revision,
-                        text = result.text,
-                        count = result.repairedIssueCount,
-                    )
+                is DocbenchWorkspaceTransformResult.Completed -> when {
+                    !result.changed -> snackbarHostState.showSnackbar("${kind.label}: no changes needed.")
+                    result.content.length > MAX_EDITABLE_MARKDOWN_CHARS ->
+                        snackbarHostState.showSnackbar("The result exceeds the editor size limit.")
+                    else -> transformPreview = WorkspaceTransformPreview(draft.revision, result)
                 }
-                is DocbenchMarkdownRepairActionResult.Rejected ->
+                is DocbenchWorkspaceTransformResult.Rejected ->
                     snackbarHostState.showSnackbar(result.message)
-                is DocbenchMarkdownRepairActionResult.Blocked ->
-                    snackbarHostState.showSnackbar("Docbench repair is blocked by tool policy.")
+                is DocbenchWorkspaceTransformResult.Blocked ->
+                    snackbarHostState.showSnackbar("Docbench transform is blocked by tool policy.")
             }
         }
     }
 
-    repairPreview?.let { preview ->
+    transformPreview?.let { preview ->
+        val repairing = preview.result.kind == DocbenchWorkspaceTransformKind.REPAIR_MARKDOWN_FENCES
+        val previewPart: (String) -> String = { value ->
+            if (repairing) value.takeLast(600) else value.take(600)
+        }
         AlertDialog(
-            onDismissRequest = { repairPreview = null },
-            title = { Text("Preview fence repair") },
+            onDismissRequest = { transformPreview = null },
+            title = { Text("Preview ${preview.result.kind.label}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Close ${preview.count} Markdown fence(s). The source is not saved automatically.")
-                    Text("Repaired draft ending:", style = MaterialTheme.typography.labelMedium)
+                    Text("Preview only. Apply to the local draft; source files are never saved automatically.")
+                    Text("Current ${if (repairing) "ending" else "beginning"}:", style = MaterialTheme.typography.labelMedium)
                     SelectionContainer {
                         Text(
-                            preview.text.takeLast(900),
+                            previewPart(uiState.text),
                             fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.heightIn(max = 240.dp).verticalScroll(rememberScrollState()),
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 100.dp).verticalScroll(rememberScrollState()),
                         )
+                    }
+                    Text("Proposed ${if (repairing) "ending" else "beginning"}:", style = MaterialTheme.typography.labelMedium)
+                    SelectionContainer {
+                        Text(
+                            previewPart(preview.result.content),
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 140.dp).verticalScroll(rememberScrollState()),
+                        )
+                    }
+                    if (uiState.text.length > 600 || preview.result.content.length > 600) {
+                        Text("Preview truncated; the complete draft is applied only after confirmation.", style = MaterialTheme.typography.bodySmall)
+                    }
+                    preview.result.warnings.forEach { warning ->
+                        Text(warning, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
             confirmButton = {
                 TextButton(
-                    enabled = uiState.revision == preview.revision && !uiState.isBusy,
+                    enabled = uiState.revision == preview.revision && !uiState.isBusy && !uiState.isEditorLocked,
                     onClick = {
                         val enabled = BuiltInBenchTool.DOCBENCH_DOCUMENT in benchPreferences.loadEnabledTools()
                         val applied = enabled && workspaceViewModel.applyTransformedText(
                             expectedRevision = preview.revision,
-                            text = preview.text,
+                            text = preview.result.content,
                         )
-                        repairPreview = null
+                        transformPreview = null
                         scope.launch {
                             snackbarHostState.showSnackbar(
                                 when {
@@ -311,11 +331,13 @@ fun MarkdownWorkspaceScreen(
                             )
                         }
                     },
-                    modifier = Modifier.testTag("markdown_repair_apply"),
+                    modifier = Modifier.testTag(
+                        if (repairing) "markdown_repair_apply" else "markdown_format_apply"
+                    ),
                 ) { Text("Apply to draft") }
             },
             dismissButton = {
-                TextButton(onClick = { repairPreview = null }) { Text("Cancel") }
+                TextButton(onClick = { transformPreview = null }) { Text("Cancel") }
             },
         )
     }
@@ -367,7 +389,8 @@ fun MarkdownWorkspaceScreen(
                     }
                 },
                 onExport = { exportLauncher.launch(uiState.displayName.ensureMarkdownExtension()) },
-                onShare = ::shareCurrentMarkdown
+                onShare = ::shareCurrentMarkdown,
+                onFormat = ::requestWorkspaceTransform
             )
         },
         modifier = modifier
@@ -386,7 +409,7 @@ fun MarkdownWorkspaceScreen(
                 }
             },
             onNormalize = { workspaceViewModel.normalizeLineEndings(it) },
-            onRepair = ::requestMarkdownRepair,
+            onRepair = { requestWorkspaceTransform(DocbenchWorkspaceTransformKind.REPAIR_MARKDOWN_FENCES) },
             onUtf8BomChange = { workspaceViewModel.setUtf8Bom(it) },
             modifier = Modifier.fillMaxSize().padding(innerPadding)
         )
@@ -401,7 +424,8 @@ private fun MarkdownWorkspaceTopBar(
     onImport: () -> Unit,
     onRecent: () -> Unit,
     onExport: () -> Unit,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    onFormat: (DocbenchWorkspaceTransformKind) -> Unit,
 ) {
     var showMoreActions by remember { mutableStateOf(false) }
 
@@ -454,6 +478,22 @@ private fun MarkdownWorkspaceTopBar(
                         },
                         modifier = Modifier.testTag("markdown_recents")
                     )
+                    listOf(
+                        DocbenchWorkspaceTransformKind.FORMAT_JSON,
+                        DocbenchWorkspaceTransformKind.FORMAT_JSON5,
+                        DocbenchWorkspaceTransformKind.FORMAT_YAML,
+                    ).forEach { kind ->
+                        DropdownMenuItem(
+                            text = { Text("Format ${kind.formatName}") },
+                            leadingIcon = { Icon(Icons.Default.AutoFixHigh, contentDescription = null) },
+                            enabled = !uiState.isBusy && !uiState.isEditorLocked && uiState.text.isNotBlank(),
+                            onClick = {
+                                showMoreActions = false
+                                onFormat(kind)
+                            },
+                            modifier = Modifier.testTag("markdown_format_${kind.formatName.lowercase()}"),
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Export Markdown") },
                         leadingIcon = { Icon(Icons.Default.SaveAs, contentDescription = null) },
