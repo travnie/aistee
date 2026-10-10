@@ -75,7 +75,7 @@ class MarkdownWorkspaceViewModelTest {
         val viewModel = MarkdownWorkspaceViewModel()
         assertTrue(viewModel.updateText("~~~\nold"))
         val revision = viewModel.uiState.value.revision
-        assertTrue(viewModel.updateText("""{"new":true}"""))
+        assertTrue(viewModel.updateText("newer"))
 
         assertFalse(viewModel.applyTransformedText(revision, "~~~\nold\n~~~"))
         assertEquals("newer", viewModel.uiState.value.text)
@@ -375,7 +375,7 @@ class MarkdownWorkspaceViewModelTest {
         val origin = MarkdownWorkspaceOrigin.AndroidDocument("content://provider/file-2", "digest")
         assertTrue(viewModel.beginImport())
         assertTrue(viewModel.completeImport("config.json", TextDocumentCodec.decodeUtf8("{}".encodeToByteArray()), origin))
-        assertTrue(viewModel.updateText("{\\"new\\":true}"))
+        assertTrue(viewModel.updateText("""{"new":true}"""))
         val snapshot = viewModel.recoverySnapshot()
         assertNull(snapshot.source)
         val restored = MarkdownWorkspaceViewModel()
