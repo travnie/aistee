@@ -33,7 +33,7 @@ internal object ChatGptPlanOAuth {
         data object Invalid : Callback
     }
 
-    internal class Pending private constructor(
+    internal class Pending internal constructor(
         val authorizationUrl: String,
         val redirectUri: String,
         val codeVerifier: String,
