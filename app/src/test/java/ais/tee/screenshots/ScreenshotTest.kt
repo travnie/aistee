@@ -2,12 +2,15 @@ package ais.tee.screenshots
 
 import ais.tee.data.document.MarkdownTable
 import ais.tee.data.document.MarkdownTableAlignment
+import ais.tee.data.model.ProjectLibraryArchive
+import ais.tee.data.model.ProjectLibraryAsset
 import ais.tee.ui.screens.BenchToolsScreen
 import ais.tee.ui.screens.ChatScreen
 import ais.tee.ui.screens.InstructionsScreen
 import ais.tee.ui.screens.MarkdownTableScreen
 import ais.tee.ui.screens.MarkdownWorkspaceScreen
 import ais.tee.ui.screens.PlaygroundScreen
+import ais.tee.ui.screens.ProjectLibrarySourceChips
 import ais.tee.ui.screens.StudioScreen
 import ais.tee.ui.screens.YamlEditorScreen
 import ais.tee.ui.theme.AisteeTheme
@@ -90,6 +93,21 @@ class ScreenshotTest {
     fun markdownWorkspace() {
         val viewModel = MarkdownWorkspaceViewModel()
         capture("markdown_workspace") { MarkdownWorkspaceScreen(workspaceViewModel = viewModel) }
+    }
+
+    @Test
+    fun localLibrarySourceChips() = capture("library_source_chips") {
+        ProjectLibrarySourceChips(
+            sourceIds = listOf("example", "missing"),
+            archive = ProjectLibraryArchive(assets = listOf(
+                ProjectLibraryAsset(
+                    id = "example", projectId = "inbox", title = "example.py",
+                    mediaType = "text/plain", fileName = "example.py",
+                    sizeBytes = 48, createdAtEpochMs = 1,
+                ),
+            )),
+            onOpenAsset = {},
+        )
     }
 
     @Test fun benchTools() = capture("bench_tools") { BenchToolsScreen() }
