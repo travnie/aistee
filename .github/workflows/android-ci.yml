@@ -70,7 +70,7 @@ jobs:
             mkdir -p out
             # A real emulator screenshot of synthetic Library source chips (no user-owned content).
             ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.ProjectLibrarySourceChipsScreenshotTest --stacktrace
-            adb pull /sdcard/Android/data/ais.tee/files/library-sources-smoke.png out/library-sources-smoke.png
+            adb pull /sdcard/Pictures/AisteeSmoke/library-sources-smoke.png out/library-sources-smoke.png
             ./gradlew :app:installDebug --stacktrace
             adb shell pm clear ais.tee
             adb shell am start -S -W -n ais.tee/.MainActivity

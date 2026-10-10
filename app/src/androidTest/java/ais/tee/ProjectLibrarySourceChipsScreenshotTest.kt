@@ -6,6 +6,9 @@ import ais.tee.ui.screens.ProjectLibrarySourceChips
 import ais.tee.ui.theme.AisteeTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import android.content.ContentValues
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -16,7 +19,6 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -50,9 +52,17 @@ class ProjectLibrarySourceChipsScreenshotTest {
         composeRule.onNodeWithTag("library_source_chip_1").assertIsNotEnabled()
         val screenshot = composeRule.onRoot().captureToImage().asAndroidBitmap()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val dir = requireNotNull(context.getExternalFilesDir(null))
-        File(dir, "library-sources-smoke.png").outputStream().use {
-            screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+        // Gradle removes app-specific files on uninstall after connectedAndroidTest.
+        // Shared Pictures keeps this synthetic-only screenshot for the CI adb pull.
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "library-sources-smoke.png")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/AisteeSmoke")
+        }
+        val resolver = context.contentResolver
+        val uri = requireNotNull(resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values))
+        requireNotNull(resolver.openOutputStream(uri)).use { output ->
+            check(screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output))
         }
     }
 }
