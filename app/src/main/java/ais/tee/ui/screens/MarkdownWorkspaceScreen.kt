@@ -48,6 +48,7 @@ import ais.tee.data.tokenizer.LocalTokenCounter
 import ais.tee.ui.viewmodel.MAX_EDITABLE_MARKDOWN_CHARS
 import ais.tee.ui.viewmodel.MarkdownExportSnapshot
 import ais.tee.ui.viewmodel.MarkdownWorkspaceUiState
+import ais.tee.ui.viewmodel.MarkdownWorkspaceOrigin
 import ais.tee.ui.viewmodel.MarkdownWorkspaceViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -298,7 +299,13 @@ fun MarkdownWorkspaceScreen(
                             snackbarHostState.showSnackbar(
                                 when {
                                     !enabled -> "Docbench was disabled. No changes applied."
-                                    applied -> "Applied to draft. Save a Library source separately."
+                                    applied -> when (uiState.origin) {
+                                        is MarkdownWorkspaceOrigin.ProjectLibrary ->
+                                            "Applied to draft. Use Save source to update the Project Library asset."
+                                        is MarkdownWorkspaceOrigin.LocalSkill ->
+                                            "Applied to draft. Use Save source to update the local skill."
+                                        null -> "Applied to draft. Use Export Markdown to save it as a file."
+                                    }
                                     else -> "The draft changed. No changes applied."
                                 }
                             )
