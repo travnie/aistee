@@ -50,6 +50,7 @@ import ais.tee.ui.viewmodel.MAX_EDITABLE_MARKDOWN_CHARS
 import ais.tee.ui.viewmodel.MarkdownExportSnapshot
 import ais.tee.ui.viewmodel.MarkdownWorkspaceUiState
 import ais.tee.ui.viewmodel.MarkdownWorkspaceOrigin
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.NonCancellable
 import ais.tee.ui.viewmodel.MarkdownWorkspaceViewModel
 import kotlinx.coroutines.CancellationException
@@ -254,39 +255,38 @@ fun MarkdownWorkspaceScreen(
 
 
     fun saveOpenedSource() {
-        val snapshot = workspaceViewModel.beginExport() ?: return
-        val origin = snapshot.origin as? MarkdownWorkspaceOrigin.AndroidDocument
-        if (origin == null) {
-            workspaceViewModel.failExport(snapshot)
-            return
-        }
-        scope.launch {
-            val result = runCatching {
-                withContext(NonCancellable + Dispatchers.IO) {
-                    val uri = Uri.parse(origin.uriString)
-                    val source = MarkdownDocumentFileAccess.import(context, uri)
-                    if (MarkdownDocumentFileAccess.sourceDigest(source.document) != origin.sourceDigest) {
-                        throw IOException("The source changed outside Aistee. Reopen it or export a copy.")
-                    }
-                    MarkdownDocumentFileAccess.export(context, uri, snapshot.document)
-                    MarkdownDocumentFileAccess.sourceDigest(snapshot.document)
-                }
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            val snapshot = workspaceViewModel.beginExport() ?: return@launch
+            val origin = snapshot.origin as? MarkdownWorkspaceOrigin.AndroidDocument
+            if (origin == null) {
+                workspaceViewModel.failExport(snapshot)
+                return@launch
             }
-            result.fold(
-                onSuccess = { savedDigest ->
-                    val current = workspaceViewModel.completeSourceSave(
-                        snapshot,
-                        origin.copy(sourceDigest = savedDigest),
-                    )
-                    snackbarHostState.showSnackbar(
+            // The write and revision bookkeeping must finish together even if this screen
+            // leaves composition. Only the optional Snackbar runs in the screen scope.
+            val message = withContext(NonCancellable) {
+                val result = runCatching {
+                    withContext(Dispatchers.IO) {
+                        val uri = Uri.parse(origin.uriString)
+                        val source = MarkdownDocumentFileAccess.import(context, uri)
+                        if (MarkdownDocumentFileAccess.sourceDigest(source.document) != origin.sourceDigest) {
+                            throw IOException("The source changed outside Aistee. Reopen it or export a copy.")
+                        }
+                        MarkdownDocumentFileAccess.export(context, uri, snapshot.document)
+                        MarkdownDocumentFileAccess.sourceDigest(snapshot.document)
+                    }
+                }
+                result.fold(
+                    onSuccess = { savedDigest ->
+                        val current = workspaceViewModel.completeSourceSave(
+                            snapshot,
+                            origin.copy(sourceDigest = savedDigest),
+                        )
                         if (current) "Saved changes to the opened file."
                         else "Saved an earlier draft; newer edits are still unsaved."
-                    )
-                },
-                onFailure = { error ->
-                    workspaceViewModel.failExport(snapshot)
-                    if (error is CancellationException) throw error
-                    snackbarHostState.showSnackbar(
+                    },
+                    onFailure = { error ->
+                        workspaceViewModel.failExport(snapshot)
                         when {
                             error is SecurityException ->
                                 "No write access to this file. Reopen it with permission or export a copy."
@@ -294,9 +294,10 @@ fun MarkdownWorkspaceScreen(
                                 "The file changed outside Aistee. Reopen it or export a copy."
                             else -> "Could not save the opened file. The draft is still available; export a copy."
                         }
-                    )
-                },
-            )
+                    },
+                )
+            }
+            snackbarHostState.showSnackbar(message)
         }
     }
 
