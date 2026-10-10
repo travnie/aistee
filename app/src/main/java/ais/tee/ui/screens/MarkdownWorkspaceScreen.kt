@@ -116,6 +116,7 @@ fun MarkdownWorkspaceScreen(
     var showRecents by remember { mutableStateOf(false) }
     var pendingDestructiveAction by remember { mutableStateOf<PendingDestructiveWorkspaceAction?>(null) }
     var transformPreview by remember { mutableStateOf<WorkspaceTransformPreview?>(null) }
+    var transformGeneration by remember { mutableIntStateOf(0) }
     val analysis by rememberMarkdownWorkspaceAnalysis(
         text = uiState.text,
         hadUtf8Bom = uiState.hadUtf8Bom,
@@ -250,6 +251,9 @@ fun MarkdownWorkspaceScreen(
     fun requestWorkspaceTransform(kind: DocbenchWorkspaceTransformKind) {
         val draft = workspaceViewModel.uiState.value
         if (draft.isBusy || draft.isEditorLocked || draft.text.isEmpty()) return
+        val generation = transformGeneration + 1
+        transformGeneration = generation
+        transformPreview = null
         if (BuiltInBenchTool.DOCBENCH_DOCUMENT !in benchPreferences.loadEnabledTools()) {
             scope.launch { snackbarHostState.showSnackbar("Enable Docbench Document in Benches first.") }
             return
@@ -268,6 +272,7 @@ fun MarkdownWorkspaceScreen(
                     },
                 )
             }
+            if (generation != transformGeneration) return@launch
             if (workspaceViewModel.uiState.value.revision != draft.revision) {
                 snackbarHostState.showSnackbar("The draft changed. Preview the transform again.")
                 return@launch
