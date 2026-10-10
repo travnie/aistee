@@ -75,6 +75,23 @@ private data class WorkspaceTransformPreview(
     val result: DocbenchWorkspaceTransformResult.Completed,
 )
 
+/** Keep the actual change in view, even when a large document shares a long prefix. */
+internal fun workspaceTransformExcerpts(
+    before: String,
+    after: String,
+    repairing: Boolean,
+): Pair<String, String> {
+    if (repairing) return before.takeLast(600) to after.takeLast(600)
+    val shared = minOf(before.length, after.length)
+    var firstDifference = 0
+    while (firstDifference < shared && before[firstDifference] == after[firstDifference]) {
+        firstDifference++
+    }
+    val start = (firstDifference - 60).coerceAtLeast(0)
+    return before.substring(start, (start + 600).coerceAtMost(before.length)) to
+        after.substring(start, (start + 600).coerceAtMost(after.length))
+}
+
 private data class MarkdownWorkspaceAnalysis(
     val lineEndings: LineEndingCounts,
     val diagnostics: List<DocumentDiagnostic>,
@@ -272,27 +289,25 @@ fun MarkdownWorkspaceScreen(
 
     transformPreview?.let { preview ->
         val repairing = preview.result.kind == DocbenchWorkspaceTransformKind.REPAIR_MARKDOWN_FENCES
-        val previewPart: (String) -> String = { value ->
-            if (repairing) value.takeLast(600) else value.take(600)
-        }
+        val excerpts = workspaceTransformExcerpts(uiState.text, preview.result.content, repairing)
         AlertDialog(
             onDismissRequest = { transformPreview = null },
             title = { Text("Preview ${preview.result.kind.label}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Preview only. Apply to the local draft; source files are never saved automatically.")
-                    Text("Current ${if (repairing) "ending" else "beginning"}:", style = MaterialTheme.typography.labelMedium)
+                    Text("Current ${if (repairing) "ending" else "near first change"}:", style = MaterialTheme.typography.labelMedium)
                     SelectionContainer {
                         Text(
-                            previewPart(uiState.text),
+                            excerpts.first,
                             fontFamily = FontFamily.Monospace,
                             modifier = Modifier.fillMaxWidth().heightIn(max = 100.dp).verticalScroll(rememberScrollState()),
                         )
                     }
-                    Text("Proposed ${if (repairing) "ending" else "beginning"}:", style = MaterialTheme.typography.labelMedium)
+                    Text("Proposed ${if (repairing) "ending" else "near first change"}:", style = MaterialTheme.typography.labelMedium)
                     SelectionContainer {
                         Text(
-                            previewPart(preview.result.content),
+                            excerpts.second,
                             fontFamily = FontFamily.Monospace,
                             modifier = Modifier.fillMaxWidth().heightIn(max = 140.dp).verticalScroll(rememberScrollState()),
                         )
