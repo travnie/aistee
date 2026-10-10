@@ -30,6 +30,9 @@ Aistee: Kotlin Multiplatform AI workbench; Android is the first shipping client.
   - Narrow exception: Aistee's own Sign in with ChatGPT grant (user-authorized in a Custom Tab, never intercepted from a WebView) may be persisted Keystore-encrypted, excluded from backup/export and never logged.
 - Treat embedded account pages as untrusted web content; minimize WebView privileges needed for compatibility.
 
+- Before Android PRs touching startup, profiled Web/native journeys, benchmark sources or release/R8 config, follow the Baseline Profile preflight in `docs/android-performance.md`; commit updated stable profile rules with the code.
+- If a device/emulator is unavailable, state that profile regeneration is unverified in the PR and resolve profile-coverage CI failures before merging.
+
 ## Identity and docs
 
 - Use project name `Aistee` and canonical Android application ID `ais.tee`; shared modules use distinct namespaces under that root.
