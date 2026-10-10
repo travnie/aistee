@@ -1057,6 +1057,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     suspend fun loadProjectLibraryAsset(assetId: String): String? =
         withContext(Dispatchers.IO) { projectLibraryStore.loadTextAsset(assetId)?.text }
 
+    /** Bind text and revision from the same source read to avoid stale conflict checks. */
+    internal suspend fun loadProjectLibraryAssetWithMetadata(assetId: String) =
+        withContext(Dispatchers.IO) { projectLibraryStore.loadTextAsset(assetId) }
+
     suspend fun updateProjectLibraryAssetText(
         assetId: String,
         expectedRevision: Long,

@@ -543,18 +543,18 @@ private fun NativeChatDetailPane(
 
     fun openLibrarySource(asset: ProjectLibraryAsset) {
         scope.launch {
-            val text = viewModel.loadProjectLibraryAsset(asset.id)
-            if (text == null) {
+            val loaded = viewModel.loadProjectLibraryAssetWithMetadata(asset.id)
+            if (loaded == null) {
                 viewModel.showSnackbar("Library source is no longer available.")
             } else {
                 openMarkdownAsset(
                     PendingMarkdownAsset(
-                        text = text,
-                        displayName = asset.title,
+                        text = loaded.text,
+                        displayName = loaded.metadata.title,
                         sourceDescription = "Project Library (current version)",
                         origin = MarkdownWorkspaceOrigin.ProjectLibrary(
-                            assetId = asset.id,
-                            revision = asset.revision,
+                            assetId = loaded.metadata.id,
+                            revision = loaded.metadata.revision,
                         ),
                         markDirty = false,
                     ),
