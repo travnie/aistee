@@ -60,7 +60,12 @@ internal object ChatGptPlanOAuth {
                 callback.rawUserInfo != null
             ) return Callback.Invalid
             val parameters = decodeQuery(callback.rawQuery) ?: return Callback.Invalid
-            if (parameters["state"] != state) return Callback.Invalid
+            val returnedState = parameters["state"]?.takeIf { it.isNotEmpty() } ?: return Callback.Invalid
+            if (!MessageDigest.isEqual(
+                    returnedState.toByteArray(StandardCharsets.US_ASCII),
+                    state.toByteArray(StandardCharsets.US_ASCII),
+                )
+            ) return Callback.Invalid
             val error = parameters["error"]
             if (error != null) {
                 if (!finished.compareAndSet(false, true)) return Callback.Invalid
