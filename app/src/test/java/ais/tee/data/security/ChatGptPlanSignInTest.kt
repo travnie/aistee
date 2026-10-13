@@ -37,10 +37,13 @@ class ChatGptPlanSignInTest {
     private var nonce = ""
     private var subject = "subject-1"
     private var scope = "openid offline_access resource.invoke chatgpt.tokens.use.direct"
+    private var revokeFails = false
+    private var onTokenRequest: () -> Unit = {}
     private val exchange = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { request ->
         synchronized(seen) { seen += request.method + " " + request.url.encodedPath }
         when (request.url.encodedPath) {
             "/api/accounts/oauth/token" -> buildJsonObject {
+                onTokenRequest()
                 put("access_token", "access-secret")
                 put("refresh_token", "refresh-secret")
                 put("id_token", signed(nonce, "oaiapp_test", subject))
@@ -51,7 +54,7 @@ class ChatGptPlanSignInTest {
             "/.well-known/jwks.json" -> jwks()
             "/.well-known/openid-configuration" ->
                 """{"revocation_endpoint":"https://auth.openai.com/oauth/revoke"}"""
-            "/oauth/revoke" -> ""
+            "/oauth/revoke" -> if (revokeFails) throw IOException("offline") else ""
             else -> throw AssertionError("Unexpected URL")
         }
     })
@@ -63,7 +66,7 @@ class ChatGptPlanSignInTest {
 
     @Test(timeout = 15_000)
     fun browserCallbackSavesVerifiedAccount() {
-        val attempt = ChatGptPlanSignIn(vault, exchange).start()!!
+        val attempt = signIn().start()!!
         val result = finishAsync(attempt)
         assertTrue(callback(attempt, "code=one-time&client_id=oaiapp_test").startsWith("HTTP/1.1 200"))
         assertEquals(Result.CONNECTED, result.get(10, TimeUnit.SECONDS))
@@ -76,7 +79,7 @@ class ChatGptPlanSignInTest {
     @Test(timeout = 15_000)
     fun identityOnlyGrantConnectsWithoutPlanUsage() {
         scope = "openid offline_access resource.invoke"
-        val attempt = ChatGptPlanSignIn(vault, exchange).start()!!
+        val attempt = signIn().start()!!
         val result = finishAsync(attempt)
         callback(attempt, "code=one-time&client_id=oaiapp_test")
         assertEquals(Result.CONNECTED_WITHOUT_PLAN, result.get(10, TimeUnit.SECONDS))
@@ -85,7 +88,7 @@ class ChatGptPlanSignInTest {
 
     @Test(timeout = 15_000)
     fun deniedConsentIsCancelledAndSavesNothing() {
-        val attempt = ChatGptPlanSignIn(vault, exchange).start()!!
+        val attempt = signIn().start()!!
         val result = finishAsync(attempt)
         callback(attempt, "error=access_denied")
         assertEquals(Result.CANCELLED, result.get(10, TimeUnit.SECONDS))
@@ -95,7 +98,7 @@ class ChatGptPlanSignInTest {
 
     @Test(timeout = 15_000)
     fun closeBeforeFinishFreesPortAndFinishThrows() {
-        val attempt = ChatGptPlanSignIn(vault, exchange).start()!!
+        val attempt = signIn().start()!!
         attempt.close()
         assertPortClosed(attempt)
         assertThrows(IOException::class.java) { attempt.finish(1_000) }
@@ -103,14 +106,14 @@ class ChatGptPlanSignInTest {
 
     @Test(timeout = 15_000)
     fun reauthorizationRejectsDifferentIdentity() {
-        val first = ChatGptPlanSignIn(vault, exchange).start()!!
+        val first = signIn().start()!!
         val firstResult = finishAsync(first)
         callback(first, "code=one-time&client_id=oaiapp_test")
         assertEquals(Result.CONNECTED, firstResult.get(10, TimeUnit.SECONDS))
         vault.disconnectLocally("oaiapp_test")
 
         subject = "someone-else"
-        val again = ChatGptPlanSignIn(vault, exchange).start(vault.accounts().single())!!
+        val again = signIn().start(vault.accounts().single())!!
         assertFalse(again.authorizationUrl.contains("agent_name_hint"))
         val result = finishAsync(again)
         callback(again, "code=one-time")
@@ -123,25 +126,60 @@ class ChatGptPlanSignInTest {
     fun unsavedGrantIsRevoked() {
         vault.hostId()
         records.failWrites = true
-        val attempt = ChatGptPlanSignIn(vault, exchange).start()!!
+        val attempt = signIn().start()!!
         val result = finishAsync(attempt)
         callback(attempt, "code=one-time&client_id=oaiapp_test")
         assertEquals(Result.FAILED, result.get(10, TimeUnit.SECONDS))
         assertTrue(seen.contains("POST /oauth/revoke"))
     }
 
+    @Test(timeout = 15_000)
+    fun unconfirmedRevocationOfUnsavedGrantIsReported() {
+        vault.hostId()
+        records.failWrites = true
+        revokeFails = true
+        val attempt = signIn().start()!!
+        val result = finishAsync(attempt)
+        callback(attempt, "code=one-time&client_id=oaiapp_test")
+        assertEquals(Result.FAILED_UNCONFIRMED, result.get(10, TimeUnit.SECONDS))
+        assertEquals(3, seen.count { it == "POST /oauth/revoke" })
+    }
+
+    @Test(timeout = 15_000)
+    fun cancelDuringExchangeDiscardsGrant() {
+        val attempt = signIn().start()!!
+        onTokenRequest = { attempt.close() }
+        val result = finishAsync(attempt)
+        callback(attempt, "code=one-time&client_id=oaiapp_test")
+        assertEquals(Result.CANCELLED, result.get(10, TimeUnit.SECONDS))
+        assertTrue(vault.accounts().isEmpty())
+        assertTrue(seen.contains("POST /oauth/revoke"))
+    }
+
+    @Test
+    fun forgettingSignedOutAccountFreesSlot() {
+        repeat(ChatGptPlanCredentialStore.MAX_ACCOUNTS) { fillAccount("oaiapp_$it", "subject-$it") }
+        assertFalse(vault.forget("oaiapp_0")) // Still connected.
+        assertTrue(vault.disconnectLocally("oaiapp_0"))
+        assertTrue(vault.forget("oaiapp_0"))
+        assertEquals(ChatGptPlanCredentialStore.MAX_ACCOUNTS - 1, vault.accounts().size)
+        signIn().start()!!.close()
+    }
+
     @Test
     fun fullVaultOpensNoListener() {
         var opened = 0
-        val signIn = ChatGptPlanSignIn(vault, exchange) {
+        val signIn = ChatGptPlanSignIn(vault, exchange, openLoopback = {
             opened++
             ChatGptPlanLoopback.open()
-        }
+        })
         repeat(ChatGptPlanCredentialStore.MAX_ACCOUNTS) { fillAccount("oaiapp_$it", "subject-$it") }
         assertEquals(ChatGptPlanCredentialStore.MAX_ACCOUNTS, vault.accounts().size)
         assertNull(signIn.start())
         assertEquals(0, opened)
     }
+
+    private fun signIn() = ChatGptPlanSignIn(vault, exchange, sleep = {})
 
     private fun fillAccount(clientId: String, subject: String) {
         val pending = ChatGptPlanOAuth.prepare(vault.hostId(), 1455)

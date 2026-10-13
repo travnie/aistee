@@ -10,8 +10,13 @@ internal class ChatGptPlanSignIn(
     private val vault: ChatGptPlanCredentialStore,
     private val exchange: ChatGptPlanTokenExchange,
     private val openLoopback: () -> ChatGptPlanLoopback = ChatGptPlanLoopback::open,
+    private val sleep: (Long) -> Unit = Thread::sleep,
 ) {
-    enum class Result { CONNECTED, CONNECTED_WITHOUT_PLAN, CANCELLED, TIMED_OUT, FAILED, ACCOUNT_LIMIT }
+    /** `*_UNCONFIRMED`: an issued grant was discarded but OpenAI didn't confirm revoking it. */
+    enum class Result {
+        CONNECTED, CONNECTED_WITHOUT_PLAN, CANCELLED, TIMED_OUT, FAILED, ACCOUNT_LIMIT,
+        CANCELLED_UNCONFIRMED, FAILED_UNCONFIRMED,
+    }
 
     /**
      * Null [account] registers a new client; otherwise reauthorizes that registration and
@@ -47,22 +52,40 @@ internal class ChatGptPlanSignIn(
                 ChatGptPlanLoopback.Outcome.Failed -> return Result.FAILED
                 ChatGptPlanLoopback.Outcome.TimedOut -> return Result.TIMED_OUT
             }
+            // Subject checked here, not in complete(), so a mismatched grant can be revoked.
             val grant = try {
-                exchange.complete(pending, callbackUrl, expectedSubject)
+                exchange.complete(pending, callbackUrl)
             } catch (_: Exception) { // IOException or a malformed-response require().
                 return Result.FAILED
             }
+            if (cancelled) return discard(grant, Result.CANCELLED, Result.CANCELLED_UNCONFIRMED)
+            if (expectedSubject != null && grant.identity.subject != expectedSubject) {
+                return discard(grant, Result.FAILED, Result.FAILED_UNCONFIRMED)
+            }
             if (!runCatching { vault.saveVerified(grant) }.getOrDefault(false)) {
-                // Issued but unsaved: end the 30-day session rather than orphan it.
-                runCatching { exchange.revoke(grant.identity.clientId, grant.refreshToken) }
                 val full = runCatching { vault.accounts().size >= ChatGptPlanCredentialStore.MAX_ACCOUNTS }
                     .getOrDefault(false)
-                return if (expectedSubject == null && full) Result.ACCOUNT_LIMIT else Result.FAILED
+                val failed = if (expectedSubject == null && full) Result.ACCOUNT_LIMIT else Result.FAILED
+                return discard(grant, failed, Result.FAILED_UNCONFIRMED)
             }
             return if (grant.planUsageGranted) Result.CONNECTED else Result.CONNECTED_WITHOUT_PLAN
         }
 
-        override fun close() = loopback.close()
+        /** Issued but not kept: end the 30-day session rather than orphan it. */
+        private fun discard(grant: ChatGptPlanTokenExchange.Grant, revoked: Result, unconfirmed: Result): Result =
+            if (ChatGptPlanSessions.revokeWithRetry(exchange, grant.identity.clientId, grant.refreshToken, sleep)) {
+                revoked
+            } else {
+                unconfirmed
+            }
+
+        @Volatile private var cancelled = false
+
+        /** Cancels: frees the port, or discards a grant still being exchanged. */
+        override fun close() {
+            cancelled = true
+            loopback.close()
+        }
     }
 
     companion object {

@@ -73,6 +73,11 @@ internal fun ChatGptPlanSection(viewModel: ChatGptPlanViewModel = viewModel()) {
                     ) { Text(if (state.signingOut == account.clientId) "Signing out…" else "Sign out") }
                 } else {
                     TextButton(
+                        onClick = { viewModel.forget(account.clientId) },
+                        enabled = idle,
+                        modifier = Modifier.testTag("btn_chatgpt_forget"),
+                    ) { Text("Remove") }
+                    TextButton(
                         onClick = { viewModel.signIn(account.clientId, launch) },
                         enabled = idle,
                         modifier = Modifier.testTag("btn_chatgpt_sign_in_again"),
@@ -110,7 +115,7 @@ internal fun ChatGptPlanSection(viewModel: ChatGptPlanViewModel = viewModel()) {
                 },
                 modifier = Modifier.testTag("text_chatgpt_notice"),
             )
-            if (notice == Notice.SIGNED_OUT_UNCONFIRMED) {
+            if (notice == Notice.SIGNED_OUT_UNCONFIRMED || notice == Notice.DISCARDED_UNCONFIRMED) {
                 TextButton(
                     onClick = { openExternalUri(context, Uri.parse(CHATGPT_SETTINGS_URL)) },
                 ) { Text("Open ChatGPT Settings") }
@@ -126,17 +131,20 @@ private fun noticeText(notice: Notice): String = when (notice) {
     Notice.CANCELLED -> "Sign-in cancelled."
     Notice.TIMED_OUT -> "Sign-in timed out. Try again."
     Notice.FAILED -> "Sign-in failed. Try again."
-    Notice.ACCOUNT_LIMIT -> "Account limit reached. Sign out of an account you no longer use."
+    Notice.ACCOUNT_LIMIT -> "Account limit reached. Sign out of an account you no longer use, then remove it."
     Notice.BROWSER_UNAVAILABLE -> "No browser available to sign in."
     Notice.SIGNED_OUT -> "Signed out."
     Notice.SIGNED_OUT_UNCONFIRMED ->
         "Signed out on this device, but OpenAI didn't confirm it. You can disconnect Aistee in ChatGPT Settings."
     Notice.STORAGE_ERROR -> "Couldn't access secure storage on this device."
+    Notice.DISCARDED_UNCONFIRMED ->
+        "Sign-in wasn't kept, and OpenAI didn't confirm ending it. You can disconnect Aistee in ChatGPT Settings."
 }
 
 private fun Notice.isProblem() = this in setOf(
     Notice.FAILED, Notice.TIMED_OUT, Notice.ACCOUNT_LIMIT, Notice.BROWSER_UNAVAILABLE,
     Notice.SIGNED_OUT_UNCONFIRMED, Notice.STORAGE_ERROR, Notice.CONNECTED_WITHOUT_PLAN,
+    Notice.DISCARDED_UNCONFIRMED,
 )
 
 /** Custom Tab, falling back to any browser; never a WebView. */

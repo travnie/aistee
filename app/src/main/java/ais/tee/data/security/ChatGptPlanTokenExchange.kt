@@ -107,8 +107,6 @@ internal class ChatGptPlanTokenExchange(
             throw IOException("ChatGPT identity verification failed")
         }
         if (expectedSubject != null && expectedSubject != identity.subject) {
-            // Tokens already issued for the wrong account: end that session, keep none.
-            runCatching { revoke(callback.clientId, refreshToken) }
             throw IOException("ChatGPT account does not match selected account")
         }
         return Grant(identity, idToken, accessToken, refreshToken, grantedScopes,

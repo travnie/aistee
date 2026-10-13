@@ -32,6 +32,8 @@ internal class ChatGptPlanViewModel(application: Application) : AndroidViewModel
     enum class Notice {
         CONNECTED, CONNECTED_WITHOUT_PLAN, CANCELLED, TIMED_OUT, FAILED, ACCOUNT_LIMIT,
         BROWSER_UNAVAILABLE, SIGNED_OUT, SIGNED_OUT_UNCONFIRMED, STORAGE_ERROR,
+        /** A grant was issued, then discarded without confirmed revocation. */
+        DISCARDED_UNCONFIRMED,
     }
 
     data class UiState(
@@ -121,6 +123,23 @@ internal class ChatGptPlanViewModel(application: Application) : AndroidViewModel
         }
     }
 
+    /** Removes a signed-out registration to free an account slot. */
+    fun forget(clientId: String) {
+        val state = _uiState.value
+        if (state.signingIn || state.signingOut != null) return
+        viewModelScope.launch {
+            val removed = try {
+                withContext(Dispatchers.IO) { vault.forget(clientId) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                false
+            }
+            if (!removed) _uiState.update { it.copy(notice = Notice.STORAGE_ERROR) }
+            reload()
+        }
+    }
+
     override fun onCleared() {
         cancelRequested = true
         attempt?.close() // accept() ignores coroutine cancellation.
@@ -146,6 +165,8 @@ internal class ChatGptPlanViewModel(application: Application) : AndroidViewModel
         ChatGptPlanSignIn.Result.TIMED_OUT -> Notice.TIMED_OUT
         ChatGptPlanSignIn.Result.FAILED -> Notice.FAILED
         ChatGptPlanSignIn.Result.ACCOUNT_LIMIT -> Notice.ACCOUNT_LIMIT
+        ChatGptPlanSignIn.Result.CANCELLED_UNCONFIRMED,
+        ChatGptPlanSignIn.Result.FAILED_UNCONFIRMED -> Notice.DISCARDED_UNCONFIRMED
     }
 }
 
