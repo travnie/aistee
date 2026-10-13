@@ -133,6 +133,14 @@ internal class ChatGptPlanCredentialStore(private val records: RecordStorage) {
     fun clearRejected(clientId: String, usedRefreshToken: String): Boolean =
         clearTokens(clientId, usedRefreshToken)
 
+    /** Drop a signed-out registration (frees an account slot). Refused while tokens are stored. */
+    fun forget(clientId: String): Boolean = synchronized(lock) {
+        val state = load()
+        val entry = state.accounts.firstOrNull { it.clientId == clientId } ?: return@synchronized true
+        if (entry.tokens != null) return@synchronized false
+        write(state.copy(accounts = state.accounts.filterNot { it.clientId == clientId }))
+    }
+
     private fun clearTokens(clientId: String, onlyIfRefreshToken: String?): Boolean = synchronized(lock) {
         val state = load()
         val entry = state.accounts.firstOrNull { it.clientId == clientId } ?: return@synchronized true
@@ -231,9 +239,9 @@ internal class ChatGptPlanCredentialStore(private val records: RecordStorage) {
         override fun write(value: String): Boolean = encrypted.write(value)
     }
 
-    private companion object {
+    companion object {
         private val lock = Any()
         const val MAX_ACCOUNTS = 12
-        const val MAX_LENGTH = 262_144
+        private const val MAX_LENGTH = 262_144
     }
 }

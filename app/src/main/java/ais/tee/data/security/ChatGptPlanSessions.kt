@@ -45,23 +45,7 @@ internal class ChatGptPlanSessions(
      */
     fun signOut(clientId: String): SignOut = synchronized(locks.computeIfAbsent(clientId) { Any() }) {
         val current = vault.credentials(clientId) ?: return@synchronized SignOut.NOT_CONNECTED
-        var revoked = false
-        try {
-            for (attempt in 0 until REVOKE_ATTEMPTS) {
-                if (attempt > 0) sleep(REVOKE_BACKOFF_MILLIS shl (attempt - 1))
-                revoked = try {
-                    exchange.revoke(clientId, current.refreshToken)
-                    true
-                } catch (_: ChatGptPlanTokenExchange.RevocationRejected) {
-                    break // Terminal: clear now, report unconfirmed.
-                } catch (_: IOException) {
-                    false
-                }
-                if (revoked) break
-            }
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt() // Cancelled: still clear locally below.
-        }
+        val revoked = revokeWithRetry(exchange, clientId, current.refreshToken, sleep)
         // Only the token set we revoked; a sign-in saved meanwhile (outside this lock) stays.
         if (!vault.clearRejected(clientId, current.refreshToken)) {
             throw IOException("Unable to clear ChatGPT credentials")
@@ -69,10 +53,38 @@ internal class ChatGptPlanSessions(
         if (revoked) SignOut.REVOKED else SignOut.CLEARED_UNCONFIRMED
     }
 
-    private companion object {
-        const val REVOKE_ATTEMPTS = 3
-        const val REVOKE_BACKOFF_MILLIS = 1_000L
-        const val REFRESH_SKEW_SECONDS = 300L
-        val locks = ConcurrentHashMap<String, Any>()
+    companion object {
+        /**
+         * Bounded retries on network/5xx; a terminal rejection stops at once. Interrupt is
+         * restored and ends retrying. True only for a confirmed (empty 200) revocation.
+         */
+        internal fun revokeWithRetry(
+            exchange: ChatGptPlanTokenExchange,
+            clientId: String,
+            refreshToken: String,
+            sleep: (Long) -> Unit,
+        ): Boolean {
+            try {
+                for (attempt in 0 until REVOKE_ATTEMPTS) {
+                    if (attempt > 0) sleep(REVOKE_BACKOFF_MILLIS shl (attempt - 1))
+                    try {
+                        exchange.revoke(clientId, refreshToken)
+                        return true
+                    } catch (_: ChatGptPlanTokenExchange.RevocationRejected) {
+                        return false // Terminal: retrying the same request cannot help.
+                    } catch (_: IOException) {
+                        // Retry.
+                    }
+                }
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+            return false
+        }
+
+        private const val REVOKE_ATTEMPTS = 3
+        private const val REVOKE_BACKOFF_MILLIS = 1_000L
+        private const val REFRESH_SKEW_SECONDS = 300L
+        private val locks = ConcurrentHashMap<String, Any>()
     }
 }

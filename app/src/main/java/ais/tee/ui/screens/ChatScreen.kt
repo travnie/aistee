@@ -2368,6 +2368,8 @@ fun ApiKeySettingsDialog(
                         .testTag("input_openai_api_key"),
                 )
 
+                ChatGptPlanSection()
+
                 OutlinedTextField(
                     value = claudeKey,
                     onValueChange = { claudeKey = it },
