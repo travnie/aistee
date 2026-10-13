@@ -55,7 +55,9 @@ internal class ChatGptPlanSignIn(
             // Subject checked here, not in complete(), so a mismatched grant can be revoked.
             val grant = try {
                 exchange.complete(pending, callbackUrl)
-            } catch (_: Exception) { // IOException or a malformed-response require().
+            } catch (unverified: ChatGptPlanTokenExchange.UnverifiedGrant) {
+                return revoke(unverified.clientId, unverified.refreshToken, Result.FAILED, Result.FAILED_UNCONFIRMED)
+            } catch (_: Exception) {
                 return Result.FAILED
             }
             if (cancelled) return discard(grant, Result.CANCELLED, Result.CANCELLED_UNCONFIRMED)
@@ -73,11 +75,10 @@ internal class ChatGptPlanSignIn(
 
         /** Issued but not kept: end the 30-day session rather than orphan it. */
         private fun discard(grant: ChatGptPlanTokenExchange.Grant, revoked: Result, unconfirmed: Result): Result =
-            if (ChatGptPlanSessions.revokeWithRetry(exchange, grant.identity.clientId, grant.refreshToken, sleep)) {
-                revoked
-            } else {
-                unconfirmed
-            }
+            revoke(grant.identity.clientId, grant.refreshToken, revoked, unconfirmed)
+
+        private fun revoke(clientId: String, refreshToken: String, revoked: Result, unconfirmed: Result): Result =
+            if (ChatGptPlanSessions.revokeWithRetry(exchange, clientId, refreshToken, sleep)) revoked else unconfirmed
 
         @Volatile private var cancelled = false
 

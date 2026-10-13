@@ -58,6 +58,17 @@ internal class ChatGptPlanTokenExchange(
     /** Token set is unusable: clear it and repeat OAuth with the saved issued client ID. */
     class ReauthorizationRequired : IOException("ChatGPT sign-in expired")
 
+    /**
+     * Tokens were issued but failed validation. Carries only what revocation needs; the caller
+     * must revoke [refreshToken] and never store or log it.
+     */
+    class UnverifiedGrant internal constructor(
+        val clientId: String,
+        val refreshToken: String,
+    ) : IOException("ChatGPT authorization could not be verified") {
+        override fun toString(): String = "ChatGptPlanTokenExchange.UnverifiedGrant(<redacted>)"
+    }
+
     /** Terminal 4xx from the revocation endpoint; retrying the same request cannot help. */
     class RevocationRejected : IOException("ChatGPT revocation rejected")
 
@@ -85,32 +96,40 @@ internal class ChatGptPlanTokenExchange(
         fun required(name: String): String =
             (token[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
                 ?.takeIf { it.isNotBlank() } ?: throw IOException("Incomplete ChatGPT authorization")
-        require(required("token_type").equals("Bearer", ignoreCase = true))
-        val accessToken = required("access_token")
-        val refreshToken = required("refresh_token")
-        val idToken = required("id_token")
-        val grantedScopes = required("scope").split(' ').filter { it.isNotBlank() }.toSet()
-        val lifetime = (token["expires_in"] as? JsonPrimitive)?.longOrNull
-            ?: throw IOException("Missing ChatGPT token expiration")
-        require(lifetime in 1..86_400)
-        val jwks = request(Request.Builder().url(JWKS_ENDPOINT)
-            .header("Accept", "application/json").get().build())
-        val identity = try {
-            ChatGptPlanIdentity.verify(
-                jwt = idToken,
-                jwks = jwks,
-                clientId = callback.clientId,
-                nonce = pending.nonce,
-                now = nowEpochSeconds,
-            )
-        } catch (_: Exception) {
-            throw IOException("ChatGPT identity verification failed")
+        // A refresh token may already be live: on any later failure hand it back for revocation.
+        val issuedRefreshToken = (token["refresh_token"] as? JsonPrimitive)
+            ?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+        try {
+            require(required("token_type").equals("Bearer", ignoreCase = true))
+            val accessToken = required("access_token")
+            val refreshToken = required("refresh_token")
+            val idToken = required("id_token")
+            val grantedScopes = required("scope").split(' ').filter { it.isNotBlank() }.toSet()
+            val lifetime = (token["expires_in"] as? JsonPrimitive)?.longOrNull
+                ?: throw IOException("Missing ChatGPT token expiration")
+            require(lifetime in 1..86_400)
+            val jwks = request(Request.Builder().url(JWKS_ENDPOINT)
+                .header("Accept", "application/json").get().build())
+            val identity = try {
+                ChatGptPlanIdentity.verify(
+                    jwt = idToken,
+                    jwks = jwks,
+                    clientId = callback.clientId,
+                    nonce = pending.nonce,
+                    now = nowEpochSeconds,
+                )
+            } catch (_: Exception) {
+                throw IOException("ChatGPT identity verification failed")
+            }
+            if (expectedSubject != null && expectedSubject != identity.subject) {
+                throw IOException("ChatGPT account does not match selected account")
+            }
+            return Grant(identity, idToken, accessToken, refreshToken, grantedScopes,
+                Math.addExact(nowEpochSeconds, lifetime))
+        } catch (error: Exception) {
+            if (issuedRefreshToken != null) throw UnverifiedGrant(callback.clientId, issuedRefreshToken)
+            throw error as? IOException ?: IOException("Incomplete ChatGPT authorization")
         }
-        if (expectedSubject != null && expectedSubject != identity.subject) {
-            throw IOException("ChatGPT account does not match selected account")
-        }
-        return Grant(identity, idToken, accessToken, refreshToken, grantedScopes,
-            Math.addExact(nowEpochSeconds, lifetime))
     }
 
     /**

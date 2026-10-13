@@ -34,7 +34,7 @@ class ChatGptPlanSignInTest {
     private val records = FakeRecords()
     private val vault = ChatGptPlanCredentialStore(records)
     private val seen = mutableListOf<String>()
-    private var nonce = ""
+    @Volatile private var nonce = ""
     private var subject = "subject-1"
     private var scope = "openid offline_access resource.invoke chatgpt.tokens.use.direct"
     private var revokeFails = false
@@ -130,6 +130,17 @@ class ChatGptPlanSignInTest {
         val result = finishAsync(attempt)
         callback(attempt, "code=one-time&client_id=oaiapp_test")
         assertEquals(Result.FAILED, result.get(10, TimeUnit.SECONDS))
+        assertTrue(seen.contains("POST /oauth/revoke"))
+    }
+
+    @Test(timeout = 15_000)
+    fun unverifiableIdentityRevokesIssuedTokens() {
+        val attempt = signIn().start()!!
+        val result = finishAsync(attempt)
+        nonce = "not-the-attempt-nonce"
+        callback(attempt, "code=one-time&client_id=oaiapp_test")
+        assertEquals(Result.FAILED, result.get(10, TimeUnit.SECONDS))
+        assertTrue(vault.accounts().isEmpty())
         assertTrue(seen.contains("POST /oauth/revoke"))
     }
 
