@@ -48,6 +48,9 @@ internal class EncryptedJsonStore(
             .commit()
     }.getOrDefault(false)
 
+    /** Distinguish unreadable ciphertext from an empty secret record. */
+    fun hasStoredData(): Boolean = preferences.contains(ivKey) || preferences.contains(ciphertextKey)
+
     fun clear(): Boolean = runCatching {
         preferences.edit()
             .remove(ivKey)
