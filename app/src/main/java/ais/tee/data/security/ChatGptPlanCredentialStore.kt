@@ -231,9 +231,9 @@ internal class ChatGptPlanCredentialStore(private val records: RecordStorage) {
         override fun write(value: String): Boolean = encrypted.write(value)
     }
 
-    private companion object {
+    companion object {
         private val lock = Any()
         const val MAX_ACCOUNTS = 12
-        const val MAX_LENGTH = 262_144
+        private const val MAX_LENGTH = 262_144
     }
 }

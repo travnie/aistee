@@ -131,9 +131,9 @@ Account-plan UX requirements:
 - invalidate/disconnect cleanly without touching locally owned Aistee chats;
 - treat each provider's account-plan capability matrix as independently verified rather than inferred from WebView login.
 
-### Sign in with ChatGPT on Android (planned)
+### Sign in with ChatGPT on Android (in progress)
 
-Integration notes for the open `ACCOUNT_PLAN` credential lifecycle; nothing below ships yet. Source: OpenAI's [ChatGPT plan usage for open-source apps](https://developers.openai.com/siwc/token-sharing-open-source) docs. OpenAI's Node/Electron DevKit is a reference only (noncommercial license, not usable on Android).
+Integration notes for the `ACCOUNT_PLAN` credential lifecycle. Shipped: sign-in, token refresh, sign-out with revocation, and an account section in the API-keys dialog (Custom Tab + loopback). Not yet: selecting `ACCOUNT_PLAN` for chats. Source: OpenAI's [ChatGPT plan usage for open-source apps](https://developers.openai.com/siwc/token-sharing-open-source) docs. OpenAI's Node/Electron DevKit is a reference only (noncommercial license, not usable on Android).
 
 - **Eligibility:** the self-serve route is for open-source, locally run apps (Aistee is ISC-licensed and runs on-device); a paid or remotely hosted app needs OpenAI's interest form. No pre-approved client ID: first sign-in uses dynamic registration (`client_id=dynamic_agent_client`, `agent_name_hint=Aistee`) and the callback returns the issued `oaiapp_…` client ID to keep per account/workspace.
 - **Host ID:** generate one `urn:uuid:` (or RFC 9278 JWK-thumbprint) `ext_agent_host_id` per install before the first sign-in and keep it across sign-ins, sign-outs and account switches. It is an opaque identifier, never derived from email or user IDs.
