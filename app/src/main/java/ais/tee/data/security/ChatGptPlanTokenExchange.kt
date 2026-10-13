@@ -58,6 +58,9 @@ internal class ChatGptPlanTokenExchange(
     /** Token set is unusable: clear it and repeat OAuth with the saved issued client ID. */
     class ReauthorizationRequired : IOException("ChatGPT sign-in expired")
 
+    /** Terminal 400/401 from the revocation endpoint; retrying the same request cannot help. */
+    class RevocationRejected : IOException("ChatGPT revocation rejected")
+
     fun complete(
         pending: ChatGptPlanOAuth.Pending,
         callbackUrl: String,
@@ -152,7 +155,8 @@ internal class ChatGptPlanTokenExchange(
     /**
      * Revoke the refresh token (ends the renewable session; the registration survives). The
      * endpoint comes from issuer discovery and must stay on the issuer origin. An already
-     * invalid token also yields 200. Network/5xx failures throw; callers may retry.
+     * invalid token also yields 200. Network/5xx failures throw plain [IOException] (retryable);
+     * a 400/401 throws [RevocationRejected].
      */
     fun revoke(clientId: String, refreshToken: String) {
         require(clientId.isNotBlank() && clientId != DYNAMIC_CLIENT_ID && refreshToken.isNotBlank())
@@ -171,7 +175,7 @@ internal class ChatGptPlanTokenExchange(
         try {
             request(builder.post(form).build())
         } catch (_: OAuthError) {
-            throw IOException("ChatGPT revocation rejected")
+            throw RevocationRejected()
         }
     }
 

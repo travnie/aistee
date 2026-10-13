@@ -52,6 +52,8 @@ internal class ChatGptPlanSessions(
                 revoked = try {
                     exchange.revoke(clientId, current.refreshToken)
                     true
+                } catch (_: ChatGptPlanTokenExchange.RevocationRejected) {
+                    break // Terminal: clear now, report unconfirmed.
                 } catch (_: IOException) {
                     false
                 }

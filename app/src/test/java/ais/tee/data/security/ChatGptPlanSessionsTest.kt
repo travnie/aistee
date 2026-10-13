@@ -174,6 +174,23 @@ class ChatGptPlanSessionsTest {
     }
 
     @Test
+    fun rejectedRevocationIsNotRetried() {
+        connect(expiresAt = now + 3600)
+        val posts = mutableListOf<String>()
+        val rejecting = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { request: Request ->
+            if (request.method == "GET") return@Transport """{"revocation_endpoint":"https://auth.openai.com/oauth/revoke"}"""
+            posts += request.url.toString()
+            throw ChatGptPlanTokenExchange.OAuthError("invalid_request")
+        })
+        val sleeps = mutableListOf<Long>()
+        val result = ChatGptPlanSessions(vault, rejecting, sleep = { sleeps += it }) { now }.signOut("oaiapp_one")
+        assertEquals(ChatGptPlanSessions.SignOut.CLEARED_UNCONFIRMED, result)
+        assertEquals(1, posts.size)
+        assertTrue(sleeps.isEmpty())
+        assertNull(vault.credentials("oaiapp_one"))
+    }
+
+    @Test
     fun interruptedBackoffStillClearsLocally() {
         connect(expiresAt = now + 3600)
         val offline = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { throw IOException("offline") })
