@@ -89,6 +89,26 @@ class ChatGptPlanLoopbackTest {
         assertTrue(error.cause is IOException)
     }
 
+    @Test(timeout = 15_000)
+    fun silentClientCannotOutliveDeadline() {
+        Socket(LOCALHOST, loopback.port).use {
+            val started = System.nanoTime()
+            assertEquals(Outcome.TimedOut, loopback.await(pending, 300))
+            assertTrue(System.nanoTime() - started < 2_000_000_000L)
+        }
+    }
+
+    @Test(timeout = 15_000)
+    fun closeDropsSilentClient() {
+        Socket(LOCALHOST, loopback.port).use {
+            val result = awaitAsync()
+            Thread.sleep(200)
+            loopback.close()
+            val error = assertThrows(ExecutionException::class.java) { result.get(2, TimeUnit.SECONDS) }
+            assertTrue(error.cause is IOException)
+        }
+    }
+
     private fun awaitAsync(): Future<Outcome> = executor.submit(Callable { loopback.await(pending, 10_000) })
 
     private fun get(target: String) = send("GET $target HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")

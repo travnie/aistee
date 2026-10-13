@@ -46,11 +46,16 @@ internal class ChatGptPlanLoopback private constructor(private val server: Serve
                 } catch (_: SocketTimeoutException) {
                     return Outcome.TimedOut
                 }
+                active = socket
+                if (server.isClosed) socket.close() // close() raced the accept.
                 val outcome = socket.use {
                     try {
+                        it.soTimeout = minOf(READ_TIMEOUT_MS.toLong(), remaining).toInt()
                         handle(it, pending)
                     } catch (_: IOException) {
                         null // Broken or slow client; keep waiting for the browser.
+                    } finally {
+                        active = null
                     }
                 }
                 if (outcome != null) return outcome
@@ -60,10 +65,15 @@ internal class ChatGptPlanLoopback private constructor(private val server: Serve
         }
     }
 
-    override fun close() = server.close()
+    @Volatile private var active: Socket? = null
+
+    /** Also drops an in-flight client so cancellation never waits on a slow read. */
+    override fun close() {
+        server.close()
+        active?.close()
+    }
 
     private fun handle(socket: Socket, pending: ChatGptPlanOAuth.Pending): Outcome? {
-        socket.soTimeout = READ_TIMEOUT_MS
         val requestLine = readRequestLine(socket.getInputStream())
         val parts = requestLine?.split(' ')
         if (parts == null || parts.size != 3 || !parts[2].startsWith("HTTP/1.") || !parts[1].startsWith("/")) {
@@ -120,6 +130,7 @@ internal class ChatGptPlanLoopback private constructor(private val server: Serve
         return null
     }
 
+    /** Best-effort: the outcome is already decided, a vanished browser must not lose it. */
     private fun respond(socket: Socket, status: String, body: String) {
         val content = body.toByteArray(StandardCharsets.UTF_8)
         val head = "HTTP/1.1 $status\r\n" +
@@ -129,10 +140,14 @@ internal class ChatGptPlanLoopback private constructor(private val server: Serve
             "Referrer-Policy: no-referrer\r\n" +
             "X-Content-Type-Options: nosniff\r\n" +
             "Connection: close\r\n\r\n"
-        socket.getOutputStream().apply {
-            write(head.toByteArray(StandardCharsets.US_ASCII))
-            write(content)
-            flush()
+        try {
+            socket.getOutputStream().apply {
+                write(head.toByteArray(StandardCharsets.US_ASCII))
+                write(content)
+                flush()
+            }
+        } catch (_: IOException) {
+            // Client gone; nothing to tell it.
         }
     }
 
