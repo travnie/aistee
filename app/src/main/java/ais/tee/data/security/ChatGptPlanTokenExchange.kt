@@ -154,8 +154,8 @@ internal class ChatGptPlanTokenExchange(
 
     /**
      * Revoke the refresh token (ends the renewable session; the registration survives). The
-     * endpoint comes from issuer discovery and must stay on the issuer origin. An already
-     * invalid token also yields 200. Network/5xx failures throw plain [IOException] (retryable);
+     * endpoint comes from issuer discovery and must stay on the issuer origin. Only an empty 200
+     * confirms (also for an already invalid token). Network/5xx failures throw plain [IOException] (retryable);
      * a terminal 4xx throws [RevocationRejected].
      */
     fun revoke(clientId: String, refreshToken: String) {
@@ -172,11 +172,13 @@ internal class ChatGptPlanTokenExchange(
             .build()
         val builder = runCatching { Request.Builder().url(endpoint) }.getOrNull()
             ?: throw IOException("Invalid ChatGPT revocation endpoint")
-        try {
+        val body = try {
             request(builder.post(form).build())
         } catch (_: OAuthError) {
             throw RevocationRejected()
         }
+        // Only an empty 200 confirms revocation.
+        if (body.isNotBlank()) throw RevocationRejected()
     }
 
     private fun request(request: Request): String = try {
@@ -219,6 +221,8 @@ internal class ChatGptPlanTokenExchange(
                     throw OAuthError(errorCode(body) ?: "http_${response.code}")
                 }
                 if (!response.isSuccessful) throw IOException("Authorization request unsuccessful")
+                // OpenAI's issuer only documents 200; any other 2xx is unexpected, not success.
+                if (response.code != 200) throw OAuthError("http_${response.code}")
                 return readBounded(response)
             }
         }
