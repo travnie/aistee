@@ -116,6 +116,7 @@ class ChatGptPlanSignInTest {
         callback(again, "code=one-time")
         assertEquals(Result.FAILED, result.get(10, TimeUnit.SECONDS))
         assertFalse(vault.accounts().single().connected)
+        assertTrue(seen.contains("POST /oauth/revoke"))
     }
 
     @Test(timeout = 15_000)
