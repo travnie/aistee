@@ -173,6 +173,29 @@ class ChatGptPlanSessionsTest {
         assertFalse(record.text!!.contains("refresh-old"))
     }
 
+    @Test
+    fun interruptedBackoffStillClearsLocally() {
+        connect(expiresAt = now + 3600)
+        val offline = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { throw IOException("offline") })
+        val result = ChatGptPlanSessions(vault, offline, sleep = { throw InterruptedException() }) { now }
+            .signOut("oaiapp_one")
+        assertTrue(Thread.interrupted())
+        assertEquals(ChatGptPlanSessions.SignOut.CLEARED_UNCONFIRMED, result)
+        assertNull(vault.credentials("oaiapp_one"))
+    }
+
+    @Test
+    fun signOutDoesNotEraseSignInSavedDuringRevocation() {
+        connect(expiresAt = now + 3600)
+        val racing = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { request: Request ->
+            if (request.method == "GET") return@Transport """{"revocation_endpoint":"https://auth.openai.com/oauth/revoke"}"""
+            record.text = record.text!!.replace("refresh-old", "refresh-resigned")
+            ""
+        })
+        assertEquals(ChatGptPlanSessions.SignOut.REVOKED, ChatGptPlanSessions(vault, racing).signOut("oaiapp_one"))
+        assertEquals("refresh-resigned", vault.credentials("oaiapp_one")!!.refreshToken)
+    }
+
     private fun revoking(seen: MutableList<String>, endpoint: String) =
         ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { request: Request ->
             val body = request.body?.let { Buffer().also(it::writeTo).readUtf8() }.orEmpty()

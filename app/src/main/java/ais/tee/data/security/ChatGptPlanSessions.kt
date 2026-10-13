@@ -46,17 +46,24 @@ internal class ChatGptPlanSessions(
     fun signOut(clientId: String): SignOut = synchronized(locks.computeIfAbsent(clientId) { Any() }) {
         val current = vault.credentials(clientId) ?: return@synchronized SignOut.NOT_CONNECTED
         var revoked = false
-        for (attempt in 0 until REVOKE_ATTEMPTS) {
-            if (attempt > 0) sleep(REVOKE_BACKOFF_MILLIS shl (attempt - 1))
-            revoked = try {
-                exchange.revoke(clientId, current.refreshToken)
-                true
-            } catch (_: IOException) {
-                false
+        try {
+            for (attempt in 0 until REVOKE_ATTEMPTS) {
+                if (attempt > 0) sleep(REVOKE_BACKOFF_MILLIS shl (attempt - 1))
+                revoked = try {
+                    exchange.revoke(clientId, current.refreshToken)
+                    true
+                } catch (_: IOException) {
+                    false
+                }
+                if (revoked) break
             }
-            if (revoked) break
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt() // Cancelled: still clear locally below.
         }
-        if (!vault.disconnectLocally(clientId)) throw IOException("Unable to clear ChatGPT credentials")
+        // Only the token set we revoked; a sign-in saved meanwhile (outside this lock) stays.
+        if (!vault.clearRejected(clientId, current.refreshToken)) {
+            throw IOException("Unable to clear ChatGPT credentials")
+        }
         if (revoked) SignOut.REVOKED else SignOut.CLEARED_UNCONFIRMED
     }
 

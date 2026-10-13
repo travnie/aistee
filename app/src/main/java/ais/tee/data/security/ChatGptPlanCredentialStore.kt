@@ -127,8 +127,8 @@ internal class ChatGptPlanCredentialStore(private val records: RecordStorage) {
     fun disconnectLocally(clientId: String): Boolean = clearTokens(clientId, null)
 
     /**
-     * Clear after the server rejected [usedRefreshToken]; a newer grant saved meanwhile (e.g. a
-     * re-sign-in) is left alone. True when nothing stale remains.
+     * Clear after the server rejected or revoked [usedRefreshToken]; a newer grant saved
+     * meanwhile (e.g. a re-sign-in) is left alone. True when nothing stale remains.
      */
     fun clearRejected(clientId: String, usedRefreshToken: String): Boolean =
         clearTokens(clientId, usedRefreshToken)
