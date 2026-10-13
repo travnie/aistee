@@ -21,7 +21,7 @@ internal object ChatGptPlanOAuth {
     private const val DYNAMIC_CLIENT_ID = "dynamic_agent_client"
     private const val RESOURCE = "https://api.openai.com/v1"
     private const val SCOPES = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct"
-    private const val CALLBACK_PATH = "/auth/callback"
+    internal const val CALLBACK_PATH = "/auth/callback"
     private const val AGENT_NAME = "Aistee"
     private val secureRandom = SecureRandom()
 
@@ -49,8 +49,21 @@ internal object ChatGptPlanOAuth {
          */
         fun acceptCallback(callbackUrl: String): Callback {
             if (finished.get()) return Callback.Invalid
-            val callback = runCatching { URI(callbackUrl) }.getOrNull() ?: return Callback.Invalid
-            val registered = runCatching { URI(redirectUri) }.getOrNull() ?: return Callback.Invalid
+            val result = evaluate(callbackUrl) ?: return Callback.Invalid
+            if (!finished.compareAndSet(false, true)) return Callback.Invalid
+            return result
+        }
+
+        /**
+         * Non-consuming check: the outcome [acceptCallback] would finish this attempt with, or
+         * null when the URL would be ignored. Lets a listener stop without spending the attempt.
+         */
+        fun peekCallback(callbackUrl: String): Callback? =
+            if (finished.get()) null else evaluate(callbackUrl)
+
+        private fun evaluate(callbackUrl: String): Callback? {
+            val callback = runCatching { URI(callbackUrl) }.getOrNull() ?: return null
+            val registered = runCatching { URI(redirectUri) }.getOrNull() ?: return null
             if (
                 callback.scheme != registered.scheme ||
                 callback.host != registered.host ||
@@ -58,27 +71,25 @@ internal object ChatGptPlanOAuth {
                 callback.rawPath != registered.rawPath ||
                 callback.rawFragment != null ||
                 callback.rawUserInfo != null
-            ) return Callback.Invalid
-            val parameters = decodeQuery(callback.rawQuery) ?: return Callback.Invalid
-            val returnedState = parameters["state"]?.takeIf { it.isNotEmpty() } ?: return Callback.Invalid
+            ) return null
+            val parameters = decodeQuery(callback.rawQuery) ?: return null
+            val returnedState = parameters["state"]?.takeIf { it.isNotEmpty() } ?: return null
             if (!MessageDigest.isEqual(
                     returnedState.toByteArray(StandardCharsets.US_ASCII),
                     state.toByteArray(StandardCharsets.US_ASCII),
                 )
-            ) return Callback.Invalid
+            ) return null
             val error = parameters["error"]
             if (error != null) {
-                if (!finished.compareAndSet(false, true)) return Callback.Invalid
                 return if (error == "access_denied") Callback.AccessDenied else Callback.Invalid
             }
-            val code = parameters["code"]?.takeIf { it.isNotBlank() } ?: return Callback.Invalid
+            val code = parameters["code"]?.takeIf { it.isNotBlank() } ?: return null
             val returnedClientId = parameters["client_id"]
             val clientId = if (expectedClientId == null) {
                 returnedClientId?.takeIf { it.isNotBlank() && it != DYNAMIC_CLIENT_ID }
             } else {
                 expectedClientId.takeIf { returnedClientId == null || returnedClientId == it }
-            } ?: return Callback.Invalid
-            if (!finished.compareAndSet(false, true)) return Callback.Invalid
+            } ?: return null
             return Callback.Code(code, clientId)
         }
 
