@@ -1,6 +1,15 @@
 package ais.tee.data.security
 
 import java.io.IOException
+import java.math.BigInteger
+import java.nio.charset.StandardCharsets
+import java.security.KeyPairGenerator
+import java.security.Signature
+import java.security.interfaces.RSAPublicKey
+import java.util.Base64
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -106,5 +115,111 @@ class ChatGptPlanCredentialStoreTest {
         data.refuseWrites = true
         assertFalse(vault.disconnectLocally("one"))
         assertEquals(original, data.text)
+    }
+
+    @Test
+    fun saveVerifiedStoresIdentityAndAllTokenFields() {
+        val data = Fake()
+        val vault = ChatGptPlanCredentialStore(data)
+        vault.hostId()
+        assertTrue(vault.saveVerified(grant("oaiapp_one", "subject-one", "1", setOf("chatgpt.tokens.use.direct"))))
+        val account = vault.accounts().single()
+        assertEquals("oaiapp_one", account.clientId)
+        assertEquals("subject-one", account.subject)
+        assertEquals("subject-one@example.org", account.email)
+        assertTrue(account.connected)
+        assertTrue(account.planUsageGranted)
+        assertEquals(1_800_000_100L, account.expiresAt)
+        val secret = vault.credentials("oaiapp_one")!!
+        assertTrue(secret.idToken.count { it == '.' } == 2)
+        assertEquals("access1", secret.accessToken)
+        assertEquals("refresh1", secret.refreshToken)
+        assertEquals(setOf("chatgpt.tokens.use.direct"), secret.scopes)
+        assertEquals(1_800_000_100L, secret.expiresAt)
+    }
+
+    @Test
+    fun saveVerifiedReplacesOnlyMatchingRegistration() {
+        val data = Fake()
+        val vault = ChatGptPlanCredentialStore(data)
+        vault.hostId()
+        assertTrue(vault.saveVerified(grant("oaiapp_one", "subject-one", "1")))
+        assertTrue(vault.saveVerified(grant("oaiapp_two", "subject-two", "2")))
+        assertTrue(vault.saveVerified(grant("oaiapp_one", "subject-one", "3")))
+        assertEquals(listOf("oaiapp_two", "oaiapp_one"), vault.accounts().map { it.clientId })
+        assertEquals("access3", vault.credentials("oaiapp_one")!!.accessToken)
+        assertEquals("access2", vault.credentials("oaiapp_two")!!.accessToken)
+        assertFalse(data.text!!.contains("access1"))
+    }
+
+    @Test
+    fun saveVerifiedRejectsSubjectChangeAndAccountOverflowWithoutWriting() {
+        val data = Fake()
+        val vault = ChatGptPlanCredentialStore(data)
+        vault.hostId()
+        assertTrue(vault.saveVerified(grant("oaiapp_one", "subject-one", "1")))
+        var original = data.text
+        assertFalse(vault.saveVerified(grant("oaiapp_one", "subject-other", "2")))
+        assertEquals(original, data.text)
+        for (i in 2..12) assertTrue(vault.saveVerified(grant("oaiapp_$i", "subject-$i", "$i")))
+        original = data.text
+        assertFalse(vault.saveVerified(grant("oaiapp_13", "subject-13", "13")))
+        assertEquals(original, data.text)
+        assertEquals(12, vault.accounts().size)
+    }
+
+    @Test
+    fun saveVerifiedRequiresPersistedHostId() {
+        val vault = ChatGptPlanCredentialStore(Fake())
+        assertThrows(IllegalArgumentException::class.java) {
+            vault.saveVerified(grant("oaiapp_one", "subject-one", "1"))
+        }
+    }
+
+    private fun grant(
+        clientId: String,
+        subject: String,
+        suffix: String,
+        scopes: Set<String> = setOf("openid"),
+    ): ChatGptPlanTokenExchange.Grant {
+        val payload = buildJsonObject {
+            put("iss", "https://auth.openai.com")
+            put("aud", clientId)
+            put("sub", subject)
+            put("email", "$subject@example.org")
+            put("nonce", "nonce")
+            put("iat", NOW - 10)
+            put("exp", NOW + 100)
+        }
+        val input = b64("""{"alg":"RS256","kid":"test-key"}""".toByteArray(StandardCharsets.UTF_8)) +
+            "." + b64(payload.toString().toByteArray(StandardCharsets.UTF_8))
+        val signer = Signature.getInstance("SHA256withRSA").apply {
+            initSign(keys.private)
+            update(input.toByteArray(StandardCharsets.US_ASCII))
+        }
+        val jwt = input + "." + b64(signer.sign())
+        val identity = ChatGptPlanIdentity.Verified.verify(jwt, jwks, clientId, "nonce", NOW)
+        return ChatGptPlanTokenExchange.Grant(
+            identity, jwt, "access$suffix", "refresh$suffix", scopes, NOW + 100)
+    }
+
+    private companion object {
+        const val NOW = 1_800_000_000L
+        val keys = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        val jwks = (keys.public as RSAPublicKey).let { key ->
+            buildJsonObject {
+                put("keys", JsonArray(listOf(buildJsonObject {
+                    put("kid", "test-key")
+                    put("kty", "RSA")
+                    put("n", b64(unsigned(key.modulus)))
+                    put("e", b64(unsigned(key.publicExponent)))
+                })))
+            }.toString()
+        }
+
+        fun unsigned(value: BigInteger): ByteArray =
+            value.toByteArray().dropWhile { it.toInt() == 0 }.toByteArray()
+
+        fun b64(bytes: ByteArray): String = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 }
