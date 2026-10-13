@@ -52,13 +52,13 @@ internal class ChatGptPlanTokenExchange(
         override fun toString(): String = "ChatGptPlanTokenExchange.Refreshed(<redacted>)"
     }
 
-    /** OAuth error code from a 400/401 body. Code only; the body is never kept. */
+    /** Terminal 4xx with its OAuth error code (or `http_<status>`). Code only; body never kept. */
     class OAuthError(val code: String) : IOException("ChatGPT authorization rejected")
 
     /** Token set is unusable: clear it and repeat OAuth with the saved issued client ID. */
     class ReauthorizationRequired : IOException("ChatGPT sign-in expired")
 
-    /** Terminal 400/401 from the revocation endpoint; retrying the same request cannot help. */
+    /** Terminal 4xx from the revocation endpoint; retrying the same request cannot help. */
     class RevocationRejected : IOException("ChatGPT revocation rejected")
 
     fun complete(
@@ -156,7 +156,7 @@ internal class ChatGptPlanTokenExchange(
      * Revoke the refresh token (ends the renewable session; the registration survives). The
      * endpoint comes from issuer discovery and must stay on the issuer origin. An already
      * invalid token also yields 200. Network/5xx failures throw plain [IOException] (retryable);
-     * a 400/401 throws [RevocationRejected].
+     * a terminal 4xx throws [RevocationRejected].
      */
     fun revoke(clientId: String, refreshToken: String) {
         require(clientId.isNotBlank() && clientId != DYNAMIC_CLIENT_ID && refreshToken.isNotBlank())
@@ -213,8 +213,10 @@ internal class ChatGptPlanTokenExchange(
                 if (response.request.url.toString() != request.url.toString()) {
                     throw IOException("Authorization request unsuccessful")
                 }
-                if (response.code == 400 || response.code == 401) {
-                    throw OAuthError(errorCode(readBounded(response)) ?: "unknown")
+                // Terminal client errors; 408/429 stay retryable like network/5xx.
+                if (response.code in 400..499 && response.code != 408 && response.code != 429) {
+                    val body = runCatching { readBounded(response) }.getOrDefault("")
+                    throw OAuthError(errorCode(body) ?: "http_${response.code}")
                 }
                 if (!response.isSuccessful) throw IOException("Authorization request unsuccessful")
                 return readBounded(response)
