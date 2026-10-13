@@ -149,6 +149,32 @@ internal class ChatGptPlanTokenExchange(
             Math.addExact(nowEpochSeconds, lifetime))
     }
 
+    /**
+     * Revoke the refresh token (ends the renewable session; the registration survives). The
+     * endpoint comes from issuer discovery and must stay on the issuer origin. An already
+     * invalid token also yields 200. Network/5xx failures throw; callers may retry.
+     */
+    fun revoke(clientId: String, refreshToken: String) {
+        require(clientId.isNotBlank() && clientId != DYNAMIC_CLIENT_ID && refreshToken.isNotBlank())
+        val endpoint = (parseObject(request(Request.Builder().url(DISCOVERY_ENDPOINT)
+            .header("Accept", "application/json").get().build()))["revocation_endpoint"] as? JsonPrimitive)
+            ?.takeIf { it.isString }?.content
+            ?.takeIf { it.startsWith(ISSUER + "/") && it.none { c -> c.isWhitespace() || c == '#' } }
+            ?: throw IOException("Missing ChatGPT revocation endpoint")
+        val form = FormBody.Builder()
+            .add("token", refreshToken)
+            .add("token_type_hint", "refresh_token")
+            .add("client_id", clientId)
+            .build()
+        val builder = runCatching { Request.Builder().url(endpoint) }.getOrNull()
+            ?: throw IOException("Invalid ChatGPT revocation endpoint")
+        try {
+            request(builder.post(form).build())
+        } catch (_: OAuthError) {
+            throw IOException("ChatGPT revocation rejected")
+        }
+    }
+
     private fun request(request: Request): String = try {
         val response = transport.execute(request)
         if (response.toByteArray(StandardCharsets.UTF_8).size > MAX_BYTES) {
@@ -176,8 +202,9 @@ internal class ChatGptPlanTokenExchange(
             .build()
 
         override fun execute(request: Request): String {
-            require(request.url.toString() == TOKEN_ENDPOINT ||
-                request.url.toString() == JWKS_ENDPOINT)
+            // Pinned issuer origin only: token, JWKS, discovery and its revocation endpoint.
+            require(request.url.isHttps && request.url.host == "auth.openai.com" &&
+                request.url.port == 443 && request.url.username.isEmpty())
             client.newCall(request).execute().use { response ->
                 if (response.request.url.toString() != request.url.toString()) {
                     throw IOException("Authorization request unsuccessful")
@@ -219,6 +246,8 @@ internal class ChatGptPlanTokenExchange(
     private companion object {
         const val TOKEN_ENDPOINT = "https://auth.openai.com/api/accounts/oauth/token"
         const val JWKS_ENDPOINT = "https://auth.openai.com/.well-known/jwks.json"
+        const val ISSUER = "https://auth.openai.com"
+        const val DISCOVERY_ENDPOINT = "https://auth.openai.com/.well-known/openid-configuration"
         const val RESOURCE = "https://api.openai.com/v1"
         const val MAX_BYTES = 65_536
         const val DYNAMIC_CLIENT_ID = "dynamic_agent_client"
