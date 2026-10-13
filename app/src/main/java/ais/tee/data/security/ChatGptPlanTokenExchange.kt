@@ -219,14 +219,14 @@ internal class ChatGptPlanTokenExchange(
                 if (response.request.url.toString() != request.url.toString()) {
                     throw IOException("Authorization request unsuccessful")
                 }
-                // Terminal client errors; 408/429 stay retryable like network/5xx.
-                if (response.code in 400..499 && response.code != 408 && response.code != 429) {
+                // Only network, 5xx, 408 and 429 are retryable; every other non-200 is terminal.
+                if (response.code >= 500 || response.code == 408 || response.code == 429) {
+                    throw IOException("Authorization request unsuccessful")
+                }
+                if (response.code != 200) {
                     val body = runCatching { readBounded(response) }.getOrDefault("")
                     throw OAuthError(errorCode(body) ?: "http_${response.code}")
                 }
-                if (!response.isSuccessful) throw IOException("Authorization request unsuccessful")
-                // OpenAI's issuer only documents 200; any other 2xx is unexpected, not success.
-                if (response.code != 200) throw OAuthError("http_${response.code}")
                 return readBounded(response)
             }
         }
