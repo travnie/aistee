@@ -160,8 +160,12 @@ internal class ChatGptPlanTokenExchange(
      */
     fun revoke(clientId: String, refreshToken: String) {
         require(clientId.isNotBlank() && clientId != DYNAMIC_CLIENT_ID && refreshToken.isNotBlank())
-        val endpoint = (parseObject(request(Request.Builder().url(DISCOVERY_ENDPOINT)
-            .header("Accept", "application/json").get().build()))["revocation_endpoint"] as? JsonPrimitive)
+        val discovery = try {
+            request(Request.Builder().url(DISCOVERY_ENDPOINT).header("Accept", "application/json").get().build())
+        } catch (_: OAuthError) {
+            throw RevocationRejected()
+        }
+        val endpoint = (parseObject(discovery)["revocation_endpoint"] as? JsonPrimitive)
             ?.takeIf { it.isString }?.content
             ?.takeIf { it.startsWith(ISSUER + "/") && it.none { c -> c.isWhitespace() || c == '#' } }
             ?: throw IOException("Missing ChatGPT revocation endpoint")
@@ -178,7 +182,7 @@ internal class ChatGptPlanTokenExchange(
             throw RevocationRejected()
         }
         // Only an empty 200 confirms revocation.
-        if (body.isNotBlank()) throw RevocationRejected()
+        if (body.isNotEmpty()) throw RevocationRejected()
     }
 
     private fun request(request: Request): String = try {

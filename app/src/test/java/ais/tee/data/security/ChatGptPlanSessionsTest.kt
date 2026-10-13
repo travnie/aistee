@@ -194,13 +194,26 @@ class ChatGptPlanSessionsTest {
     fun nonEmptyRevocationResponseIsUnconfirmed() {
         connect(expiresAt = now + 3600)
         val odd = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { request: Request ->
-            if (request.method == "GET") """{"revocation_endpoint":"https://auth.openai.com/oauth/revoke"}""" else "{}"
+            if (request.method == "GET") """{"revocation_endpoint":"https://auth.openai.com/oauth/revoke"}""" else " "
         })
         val sleeps = mutableListOf<Long>()
         val result = ChatGptPlanSessions(vault, odd, sleep = { sleeps += it }) { now }.signOut("oaiapp_one")
         assertEquals(ChatGptPlanSessions.SignOut.CLEARED_UNCONFIRMED, result)
         assertTrue(sleeps.isEmpty())
         assertNull(vault.credentials("oaiapp_one"))
+    }
+
+    @Test
+    fun rejectedDiscoveryIsNotRetried() {
+        connect(expiresAt = now + 3600)
+        val calls = mutableListOf<String>()
+        val gone = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { request: Request ->
+            calls += request.method
+            throw ChatGptPlanTokenExchange.OAuthError("http_404")
+        })
+        val result = ChatGptPlanSessions(vault, gone, sleep = { error("no retry expected") }) { now }.signOut("oaiapp_one")
+        assertEquals(ChatGptPlanSessions.SignOut.CLEARED_UNCONFIRMED, result)
+        assertEquals(listOf("GET"), calls)
     }
 
     @Test
