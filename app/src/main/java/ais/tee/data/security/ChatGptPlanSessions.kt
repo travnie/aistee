@@ -25,7 +25,7 @@ internal class ChatGptPlanSessions(
             val refreshed = try {
                 exchange.refresh(clientId, current.refreshToken, nowEpochSeconds())
             } catch (error: ChatGptPlanTokenExchange.ReauthorizationRequired) {
-                vault.disconnectLocally(clientId)
+                vault.clearRejected(clientId, current.refreshToken)
                 throw error
             }
             // Server already rotated: a failed write here costs a re-sign-in, never a stale write.

@@ -104,6 +104,22 @@ class ChatGptPlanSessionsTest {
     }
 
     @Test
+    fun staleRejectionDoesNotEraseNewerGrant() {
+        connect(expiresAt = now - 1)
+        // Re-sign-in lands while the old refresh is in flight; the old token is then rejected.
+        val racing = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport {
+            record.text = record.text!!.replace("refresh-old", "refresh-resigned")
+                .replace("access-old", "access-resigned")
+            throw ChatGptPlanTokenExchange.OAuthError("invalid_grant")
+        })
+        assertThrows(ChatGptPlanTokenExchange.ReauthorizationRequired::class.java) {
+            ChatGptPlanSessions(vault, racing) { now }.usable("oaiapp_one")
+        }
+        assertEquals("refresh-resigned", vault.credentials("oaiapp_one")!!.refreshToken)
+        assertEquals("access-resigned", vault.credentials("oaiapp_one")!!.accessToken)
+    }
+
+    @Test
     fun transientFailureKeepsStoredTokens() {
         connect(expiresAt = now - 1)
         val failing = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { throw IOException("offline") })
