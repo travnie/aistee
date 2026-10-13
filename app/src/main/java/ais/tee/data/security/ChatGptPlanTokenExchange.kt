@@ -52,11 +52,14 @@ internal class ChatGptPlanTokenExchange(
         override fun toString(): String = "ChatGptPlanTokenExchange.Refreshed(<redacted>)"
     }
 
-    /** OAuth error code from a 400/401 body. Code only; the body is never kept. */
+    /** Terminal 4xx with its OAuth error code (or `http_<status>`). Code only; body never kept. */
     class OAuthError(val code: String) : IOException("ChatGPT authorization rejected")
 
     /** Token set is unusable: clear it and repeat OAuth with the saved issued client ID. */
     class ReauthorizationRequired : IOException("ChatGPT sign-in expired")
+
+    /** Terminal 4xx from the revocation endpoint; retrying the same request cannot help. */
+    class RevocationRejected : IOException("ChatGPT revocation rejected")
 
     fun complete(
         pending: ChatGptPlanOAuth.Pending,
@@ -149,6 +152,39 @@ internal class ChatGptPlanTokenExchange(
             Math.addExact(nowEpochSeconds, lifetime))
     }
 
+    /**
+     * Revoke the refresh token (ends the renewable session; the registration survives). The
+     * endpoint comes from issuer discovery and must stay on the issuer origin. Only an empty 200
+     * confirms (also for an already invalid token). Network/5xx failures throw plain [IOException] (retryable);
+     * a terminal 4xx throws [RevocationRejected].
+     */
+    fun revoke(clientId: String, refreshToken: String) {
+        require(clientId.isNotBlank() && clientId != DYNAMIC_CLIENT_ID && refreshToken.isNotBlank())
+        val discovery = try {
+            request(Request.Builder().url(DISCOVERY_ENDPOINT).header("Accept", "application/json").get().build())
+        } catch (_: OAuthError) {
+            throw RevocationRejected()
+        }
+        val endpoint = (parseObject(discovery)["revocation_endpoint"] as? JsonPrimitive)
+            ?.takeIf { it.isString }?.content
+            ?.takeIf { it.startsWith(ISSUER + "/") && it.none { c -> c.isWhitespace() || c == '#' } }
+            ?: throw IOException("Missing ChatGPT revocation endpoint")
+        val form = FormBody.Builder()
+            .add("token", refreshToken)
+            .add("token_type_hint", "refresh_token")
+            .add("client_id", clientId)
+            .build()
+        val builder = runCatching { Request.Builder().url(endpoint) }.getOrNull()
+            ?: throw IOException("Invalid ChatGPT revocation endpoint")
+        val body = try {
+            request(builder.post(form).build())
+        } catch (_: OAuthError) {
+            throw RevocationRejected()
+        }
+        // Only an empty 200 confirms revocation.
+        if (body.isNotEmpty()) throw RevocationRejected()
+    }
+
     private fun request(request: Request): String = try {
         val response = transport.execute(request)
         if (response.toByteArray(StandardCharsets.UTF_8).size > MAX_BYTES) {
@@ -176,16 +212,21 @@ internal class ChatGptPlanTokenExchange(
             .build()
 
         override fun execute(request: Request): String {
-            require(request.url.toString() == TOKEN_ENDPOINT ||
-                request.url.toString() == JWKS_ENDPOINT)
+            // Pinned issuer origin only: token, JWKS, discovery and its revocation endpoint.
+            require(request.url.isHttps && request.url.host == "auth.openai.com" &&
+                request.url.port == 443 && request.url.username.isEmpty())
             client.newCall(request).execute().use { response ->
                 if (response.request.url.toString() != request.url.toString()) {
                     throw IOException("Authorization request unsuccessful")
                 }
-                if (response.code == 400 || response.code == 401) {
-                    throw OAuthError(errorCode(readBounded(response)) ?: "unknown")
+                // Only network, 5xx, 408 and 429 are retryable; every other non-200 is terminal.
+                if (response.code >= 500 || response.code == 408 || response.code == 429) {
+                    throw IOException("Authorization request unsuccessful")
                 }
-                if (!response.isSuccessful) throw IOException("Authorization request unsuccessful")
+                if (response.code != 200) {
+                    val body = runCatching { readBounded(response) }.getOrDefault("")
+                    throw OAuthError(errorCode(body) ?: "http_${response.code}")
+                }
                 return readBounded(response)
             }
         }
@@ -219,6 +260,8 @@ internal class ChatGptPlanTokenExchange(
     private companion object {
         const val TOKEN_ENDPOINT = "https://auth.openai.com/api/accounts/oauth/token"
         const val JWKS_ENDPOINT = "https://auth.openai.com/.well-known/jwks.json"
+        const val ISSUER = "https://auth.openai.com"
+        const val DISCOVERY_ENDPOINT = "https://auth.openai.com/.well-known/openid-configuration"
         const val RESOURCE = "https://api.openai.com/v1"
         const val MAX_BYTES = 65_536
         const val DYNAMIC_CLIENT_ID = "dynamic_agent_client"

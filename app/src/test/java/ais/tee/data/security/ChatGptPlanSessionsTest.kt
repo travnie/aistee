@@ -131,6 +131,121 @@ class ChatGptPlanSessionsTest {
         assertEquals("refresh-old", vault.credentials("oaiapp_one")!!.refreshToken)
     }
 
+    @Test
+    fun revokeUsesDiscoveredEndpointWithRefreshTokenHint() {
+        val seen = mutableListOf<String>()
+        revoking(seen, "https://auth.openai.com/oauth/revoke").revoke("oaiapp_one", "refresh-old")
+        assertEquals("GET https://auth.openai.com/.well-known/openid-configuration", seen[0])
+        assertTrue(seen[1].startsWith("POST https://auth.openai.com/oauth/revoke "))
+        assertTrue(seen[1].contains("token=refresh-old"))
+        assertTrue(seen[1].contains("token_type_hint=refresh_token"))
+        assertTrue(seen[1].contains("client_id=oaiapp_one"))
+    }
+
+    @Test
+    fun revokeRefusesEndpointOffIssuerOrigin() {
+        for (endpoint in listOf("https://evil.example/revoke", "https://auth.openai.com.evil.example/r")) {
+            val seen = mutableListOf<String>()
+            assertThrows(IOException::class.java) { revoking(seen, endpoint).revoke("oaiapp_one", "refresh-old") }
+            assertEquals(1, seen.size)
+        }
+    }
+
+    @Test
+    fun signOutRevokesThenClearsButKeepsRegistration() {
+        connect(expiresAt = now + 3600)
+        val sessions = ChatGptPlanSessions(vault, revoking(mutableListOf(), "https://auth.openai.com/oauth/revoke"))
+        assertEquals(ChatGptPlanSessions.SignOut.REVOKED, sessions.signOut("oaiapp_one"))
+        assertNull(vault.credentials("oaiapp_one"))
+        assertEquals("subject-one", vault.accounts().single().subject)
+        assertEquals(ChatGptPlanSessions.SignOut.NOT_CONNECTED, sessions.signOut("oaiapp_one"))
+    }
+
+    @Test
+    fun unconfirmedRevocationStillClearsAfterBoundedRetries() {
+        connect(expiresAt = now + 3600)
+        val sleeps = mutableListOf<Long>()
+        val offline = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { throw IOException("offline") })
+        val result = ChatGptPlanSessions(vault, offline, sleep = { sleeps += it }) { now }.signOut("oaiapp_one")
+        assertEquals(ChatGptPlanSessions.SignOut.CLEARED_UNCONFIRMED, result)
+        assertEquals(listOf(1_000L, 2_000L), sleeps)
+        assertNull(vault.credentials("oaiapp_one"))
+        assertFalse(record.text!!.contains("refresh-old"))
+    }
+
+    @Test
+    fun rejectedRevocationIsNotRetried() {
+        connect(expiresAt = now + 3600)
+        val posts = mutableListOf<String>()
+        val rejecting = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { request: Request ->
+            if (request.method == "GET") return@Transport """{"revocation_endpoint":"https://auth.openai.com/oauth/revoke"}"""
+            posts += request.url.toString()
+            throw ChatGptPlanTokenExchange.OAuthError("invalid_request")
+        })
+        val sleeps = mutableListOf<Long>()
+        val result = ChatGptPlanSessions(vault, rejecting, sleep = { sleeps += it }) { now }.signOut("oaiapp_one")
+        assertEquals(ChatGptPlanSessions.SignOut.CLEARED_UNCONFIRMED, result)
+        assertEquals(1, posts.size)
+        assertTrue(sleeps.isEmpty())
+        assertNull(vault.credentials("oaiapp_one"))
+    }
+
+    @Test
+    fun nonEmptyRevocationResponseIsUnconfirmed() {
+        connect(expiresAt = now + 3600)
+        val odd = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { request: Request ->
+            if (request.method == "GET") """{"revocation_endpoint":"https://auth.openai.com/oauth/revoke"}""" else " "
+        })
+        val sleeps = mutableListOf<Long>()
+        val result = ChatGptPlanSessions(vault, odd, sleep = { sleeps += it }) { now }.signOut("oaiapp_one")
+        assertEquals(ChatGptPlanSessions.SignOut.CLEARED_UNCONFIRMED, result)
+        assertTrue(sleeps.isEmpty())
+        assertNull(vault.credentials("oaiapp_one"))
+    }
+
+    @Test
+    fun rejectedDiscoveryIsNotRetried() {
+        connect(expiresAt = now + 3600)
+        val calls = mutableListOf<String>()
+        val gone = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { request: Request ->
+            calls += request.method
+            throw ChatGptPlanTokenExchange.OAuthError("http_404")
+        })
+        val result = ChatGptPlanSessions(vault, gone, sleep = { error("no retry expected") }) { now }.signOut("oaiapp_one")
+        assertEquals(ChatGptPlanSessions.SignOut.CLEARED_UNCONFIRMED, result)
+        assertEquals(listOf("GET"), calls)
+    }
+
+    @Test
+    fun interruptedBackoffStillClearsLocally() {
+        connect(expiresAt = now + 3600)
+        val offline = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { throw IOException("offline") })
+        val result = ChatGptPlanSessions(vault, offline, sleep = { throw InterruptedException() }) { now }
+            .signOut("oaiapp_one")
+        assertTrue(Thread.interrupted())
+        assertEquals(ChatGptPlanSessions.SignOut.CLEARED_UNCONFIRMED, result)
+        assertNull(vault.credentials("oaiapp_one"))
+    }
+
+    @Test
+    fun signOutDoesNotEraseSignInSavedDuringRevocation() {
+        connect(expiresAt = now + 3600)
+        val racing = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { request: Request ->
+            if (request.method == "GET") return@Transport """{"revocation_endpoint":"https://auth.openai.com/oauth/revoke"}"""
+            record.text = record.text!!.replace("refresh-old", "refresh-resigned")
+            ""
+        })
+        assertEquals(ChatGptPlanSessions.SignOut.REVOKED, ChatGptPlanSessions(vault, racing).signOut("oaiapp_one"))
+        assertEquals("refresh-resigned", vault.credentials("oaiapp_one")!!.refreshToken)
+    }
+
+    private fun revoking(seen: MutableList<String>, endpoint: String) =
+        ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { request: Request ->
+            val body = request.body?.let { Buffer().also(it::writeTo).readUtf8() }.orEmpty()
+            seen += "${request.method} ${request.url} $body".trim()
+            if (request.method == "GET") """{"revocation_endpoint":"$endpoint"}""" else ""
+        })
+
     private fun connect(expiresAt: Long) {
         val host = vault.hostId()
         record.text = """{"version":1,"host":"$host","accounts":[{"client_id":"oaiapp_one","sub":"subject-one",
