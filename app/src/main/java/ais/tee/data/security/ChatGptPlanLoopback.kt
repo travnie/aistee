@@ -50,7 +50,8 @@ internal class ChatGptPlanLoopback private constructor(private val server: Serve
                 if (server.isClosed) socket.close() // close() raced the accept.
                 val outcome = socket.use {
                     try {
-                        it.soTimeout = minOf(READ_TIMEOUT_MS.toLong(), remaining).toInt()
+                        val left = (deadline - System.nanoTime()) / 1_000_000 // accept() may have blocked.
+                        it.soTimeout = left.coerceIn(1, READ_TIMEOUT_MS.toLong()).toInt()
                         handle(it, pending)
                     } catch (_: IOException) {
                         null // Broken or slow client; keep waiting for the browser.
