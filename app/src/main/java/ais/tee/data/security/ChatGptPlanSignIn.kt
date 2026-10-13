@@ -19,16 +19,18 @@ internal class ChatGptPlanSignIn(
     }
 
     /**
-     * Null [account] registers a new client; otherwise reauthorizes that registration and
-     * rejects a different ChatGPT identity. Null return: account cap reached, nothing opened.
+     * Null [account] registers a new client (or resumes [retryClientId] from a failed attempt);
+     * otherwise reauthorizes that registration and rejects a different ChatGPT identity.
+     * Null return: account cap reached, nothing opened.
      */
-    fun start(account: ChatGptPlanCredentialStore.Account? = null): Attempt? {
+    fun start(account: ChatGptPlanCredentialStore.Account? = null, retryClientId: String? = null): Attempt? {
         val full = vault.accounts().size >= ChatGptPlanCredentialStore.MAX_ACCOUNTS
         if (account == null && full) return null
         val hostId = vault.hostId()
         val loopback = openLoopback()
+        val clientId = account?.clientId ?: retryClientId
         return try {
-            Attempt(loopback, ChatGptPlanOAuth.prepare(hostId, loopback.port, account?.clientId), account?.subject)
+            Attempt(loopback, ChatGptPlanOAuth.prepare(hostId, loopback.port, clientId), account?.subject)
         } catch (error: Exception) {
             loopback.close()
             throw error
@@ -40,6 +42,10 @@ internal class ChatGptPlanSignIn(
         private val pending: ChatGptPlanOAuth.Pending,
         private val expectedSubject: String?,
     ) : Closeable {
+        /** Issued client ID to pass to the next [start] after an `invalid_grant` exchange. */
+        @Volatile var retryClientId: String? = null
+            private set
+
         /** Open only in a browser/Custom Tab, never a WebView. Never log: may carry hints. */
         val authorizationUrl: String get() = pending.authorizationUrl
 
@@ -52,11 +58,16 @@ internal class ChatGptPlanSignIn(
                 ChatGptPlanLoopback.Outcome.Failed -> return Result.FAILED
                 ChatGptPlanLoopback.Outcome.TimedOut -> return Result.TIMED_OUT
             }
+            val issuedClientId = (pending.peekCallback(callbackUrl) as? ChatGptPlanOAuth.Callback.Code)?.clientId
             // Subject checked here, not in complete(), so a mismatched grant can be revoked.
             val grant = try {
                 exchange.complete(pending, callbackUrl)
             } catch (unverified: ChatGptPlanTokenExchange.UnverifiedGrant) {
                 return revoke(unverified.clientId, unverified.refreshToken, Result.FAILED, Result.FAILED_UNCONFIRMED)
+            } catch (error: ChatGptPlanTokenExchange.OAuthError) {
+                // Documented recovery: fresh authorization with the already issued client ID.
+                if (error.code == "invalid_grant") retryClientId = issuedClientId
+                return Result.FAILED
             } catch (_: Exception) {
                 return Result.FAILED
             }

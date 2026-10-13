@@ -48,6 +48,7 @@ internal class ChatGptPlanViewModel(application: Application) : AndroidViewModel
     private val sessions = ChatGptPlanSessions(vault, exchange)
     private val signIn = ChatGptPlanSignIn(vault, exchange)
     private var stored: Map<String, ChatGptPlanCredentialStore.Account> = emptyMap()
+    private var retryClientId: String? = null // Issued by a failed new-account attempt.
 
     @Volatile private var attempt: ChatGptPlanSignIn.Attempt? = null
     @Volatile private var cancelRequested = false
@@ -72,14 +73,17 @@ internal class ChatGptPlanViewModel(application: Application) : AndroidViewModel
         viewModelScope.launch {
             var started: ChatGptPlanSignIn.Attempt? = null
             val notice = try {
-                val current = withContext(Dispatchers.IO) { signIn.start(account) }
+                val retry = retryClientId.takeIf { account == null }
+                val current = withContext(Dispatchers.IO) { signIn.start(account, retry) }
                 started = current
                 attempt = current
                 when {
                     current == null -> Notice.ACCOUNT_LIMIT
                     cancelRequested -> Notice.CANCELLED
                     !launch(current.authorizationUrl) -> Notice.BROWSER_UNAVAILABLE
-                    else -> withContext(Dispatchers.IO) { current.finish() }.toNotice()
+                    else -> withContext(Dispatchers.IO) { current.finish() }.also {
+                        if (account == null) retryClientId = current.retryClientId
+                    }.toNotice()
                 }
             } catch (error: CancellationException) {
                 throw error

@@ -38,11 +38,13 @@ class ChatGptPlanSignInTest {
     private var subject = "subject-1"
     private var scope = "openid offline_access resource.invoke chatgpt.tokens.use.direct"
     private var revokeFails = false
-    private var onTokenRequest: () -> Unit = {}
+    @Volatile private var onTokenRequest: () -> Unit = {}
+    @Volatile private var tokenError: String? = null
     private val exchange = ChatGptPlanTokenExchange(ChatGptPlanTokenExchange.Transport { request ->
         synchronized(seen) { seen += request.method + " " + request.url.encodedPath }
         when (request.url.encodedPath) {
             "/api/accounts/oauth/token" -> buildJsonObject {
+                tokenError?.let { throw ChatGptPlanTokenExchange.OAuthError(it) }
                 onTokenRequest()
                 put("access_token", "access-secret")
                 put("refresh_token", "refresh-secret")
@@ -142,6 +144,21 @@ class ChatGptPlanSignInTest {
         assertEquals(Result.FAILED, result.get(10, TimeUnit.SECONDS))
         assertTrue(vault.accounts().isEmpty())
         assertTrue(seen.contains("POST /oauth/revoke"))
+    }
+
+    @Test(timeout = 15_000)
+    fun invalidGrantRetryReusesIssuedClientId() {
+        tokenError = "invalid_grant"
+        val attempt = signIn().start()!!
+        val result = finishAsync(attempt)
+        callback(attempt, "code=expired&client_id=oaiapp_test")
+        assertEquals(Result.FAILED, result.get(10, TimeUnit.SECONDS))
+        assertEquals("oaiapp_test", attempt.retryClientId)
+
+        val retry = signIn().start(retryClientId = attempt.retryClientId)!!
+        assertEquals("oaiapp_test", query(retry.authorizationUrl, "client_id"))
+        assertFalse(retry.authorizationUrl.contains("agent_name_hint"))
+        retry.close()
     }
 
     @Test(timeout = 15_000)
