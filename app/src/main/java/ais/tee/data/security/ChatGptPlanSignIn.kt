@@ -79,6 +79,10 @@ internal class ChatGptPlanSignIn(
                 return discard(grant, failed, Result.FAILED_UNCONFIRMED)
             }
             retryClientId = null
+            if (cancelled) { // Cancel raced the save: undo exactly this grant.
+                runCatching { vault.clearRejected(grant.identity.clientId, grant.refreshToken) }
+                return discard(grant, Result.CANCELLED, Result.CANCELLED_UNCONFIRMED)
+            }
             return if (grant.planUsageGranted) Result.CONNECTED else Result.CONNECTED_WITHOUT_PLAN
         }
 
