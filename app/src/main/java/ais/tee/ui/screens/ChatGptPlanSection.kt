@@ -1,7 +1,9 @@
 package ais.tee.ui.screens
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.ContextWrapper
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +15,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +37,12 @@ internal fun ChatGptPlanSection(viewModel: ChatGptPlanViewModel = viewModel()) {
     val context = LocalContext.current
     val launch: (String) -> Boolean = { url -> launchAuthorization(context, url) }
     val idle = !state.signingIn && state.signingOut == null
+    // ViewModel outlives the dialog: a dismissed section must not leave a listener running.
+    DisposableEffect(viewModel) {
+        onDispose {
+            if (context.findActivity()?.isChangingConfigurations != true) viewModel.cancelSignIn()
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth().testTag("section_chatgpt_plan"),
@@ -146,6 +155,12 @@ private fun Notice.isProblem() = this in setOf(
     Notice.SIGNED_OUT_UNCONFIRMED, Notice.STORAGE_ERROR, Notice.CONNECTED_WITHOUT_PLAN,
     Notice.DISCARDED_UNCONFIRMED,
 )
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
 
 /** Custom Tab, falling back to any browser; never a WebView. */
 private fun launchAuthorization(context: Context, url: String): Boolean {

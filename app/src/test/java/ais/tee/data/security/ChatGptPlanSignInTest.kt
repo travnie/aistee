@@ -144,10 +144,11 @@ class ChatGptPlanSignInTest {
         assertEquals(Result.FAILED, result.get(10, TimeUnit.SECONDS))
         assertTrue(vault.accounts().isEmpty())
         assertTrue(seen.contains("POST /oauth/revoke"))
+        assertEquals("oaiapp_test", attempt.retryClientId)
     }
 
     @Test(timeout = 15_000)
-    fun invalidGrantRetryReusesIssuedClientId() {
+    fun failedExchangeRetryReusesIssuedClientId() {
         tokenError = "invalid_grant"
         val attempt = signIn().start()!!
         val result = finishAsync(attempt)

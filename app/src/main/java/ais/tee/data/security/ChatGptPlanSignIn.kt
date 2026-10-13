@@ -42,7 +42,7 @@ internal class ChatGptPlanSignIn(
         private val pending: ChatGptPlanOAuth.Pending,
         private val expectedSubject: String?,
     ) : Closeable {
-        /** Issued client ID to pass to the next [start] after an `invalid_grant` exchange. */
+        /** Issued client ID to pass to the next [start] after a failed exchange. */
         @Volatile var retryClientId: String? = null
             private set
 
@@ -58,16 +58,13 @@ internal class ChatGptPlanSignIn(
                 ChatGptPlanLoopback.Outcome.Failed -> return Result.FAILED
                 ChatGptPlanLoopback.Outcome.TimedOut -> return Result.TIMED_OUT
             }
-            val issuedClientId = (pending.peekCallback(callbackUrl) as? ChatGptPlanOAuth.Callback.Code)?.clientId
+            // Issued once the callback arrives: keep it so a retry reuses it (cleared on success).
+            retryClientId = (pending.peekCallback(callbackUrl) as? ChatGptPlanOAuth.Callback.Code)?.clientId
             // Subject checked here, not in complete(), so a mismatched grant can be revoked.
             val grant = try {
                 exchange.complete(pending, callbackUrl)
             } catch (unverified: ChatGptPlanTokenExchange.UnverifiedGrant) {
                 return revoke(unverified.clientId, unverified.refreshToken, Result.FAILED, Result.FAILED_UNCONFIRMED)
-            } catch (error: ChatGptPlanTokenExchange.OAuthError) {
-                // Documented recovery: fresh authorization with the already issued client ID.
-                if (error.code == "invalid_grant") retryClientId = issuedClientId
-                return Result.FAILED
             } catch (_: Exception) {
                 return Result.FAILED
             }
@@ -81,6 +78,7 @@ internal class ChatGptPlanSignIn(
                 val failed = if (expectedSubject == null && full) Result.ACCOUNT_LIMIT else Result.FAILED
                 return discard(grant, failed, Result.FAILED_UNCONFIRMED)
             }
+            retryClientId = null
             return if (grant.planUsageGranted) Result.CONNECTED else Result.CONNECTED_WITHOUT_PLAN
         }
 
