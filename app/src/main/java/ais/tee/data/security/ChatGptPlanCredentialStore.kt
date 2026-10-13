@@ -98,6 +98,29 @@ internal class ChatGptPlanCredentialStore(private val records: RecordStorage) {
     }
 
     /**
+     * Replace one registration's rotated tokens together. Applies only while [usedRefreshToken]
+     * is still the stored one, so a stale refresh never overwrites a newer rotation. Keeps the
+     * identity and the ID token verified at sign-in.
+     */
+    fun saveRefreshed(
+        clientId: String,
+        usedRefreshToken: String,
+        refreshed: ChatGptPlanTokenExchange.Refreshed,
+    ): Boolean = synchronized(lock) {
+        val state = load()
+        val entry = state.accounts.firstOrNull { it.clientId == clientId } ?: return@synchronized false
+        val current = entry.tokens ?: return@synchronized false
+        if (current.refreshToken != usedRefreshToken) return@synchronized false
+        require(refreshed.accessToken.isNotBlank() && refreshed.refreshToken.isNotBlank() &&
+            refreshed.expiresAtEpochSeconds > 0)
+        val tokens = Credentials(current.idToken, refreshed.accessToken, refreshed.refreshToken,
+            refreshed.scopes ?: current.scopes, refreshed.expiresAtEpochSeconds)
+        write(state.copy(accounts = state.accounts.map {
+            if (it.clientId == clientId) Entry(it.clientId, it.subject, it.email, tokens) else it
+        }))
+    }
+
+    /**
      * LOCAL disconnect, not a revocation request. Retain the issued client ID and subject for
      * future reauthorization, but discard all secret tokens for the selected registration.
      */
