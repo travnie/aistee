@@ -407,6 +407,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         messages = welcomeChatMessages(),
         selectedProvider = template?.selectedProvider ?: AiProvider.ALL,
         selectedModel = template?.selectedModel ?: "all",
+        // Keep the funding route: dropping it would silently move ChatGPT to the API key.
+        chatGptPlanClientId = template?.chatGptPlanClientId,
         includeSystemProfile = template?.includeSystemProfile ?: true,
         projectId = template?.projectId ?: DEFAULT_PROJECT_ID,
     )
