@@ -89,18 +89,8 @@ internal suspend fun executeNativeChatSend(
                 ).also(onResponse)
             }
         }
-        // Fan-out: the static default may not be in this account's catalog; use its first model.
-        val model = if (planAuth != null && !isTarget) {
-            try {
-                aiChatService.fetchChatGptPlanModels(planAuth).firstOrNull()?.slug ?: requestedModel
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                requestedModel
-            }
-        } else {
-            requestedModel
-        }
+        // Fan-out on a plan: blank lets the engine pick from the account catalog, not the static default.
+        val model = if (planAuth != null && !isTarget) "" else requestedModel
         // Plan route: client tools need the namespaced format, not wired yet; reply without them.
         val providerTools = if (planAuth != null) emptyList() else when (provider.runtimeCapabilities().clientToolCallingStrategy) {
             ClientToolCallingStrategy.GEMINI_FUNCTIONS,
@@ -137,7 +127,7 @@ internal suspend fun executeNativeChatSend(
         )
         return NativeChatGeneratedResponse(
             provider = provider,
-            model = model,
+            model = response.modelName?.takeIf { it.isNotBlank() } ?: model,
             message = response,
             toolReceipts = providerReceipts.toList(),
         ).also(onResponse)
