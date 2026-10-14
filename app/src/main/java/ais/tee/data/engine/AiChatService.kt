@@ -2843,7 +2843,11 @@ class AiChatService {
                             val fallbackError = httpErrorContext?.let { context ->
                                 "$context HTTP ${response.code}: ${responseBody.take(160)}"
                             } ?: "HTTP ${response.code}: ${response.message}"
-                            throw IOException(parseErrorMessage(responseBody) ?: fallbackError)
+                            throw ProviderApiException(
+                                parseErrorMessage(responseBody) ?: fallbackError,
+                                response.code,
+                                parseErrorCode(responseBody),
+                            )
                         }
                         if (continuation.isActive) continuation.resume(responseBody)
                     }
