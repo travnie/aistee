@@ -106,6 +106,8 @@ private data class NativeChatSendPlan(
     val targetProvider: AiProvider,
     val providersToRun: List<AiProvider>,
     val apiKeys: ApiKeyConfig,
+    /** Route snapshot at send time; a later picker change must not reroute this send. */
+    val chatGptPlanClientId: String?,
 )
 
 data class PendingChatContextWarning(
@@ -1283,6 +1285,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             messages = messages,
             selectedProvider = template?.selectedProvider ?: AiProvider.ALL,
             selectedModel = template?.selectedModel ?: "all",
+            chatGptPlanClientId = template?.chatGptPlanClientId,
             includeSystemProfile = template?.includeSystemProfile ?: true,
             projectId = template?.projectId ?: DEFAULT_PROJECT_ID,
         )
@@ -1872,7 +1875,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             showSnackbar("Add at least one direct provider API key to use All Models.")
             return null
         }
-        return NativeChatSendPlan(targetProvider, providersToRun, state.apiKeyConfig)
+        return NativeChatSendPlan(targetProvider, providersToRun, state.apiKeyConfig, state.chatGptPlanClientId)
     }
 
     /**
@@ -2292,7 +2295,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         conversationHistory = currentMessages,
                         allowSingleProviderSimulationFallback = targetProvider != AiProvider.ALL,
                         tools = toolDefinitions,
-                        chatGptPlanClientId = _uiState.value.chatGptPlanClientId,
+                        chatGptPlanClientId = plan.chatGptPlanClientId,
                         executeTool = { call ->
                             if (skillTools?.handles(call.name) == true) {
                                 skillTools.executeWithReceipt(call)
