@@ -309,6 +309,13 @@ fun ApiKeyConfig.configuredDirectProviders(): List<AiProvider> =
 /** One entry of a ChatGPT plan account's model catalog; [slug] goes into `model`. */
 data class ChatGptPlanModel(val slug: String, val displayName: String)
 
+/** A chat bound to a ChatGPT plan account runs ChatGPT on that plan, with or without an API key. */
+fun ApiKeyConfig.canRunDirect(provider: AiProvider, chatGptPlanClientId: String?): Boolean =
+    if (provider == AiProvider.CHATGPT && chatGptPlanClientId != null) true else hasKeyFor(provider)
+
+fun ApiKeyConfig.directProvidersFor(chatGptPlanClientId: String?): List<AiProvider> =
+    AiProvider.concreteProviders.filter { canRunDirect(it, chatGptPlanClientId) }
+
 data class GatewayModelCatalogEntry(
     val id: String,
     val inputPriceUsd: Double?,

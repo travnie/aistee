@@ -127,6 +127,17 @@ class ChatModelsTest {
     }
 
     @Test
+    fun chatGptPlanBindingRunsChatGptWithoutAnApiKey() {
+        val config = ApiKeyConfig(kimiKey = "kimi-key")
+
+        assertFalse(config.canRunDirect(AiProvider.CHATGPT, null))
+        assertTrue(config.canRunDirect(AiProvider.CHATGPT, "oaiapp_a"))
+        assertFalse(config.canRunDirect(AiProvider.CLAUDE, "oaiapp_a"))
+        assertEquals(listOf(AiProvider.KIMI), config.directProvidersFor(null))
+        assertEquals(listOf(AiProvider.CHATGPT, AiProvider.KIMI), config.directProvidersFor("oaiapp_a"))
+    }
+
+    @Test
     fun freeGatewayCatalogsKeepOnlyFreeTextModels() {
         val catalog = listOf(
             GatewayModelCatalogEntry("free-a", 0.0, 0.0, supportsTextOutput = true),

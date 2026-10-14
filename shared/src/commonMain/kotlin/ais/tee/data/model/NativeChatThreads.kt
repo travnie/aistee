@@ -36,6 +36,11 @@ data class NativeChatConversation(
     val selectedProvider: AiProvider = AiProvider.ALL,
     val selectedModel: String = "all",
     val apiProcessingMode: ApiProcessingMode = ApiProcessingMode.AUTO,
+    /**
+     * Issued client ID of the ChatGPT account whose plan funds ChatGPT replies in this chat.
+     * Null: ChatGPT uses the API key. Set only by the user; never switched to make a send work.
+     */
+    val chatGptPlanClientId: String? = null,
     val includeSystemProfile: Boolean = true,
     val projectId: String = DEFAULT_PROJECT_ID,
     val replyEpoch: Long = 0L,

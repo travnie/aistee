@@ -45,3 +45,22 @@ internal fun describeChatGptPlanError(error: Throwable): String {
     val detail = error.localizedMessage ?: error.message ?: "Unknown error"
     return listOfNotNull(hint, detail).joinToString("\n\n")
 }
+
+/** Supplies a usable plan token for one bound account; throws [ChatGptPlanUnavailable] otherwise. */
+fun interface ChatGptPlanTokens {
+    suspend fun auth(clientId: String): ChatGptPlanAuth
+}
+
+class ChatGptPlanUnavailable(val reason: Reason) : IOException("ChatGPT plan account unavailable: $reason") {
+    enum class Reason { SIGNED_OUT, PLAN_NOT_GRANTED, TEMPORARY }
+}
+
+internal fun chatGptPlanUnavailableText(reason: ChatGptPlanUnavailable.Reason): String = when (reason) {
+    ChatGptPlanUnavailable.Reason.SIGNED_OUT ->
+        "This chat's ChatGPT account is signed out. Sign in again under API keys → ChatGPT plan, " +
+            "or switch this chat to the API key."
+    ChatGptPlanUnavailable.Reason.PLAN_NOT_GRANTED ->
+        "This chat's ChatGPT account hasn't allowed ChatGPT plan usage. Sign in again and allow it."
+    ChatGptPlanUnavailable.Reason.TEMPORARY ->
+        "Couldn't refresh the ChatGPT sign-in. Check the connection and try again."
+}

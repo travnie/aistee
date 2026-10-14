@@ -1117,11 +1117,29 @@ private fun NativeChatDetailPane(
                         }
                     }
 
+                    // ALL fans out to ChatGPT too: keep a bound plan visible there.
+                    if (
+                        uiState.selectedChatProvider == AiProvider.CHATGPT ||
+                        (uiState.selectedChatProvider == AiProvider.ALL && uiState.chatGptPlanClientId != null)
+                    ) {
+                        Spacer(Modifier.height(4.dp))
+                        ChatGptPlanRoutePicker(
+                            accounts = uiState.chatGptPlanAccounts,
+                            boundClientId = uiState.chatGptPlanClientId,
+                            onRefresh = viewModel::refreshChatGptPlanAccounts,
+                            onSelect = viewModel::setChatGptPlanAccount,
+                        )
+                    }
+
                     if (uiState.selectedChatProvider != AiProvider.ALL) {
                         val selectedProvider = uiState.selectedChatProvider
-                        val modelOptions = uiState.gatewayModelOptions[selectedProvider]
-                            ?: selectedProvider.availableModels
-                        val processingModes = selectedProvider.supportedApiProcessingModes()
+                        val modelOptions = uiState.chatModelOptions(selectedProvider)
+                        // Plan route has no processing tiers.
+                        val processingModes = if (selectedProvider == AiProvider.CHATGPT && uiState.chatGptPlanClientId != null) {
+                            emptyList()
+                        } else {
+                            selectedProvider.supportedApiProcessingModes()
+                        }
                         val isRefreshingCatalog = selectedProvider in uiState.refreshingGatewayCatalogs
                         Spacer(Modifier.height(4.dp))
                         Row(
