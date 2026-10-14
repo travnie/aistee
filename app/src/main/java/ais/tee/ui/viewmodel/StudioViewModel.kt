@@ -68,6 +68,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -258,6 +259,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val apiKeyStore = ApiKeyStore(application.applicationContext)
     // Lazy: Keystore and vault reads stay off the startup path.
     private val chatGptPlanTokens by lazy { ChatGptPlanTokenSource(getApplication<Application>()) }
+    private var chatGptPlanAccountsJob: Job? = null
+    private val chatGptPlanModelsInFlight: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private val studioStateStore = StudioStateStore(application.applicationContext)
     private val webChatPreferencesStore = WebChatPreferencesStore(application.applicationContext)
     private val webChatDraftStore = WebChatDraftStore(application.noBackupFilesDir)
@@ -1501,7 +1504,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun refreshChatGptPlanAccounts() {
-        viewModelScope.launch {
+        // Picker reopened mid-refresh: reuse the running one.
+        if (chatGptPlanAccountsJob?.isActive == true) return
+        chatGptPlanAccountsJob = viewModelScope.launch {
             val rows = try {
                 withContext(Dispatchers.IO) {
                     accountRows(ChatGptPlanCredentialStore(getApplication<Application>()).accounts())
@@ -1518,6 +1523,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun refreshChatGptPlanModels(clientId: String) {
+        if (!chatGptPlanModelsInFlight.add(clientId)) return
         viewModelScope.launch {
             val slugs = try {
                 aiChatService.fetchChatGptPlanModels(chatGptPlanTokens.auth(clientId)).map { it.slug }
@@ -1537,7 +1543,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             ) {
                 setChatModel(slugs.first())
             }
-        }
+        }.invokeOnCompletion { chatGptPlanModelsInFlight.remove(clientId) }
     }
 
     fun setChatModel(modelName: String) {
