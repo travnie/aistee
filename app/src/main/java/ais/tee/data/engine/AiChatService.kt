@@ -6,6 +6,7 @@ import ais.tee.data.model.ApiProcessingMode
 import ais.tee.data.model.AsyncProviderJobState
 import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
+import ais.tee.data.model.ChatGptPlanModel
 import ais.tee.data.model.ClaudeReasoningCapabilities
 import ais.tee.data.model.parseClaudeReasoningCapabilities
 import ais.tee.data.model.resolveClaudeThinkingBudget
@@ -137,6 +138,11 @@ private const val CLAUDE_MESSAGE_STOP = "message_stop"
 private const val OPENAI_OUTPUT_TEXT = "output_text"
 private const val OPENAI_OUTPUT_TEXT_DELTA = "response.output_text.delta"
 private const val OPENAI_REASONING_ENCRYPTED_CONTENT = "reasoning.encrypted_content"
+private const val OPENAI_RESPONSES_API_URL = "https://api.openai.com/v1/responses"
+private const val OPENAI_MODELS_API_URL = "https://api.openai.com/v1/models"
+private const val OPENAI_REPLAY_SCOPE_KEY = "scope"
+private const val OPENAI_REPLAY_ITEMS_KEY = "items"
+private const val CHATGPT_PLAN_REPLAY_SCOPE_PREFIX = "chatgpt_plan:"
 private const val CLAUDE_CONTENT_BLOCK_START = "content_block_start"
 private const val CLAUDE_CONTENT_BLOCK_DELTA = "content_block_delta"
 private const val CLAUDE_TEXT_DELTA = "text_delta"
@@ -1052,9 +1058,23 @@ class AiChatService {
         tools: List<NativeToolDefinition> = emptyList(),
         executeTool: (suspend (NativeToolCall) -> NativeToolResult)? = null,
         apiProcessingMode: ApiProcessingMode = ApiProcessingMode.AUTO,
+        chatGptPlan: ChatGptPlanAuth? = null,
     ): ModelChatMessage = withContext(Dispatchers.IO) {
         require(tools.isEmpty() || executeTool != null) {
             "A tool executor is required when client tools are offered"
+        }
+        if (chatGptPlan != null) {
+            require(provider == AiProvider.CHATGPT) { "ChatGPT plan auth applies only to ChatGPT" }
+            return@withContext generateChatGptPlanResponse(
+                prompt = prompt,
+                requestedModel = modelName.trim().takeUnless { it.isEmpty() || it == "all" },
+                auth = chatGptPlan,
+                systemInstruction = systemInstruction,
+                profile = profile,
+                conversationHistory = conversationHistory,
+                onTextDelta = onTextDelta,
+                toolsOffered = tools.isNotEmpty(),
+            )
         }
         if (tools.isNotEmpty()) {
             require(provider.runtimeCapabilities().clientToolCallingStrategy != ClientToolCallingStrategy.NONE) {
@@ -1246,6 +1266,97 @@ class AiChatService {
         )
     }
 
+    /**
+     * ACCOUNT_PLAN route: streamed, store=false, history replayed in `input`. Errors stay errors:
+     * no API key, no persona simulation, no other route.
+     */
+    /** Null [requestedModel]: first model of this account's catalog, never the API-key default. */
+    private suspend fun generateChatGptPlanResponse(
+        prompt: String,
+        requestedModel: String?,
+        auth: ChatGptPlanAuth,
+        systemInstruction: String?,
+        profile: Profile?,
+        conversationHistory: List<ModelChatMessage>,
+        onTextDelta: ((String) -> Unit)?,
+        toolsOffered: Boolean,
+    ): ModelChatMessage {
+        val startTime = System.currentTimeMillis()
+        var model = requestedModel.orEmpty()
+        fun reply(text: String, isError: Boolean, result: OpenAiGenerationResult? = null) = ModelChatMessage(
+            id = "msg_${System.currentTimeMillis()}_${AiProvider.CHATGPT.id}",
+            sender = "assistant",
+            provider = AiProvider.CHATGPT,
+            modelName = model,
+            text = text,
+            isError = isError,
+            isSimulated = false,
+            latencyMs = System.currentTimeMillis() - startTime,
+            usage = result?.usage,
+            activeProfileNotes = extractProfileNotes(profile),
+            providerReplayState = result?.replayState,
+        )
+        // Function tools need the namespaced format on this route; not wired yet.
+        if (toolsOffered) {
+            return reply("⚠️ Tools aren't available in ChatGPT plan chats yet. Turn tools off for this chat.", true)
+        }
+        if (requestedModel == null) {
+            model = try {
+                fetchChatGptPlanModels(auth).firstOrNull()?.slug
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                return reply("⚠️ Couldn't load this ChatGPT account's models:\n\n${describeChatGptPlanError(error)}", true)
+            } ?: return reply("⚠️ This ChatGPT account lists no models.", true)
+        }
+        return try {
+            val result = callOpenAiStreamApi(
+                prompt = prompt,
+                model = model,
+                apiKey = auth.accessToken,
+                systemInstruction = systemInstruction,
+                conversationHistory = conversationHistory,
+                onTextDelta = onTextDelta ?: {},
+                apiProcessingMode = ApiProcessingMode.AUTO,
+                executionSource = ProviderExecutionSource.ACCOUNT_PLAN,
+                replayScope = chatGptPlanReplayScope(auth.clientId),
+            )
+            reply(result.text, false, result)
+        } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            reply("⚠️ ChatGPT plan request failed ($model):\n\n${describeChatGptPlanError(e)}", true)
+        }
+    }
+
+    /** Signed-in account's models (`visibility == "list"`), server order kept. */
+    suspend fun fetchChatGptPlanModels(auth: ChatGptPlanAuth): List<ChatGptPlanModel> =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url(OPENAI_MODELS_API_URL)
+                .header(HEADER_AUTHORIZATION, bearerToken(auth.accessToken))
+                .get()
+                .build()
+            parseChatGptPlanModels(
+                executeCancellableJson(request, httpErrorContext = "ChatGPT plan model catalog")
+            )
+        }
+
+    internal fun parseChatGptPlanModels(rawJson: String): List<ChatGptPlanModel> {
+        val models = (json.parseToJsonElement(rawJson) as? JsonObject)?.get("models") as? JsonArray
+            ?: throw IOException("ChatGPT plan model catalog is missing models")
+        return models.mapNotNull { element ->
+            val model = element as? JsonObject ?: return@mapNotNull null
+            fun field(name: String) = (model[name] as? JsonPrimitive)
+                ?.takeIf { it.isString }?.contentOrNull?.takeIf { it.isNotBlank() }
+            if (field("visibility") != "list") return@mapNotNull null
+            val slug = field("slug") ?: return@mapNotNull null
+            ChatGptPlanModel(slug, field("display_name") ?: slug)
+        }.distinctBy { it.slug }
+    }
+
+    /** Replay state from one ChatGPT account is never replayed under another route or account. */
+    internal fun chatGptPlanReplayScope(clientId: String): String = CHATGPT_PLAN_REPLAY_SCOPE_PREFIX + clientId
+
     private fun extractProfileNotes(profile: Profile?): List<String> {
         if (profile == null) return emptyList()
         val notes = mutableListOf<String>()
@@ -1301,7 +1412,8 @@ class AiChatService {
         prompt: String,
         conversationHistory: List<ModelChatMessage>,
         systemInstruction: String? = null,
-        modelName: String? = null
+        modelName: String? = null,
+        replayScope: String? = null,
     ): JsonArray = buildJsonArray {
         buildBoundedProviderTextTurns(
             prompt = prompt,
@@ -1309,12 +1421,10 @@ class AiChatService {
             provider = AiProvider.CHATGPT,
             systemInstruction = systemInstruction,
             replayStateModelName = modelName,
-            replayStateValidator = { state -> parseOpenAiReplayState(state).isNotEmpty() }
+            replayStateValidator = { state -> parseOpenAiReplayState(state, replayScope).isNotEmpty() }
         ).forEach { turn ->
             if (turn.role == CHAT_ROLE_ASSISTANT) {
-                val replayItems = turn.providerReplayState
-                    ?.let(::parseOpenAiReplayState)
-                    .orEmpty()
+                val replayItems = parseOpenAiReplayState(turn.providerReplayState, replayScope)
                 if (replayItems.isNotEmpty()) {
                     replayItems.forEach(::add)
                 } else {
@@ -2253,11 +2363,21 @@ class AiChatService {
             ?.contentOrNull
             ?.isNotBlank() == true
 
-    internal fun parseOpenAiReplayState(state: String?): List<JsonObject> {
+    /**
+     * API-key state is a bare item array; scoped state is `{scope, items}` and replays only under
+     * the same [scope]. Any mismatch yields nothing, so the turn falls back to plain text.
+     */
+    internal fun parseOpenAiReplayState(state: String?, scope: String? = null): List<JsonObject> {
         if (state.isNullOrBlank()) return emptyList()
         return runCatching {
-            val array = json.parseToJsonElement(state) as? JsonArray
-                ?: return@runCatching emptyList()
+            val element = json.parseToJsonElement(state)
+            val array = if (scope == null) {
+                element as? JsonArray
+            } else {
+                (element as? JsonObject)
+                    ?.takeIf { (it[OPENAI_REPLAY_SCOPE_KEY] as? JsonPrimitive)?.contentOrNull == scope }
+                    ?.get(OPENAI_REPLAY_ITEMS_KEY) as? JsonArray
+            } ?: return@runCatching emptyList()
             val items = array.mapNotNull { it as? JsonObject }
             if (items.size != array.size || items.isEmpty() || items.any { !isValidOpenAiReplayItem(it) }) {
                 emptyList()
@@ -2270,6 +2390,16 @@ class AiChatService {
     private fun encodeOpenAiReplayState(items: List<JsonObject>): String? =
         items.takeIf { it.isNotEmpty() && it.all(::isValidOpenAiReplayItem) }
             ?.let { JsonArray(it).toString() }
+
+    private fun scopeOpenAiReplayState(state: String, scope: String?): String =
+        if (scope == null) {
+            state
+        } else {
+            buildJsonObject {
+                put(OPENAI_REPLAY_SCOPE_KEY, scope)
+                put(OPENAI_REPLAY_ITEMS_KEY, json.parseToJsonElement(state))
+            }.toString()
+        }
 
     internal fun extractOpenAiReplayState(response: JsonObject): String? {
         val output = response[JSON_OUTPUT_KEY] as? JsonArray ?: return null
@@ -2381,12 +2511,15 @@ class AiChatService {
         conversationHistory: List<ModelChatMessage>,
         onTextDelta: (String) -> Unit,
         apiProcessingMode: ApiProcessingMode,
+        executionSource: ProviderExecutionSource = ProviderExecutionSource.API_KEY,
+        replayScope: String? = null,
     ): OpenAiGenerationResult {
         val input = buildOpenAiResponseInput(
             prompt = prompt,
             conversationHistory = conversationHistory,
             systemInstruction = systemInstruction,
-            modelName = model
+            modelName = model,
+            replayScope = replayScope,
         )
         val requestPayload = buildOpenAiRequestPayload(
             model = model,
@@ -2394,9 +2527,10 @@ class AiChatService {
             systemInstruction = systemInstruction,
             input = input,
             apiProcessingMode = apiProcessingMode,
+            executionSource = executionSource,
         )
         val request = Request.Builder()
-            .url("https://api.openai.com/v1/responses")
+            .url(OPENAI_RESPONSES_API_URL)
             .addHeader(HEADER_AUTHORIZATION, bearerToken(apiKey))
             .addHeader(HEADER_CONTENT_TYPE, JSON_MEDIA_TYPE)
             .post(requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
@@ -2409,7 +2543,7 @@ class AiChatService {
             isComplete = ::isOpenAiStreamComplete,
             onTextDelta = onTextDelta,
             onEvent = { event ->
-                extractOpenAiCompletedReplayState(event)?.let { replayState = it }
+                extractOpenAiCompletedReplayState(event)?.let { replayState = scopeOpenAiReplayState(it, replayScope) }
                 usage = mergeProviderUsage(usage, extractOpenAiCompletedUsage(event))
             }
         )
@@ -2595,7 +2729,11 @@ class AiChatService {
     private fun ensureSuccessfulStreamingResponse(response: Response) {
         if (response.isSuccessful) return
         val responseBody = response.body?.string().orEmpty()
-        throw IOException(parseErrorMessage(responseBody) ?: "HTTP ${response.code}: ${response.message}")
+        throw ProviderApiException(
+            parseErrorMessage(responseBody) ?: "HTTP ${response.code}: ${response.message}",
+            response.code,
+            parseErrorCode(responseBody),
+        )
     }
 
     private fun consumeSseSource(
@@ -2652,7 +2790,7 @@ class AiChatService {
         isComplete: (JsonObject) -> Boolean
     ): Pair<String?, Boolean> {
         return try {
-            extractStreamError(event)?.let { throw IOException(it) }
+            extractStreamError(event)?.let { throw ProviderApiException(it, null, extractStreamErrorCode(event)) }
             extractText(event) to isComplete(event)
         } catch (e: IllegalArgumentException) {
             throw IOException(MALFORMED_STREAM_EVENT, e)
@@ -2705,7 +2843,11 @@ class AiChatService {
                             val fallbackError = httpErrorContext?.let { context ->
                                 "$context HTTP ${response.code}: ${responseBody.take(160)}"
                             } ?: "HTTP ${response.code}: ${response.message}"
-                            throw IOException(parseErrorMessage(responseBody) ?: fallbackError)
+                            throw ProviderApiException(
+                                parseErrorMessage(responseBody) ?: fallbackError,
+                                response.code,
+                                parseErrorCode(responseBody),
+                            )
                         }
                         if (continuation.isActive) continuation.resume(responseBody)
                     }
@@ -2822,12 +2964,26 @@ class AiChatService {
                         err?.jsonPrimitive?.contentOrNull
                     }
                 }
-                else -> null
+                // Direct-route admission errors (401/403/503) use {"detail": "..."}.
+                else -> (obj["detail"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
             }
         } catch (_: Exception) {
             null
         }
     }
+
+    private fun parseErrorCode(rawJson: String): String? = runCatching {
+        errorCodeOf(json.parseToJsonElement(rawJson).jsonObject[STREAM_ERROR_KEY])
+    }.getOrNull()
+
+    /** `error.code` of a typed stream error (`response.failed` or `error` event). */
+    private fun extractStreamErrorCode(event: JsonObject): String? =
+        errorCodeOf((event[STREAM_RESPONSE_KEY] as? JsonObject)?.get(STREAM_ERROR_KEY))
+            ?: errorCodeOf(event[STREAM_ERROR_KEY])
+            ?: (event["code"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
+
+    private fun errorCodeOf(error: JsonElement?): String? =
+        ((error as? JsonObject)?.get("code") as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
 
     // --- High Fidelity Persona & Style Adaptation Simulator ---
     private fun generatePersonaResponse(

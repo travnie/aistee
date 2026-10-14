@@ -306,6 +306,9 @@ fun ApiKeyConfig.hasKeyFor(provider: AiProvider): Boolean = when (provider) {
 fun ApiKeyConfig.configuredDirectProviders(): List<AiProvider> =
     AiProvider.concreteProviders.filter { hasKeyFor(it) }
 
+/** One entry of a ChatGPT plan account's model catalog; [slug] goes into `model`. */
+data class ChatGptPlanModel(val slug: String, val displayName: String)
+
 data class GatewayModelCatalogEntry(
     val id: String,
     val inputPriceUsd: Double?,
