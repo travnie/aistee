@@ -181,6 +181,30 @@ class ChatGptPlanRouteTest {
         assertFalse(text.contains("policy or region"))
     }
 
+    @Test
+    fun boundChatWithUnavailableAccountRepliesWithErrorNotApiKey() = runBlocking {
+        val responses = executeNativeChatSend(
+            request = NativeChatSendRequest(
+                prompt = "hi",
+                targetProvider = AiProvider.CHATGPT,
+                providersToRun = listOf(AiProvider.CHATGPT),
+                selectedModel = MODEL,
+                apiKeys = ais.tee.data.model.ApiKeyConfig(openAiKey = "sk-should-not-be-used"),
+                systemInstruction = null,
+                profile = null,
+                conversationHistory = emptyList(),
+                allowSingleProviderSimulationFallback = true,
+                chatGptPlanClientId = "oaiapp_a",
+            ),
+            aiChatService = service,
+            chatGptPlanTokens = { throw ChatGptPlanUnavailable(ChatGptPlanUnavailable.Reason.SIGNED_OUT) },
+        )
+        val message = responses.single().message
+        assertTrue(message.isError)
+        assertFalse(message.isSimulated)
+        assertTrue(message.text.contains("signed out"))
+    }
+
     private fun streamError(code: Int, body: String): ProviderApiException =
         assertThrows(ProviderApiException::class.java) {
             service.readSseResponse(

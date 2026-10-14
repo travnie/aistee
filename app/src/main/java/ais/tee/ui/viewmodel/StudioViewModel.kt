@@ -25,6 +25,8 @@ import ais.tee.data.preferences.StudioStateWriter
 import ais.tee.data.preferences.WebChatDraftStore
 import ais.tee.data.preferences.WebChatPreferencesStore
 import ais.tee.data.security.ApiKeyStore
+import ais.tee.data.security.ChatGptPlanCredentialStore
+import ais.tee.data.security.ChatGptPlanTokenSource
 import ais.tee.data.skills.LocalSkillLibraryStore
 import ais.tee.data.skills.composeLocalSkillSystemInstruction
 import ais.tee.data.tokenizer.ChatContextWarning
@@ -104,6 +106,8 @@ private data class NativeChatSendPlan(
     val targetProvider: AiProvider,
     val providersToRun: List<AiProvider>,
     val apiKeys: ApiKeyConfig,
+    /** Route snapshot at send time; a later picker change must not reroute this send. */
+    val chatGptPlanClientId: String?,
 )
 
 data class PendingChatContextWarning(
@@ -204,6 +208,10 @@ data class StudioUiState(
     val isInputBudgetPreflightRunning: Boolean = false,
     /** Model-initiated skill call waiting for Allow/Deny; cleared when answered or the reply stops. */
     val pendingActiveSkillPrompt: PendingActiveSkillPrompt? = null,
+    /** Signed-in ChatGPT accounts; loaded only when the ChatGPT route picker is shown. */
+    val chatGptPlanAccounts: List<ChatGptPlanAccountRow> = emptyList(),
+    /** Model slugs per ChatGPT account, from that account's catalog. */
+    val chatGptPlanModels: Map<String, List<String>> = emptyMap(),
 ) {
     val isActiveConversationIncognito: Boolean
         get() = incognitoConversationId != null && nativeChat.activeConversationId == incognitoConversationId
@@ -219,6 +227,13 @@ data class StudioUiState(
         get() = nativeChat.activeConversation?.apiProcessingMode ?: ApiProcessingMode.AUTO
     val includeSystemProfileInChat: Boolean
         get() = nativeChat.activeConversation?.includeSystemProfile ?: true
+    val chatGptPlanClientId: String?
+        get() = nativeChat.activeConversation?.chatGptPlanClientId
+    /** Model choices for [provider]: the bound ChatGPT account's catalog once loaded. */
+    fun chatModelOptions(provider: AiProvider): List<String> =
+        chatGptPlanClientId?.takeIf { provider == AiProvider.CHATGPT }?.let(chatGptPlanModels::get)
+            ?: gatewayModelOptions[provider]
+            ?: provider.availableModels
 }
 
 enum class NavigationTab {
@@ -241,6 +256,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     private val aiChatService = AiChatService()
     private val apiKeyStore = ApiKeyStore(application.applicationContext)
+    // Lazy: Keystore and vault reads stay off the startup path.
+    private val chatGptPlanTokens by lazy { ChatGptPlanTokenSource(getApplication<Application>()) }
     private val studioStateStore = StudioStateStore(application.applicationContext)
     private val webChatPreferencesStore = WebChatPreferencesStore(application.applicationContext)
     private val webChatDraftStore = WebChatDraftStore(application.noBackupFilesDir)
@@ -392,6 +409,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         messages = welcomeChatMessages(),
         selectedProvider = template?.selectedProvider ?: AiProvider.ALL,
         selectedModel = template?.selectedModel ?: "all",
+        // Keep the funding route: dropping it would silently move ChatGPT to the API key.
+        chatGptPlanClientId = template?.chatGptPlanClientId,
         includeSystemProfile = template?.includeSystemProfile ?: true,
         projectId = template?.projectId ?: DEFAULT_PROJECT_ID,
     )
@@ -1266,6 +1285,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             messages = messages,
             selectedProvider = template?.selectedProvider ?: AiProvider.ALL,
             selectedModel = template?.selectedModel ?: "all",
+            chatGptPlanClientId = template?.chatGptPlanClientId,
             includeSystemProfile = template?.includeSystemProfile ?: true,
             projectId = template?.projectId ?: DEFAULT_PROJECT_ID,
         )
@@ -1445,7 +1465,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun setChatProvider(provider: AiProvider) {
         val state = _uiState.value
         if (!state.isNativeConversationStoreReady) return
-        val knownModels = state.gatewayModelOptions[provider] ?: provider.availableModels
+        val knownModels = state.chatModelOptions(provider)
         val newModel = when {
             provider == AiProvider.ALL -> "all"
             state.selectedChatProvider == provider && state.selectedChatModel in knownModels -> state.selectedChatModel
@@ -1460,6 +1480,64 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
         if (provider.usesLiveGatewayModelCatalog()) refreshGatewayModelCatalog(provider)
+    }
+
+    /** Binds this chat's ChatGPT replies to a plan account, or back to the API key with null. */
+    fun setChatGptPlanAccount(clientId: String?) {
+        if (!_uiState.value.isNativeConversationStoreReady) return
+        updateActiveNativeConversation { it.copy(chatGptPlanClientId = clientId) }
+        if (clientId != null) {
+            refreshChatGptPlanModels(clientId)
+        } else {
+            // Back on the API key: a catalog-only slug may not exist there.
+            val state = _uiState.value
+            if (
+                state.selectedChatProvider == AiProvider.CHATGPT &&
+                state.selectedChatModel !in state.chatModelOptions(AiProvider.CHATGPT)
+            ) {
+                setChatModel(AiProvider.CHATGPT.defaultModel)
+            }
+        }
+    }
+
+    fun refreshChatGptPlanAccounts() {
+        viewModelScope.launch {
+            val rows = try {
+                withContext(Dispatchers.IO) {
+                    accountRows(ChatGptPlanCredentialStore(getApplication<Application>()).accounts())
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                showSnackbar("Couldn't read ChatGPT accounts from secure storage.")
+                return@launch
+            }
+            _uiState.update { it.copy(chatGptPlanAccounts = rows) }
+            _uiState.value.chatGptPlanClientId?.let(::refreshChatGptPlanModels)
+        }
+    }
+
+    private fun refreshChatGptPlanModels(clientId: String) {
+        viewModelScope.launch {
+            val slugs = try {
+                aiChatService.fetchChatGptPlanModels(chatGptPlanTokens.auth(clientId)).map { it.slug }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                showSnackbar("Couldn't load this ChatGPT account's models.")
+                return@launch
+            }
+            _uiState.update { it.copy(chatGptPlanModels = it.chatGptPlanModels + (clientId to slugs)) }
+            val state = _uiState.value
+            // The static default may not exist on this account; pick one it lists.
+            if (
+                state.chatGptPlanClientId == clientId &&
+                state.selectedChatProvider == AiProvider.CHATGPT &&
+                slugs.isNotEmpty() && state.selectedChatModel !in slugs
+            ) {
+                setChatModel(slugs.first())
+            }
+        }
     }
 
     fun setChatModel(modelName: String) {
@@ -1788,7 +1866,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             return null
         }
         val providersToRun = if (targetProvider == AiProvider.ALL) {
-            state.apiKeyConfig.configuredDirectProviders()
+            state.apiKeyConfig.directProvidersFor(state.chatGptPlanClientId)
         } else {
             listOf(targetProvider)
         }
@@ -1797,7 +1875,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             showSnackbar("Add at least one direct provider API key to use All Models.")
             return null
         }
-        return NativeChatSendPlan(targetProvider, providersToRun, state.apiKeyConfig)
+        return NativeChatSendPlan(targetProvider, providersToRun, state.apiKeyConfig, state.chatGptPlanClientId)
     }
 
     /**
@@ -2217,6 +2295,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         conversationHistory = currentMessages,
                         allowSingleProviderSimulationFallback = targetProvider != AiProvider.ALL,
                         tools = toolDefinitions,
+                        chatGptPlanClientId = plan.chatGptPlanClientId,
                         executeTool = { call ->
                             if (skillTools?.handles(call.name) == true) {
                                 skillTools.executeWithReceipt(call)
@@ -2226,6 +2305,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         },
                     ),
                     aiChatService = aiChatService,
+                    chatGptPlanTokens = chatGptPlanTokens,
                     onTextDelta = { provider, model, delta ->
                         appendStreamingDelta(
                             generationId,

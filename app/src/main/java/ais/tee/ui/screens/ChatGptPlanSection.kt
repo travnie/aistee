@@ -51,8 +51,8 @@ internal fun ChatGptPlanSection(viewModel: ChatGptPlanViewModel = viewModel()) {
         Text("ChatGPT plan (preview)", fontWeight = FontWeight.Bold)
         Text(
             text = "Sign in with ChatGPT in your browser. The account is stored encrypted on this " +
-                "device. Plan-backed chats aren't available yet, and Aistee never switches to " +
-                "API-key billing for you.",
+                "device. Pick an account per chat from \"ChatGPT via\" in the chat header. Aistee " +
+                "never switches between the plan and API-key billing for you.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

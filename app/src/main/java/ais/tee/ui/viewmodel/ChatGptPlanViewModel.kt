@@ -17,18 +17,19 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Signed-in account as shown in settings and the chat route picker. */
+data class ChatGptPlanAccountRow(
+    val clientId: String,
+    val label: String,
+    val connected: Boolean,
+    val planUsageGranted: Boolean,
+)
+
 /**
  * Sign in with ChatGPT account management. Connecting stores a verified grant only; nothing
  * here selects the account-plan route or falls back to API-key billing.
  */
 internal class ChatGptPlanViewModel(application: Application) : AndroidViewModel(application) {
-    data class AccountRow(
-        val clientId: String,
-        val label: String,
-        val connected: Boolean,
-        val planUsageGranted: Boolean,
-    )
-
     enum class Notice {
         CONNECTED, CONNECTED_WITHOUT_PLAN, CANCELLED, TIMED_OUT, FAILED, ACCOUNT_LIMIT,
         BROWSER_UNAVAILABLE, SIGNED_OUT, SIGNED_OUT_UNCONFIRMED, STORAGE_ERROR,
@@ -37,7 +38,7 @@ internal class ChatGptPlanViewModel(application: Application) : AndroidViewModel
     }
 
     data class UiState(
-        val accounts: List<AccountRow> = emptyList(),
+        val accounts: List<ChatGptPlanAccountRow> = emptyList(),
         val signingIn: Boolean = false,
         val signingOut: String? = null,
         val notice: Notice? = null,
@@ -175,7 +176,7 @@ internal class ChatGptPlanViewModel(application: Application) : AndroidViewModel
 }
 
 /** Distinct, stable labels: same email across registrations gets a client-ID suffix. */
-internal fun accountRows(accounts: List<ChatGptPlanCredentialStore.Account>): List<ChatGptPlanViewModel.AccountRow> {
+internal fun accountRows(accounts: List<ChatGptPlanCredentialStore.Account>): List<ChatGptPlanAccountRow> {
     val base = accounts.map { it.email?.takeIf(String::isNotBlank) ?: "ChatGPT account" }
     return accounts.mapIndexed { index, account ->
         val label = if (base.count { it == base[index] } > 1) {
@@ -183,6 +184,6 @@ internal fun accountRows(accounts: List<ChatGptPlanCredentialStore.Account>): Li
         } else {
             base[index]
         }
-        ChatGptPlanViewModel.AccountRow(account.clientId, label, account.connected, account.planUsageGranted)
+        ChatGptPlanAccountRow(account.clientId, label, account.connected, account.planUsageGranted)
     }
 }

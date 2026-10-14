@@ -33,8 +33,9 @@ import ais.tee.data.model.NativeChatArchive
 import ais.tee.data.model.NativeChatConversation
 import ais.tee.data.model.PresetProfiles
 import ais.tee.data.model.StudioStateDecodeResult
-import ais.tee.data.model.configuredDirectProviders
-import ais.tee.data.model.hasKeyFor
+import ais.tee.data.model.canRunDirect
+import ais.tee.data.model.directProvidersFor
+import ais.tee.data.security.ChatGptPlanTokenSource
 import ais.tee.data.preferences.NativeChatStore
 import ais.tee.data.preferences.NativeChatWriter
 import ais.tee.data.preferences.StudioStateStore
@@ -98,8 +99,8 @@ internal fun canNativeChatDirectReply(
         return false
     }
     return when (conversation.selectedProvider) {
-        AiProvider.ALL -> apiKeys.configuredDirectProviders().isNotEmpty()
-        else -> apiKeys.hasKeyFor(conversation.selectedProvider)
+        AiProvider.ALL -> apiKeys.directProvidersFor(conversation.chatGptPlanClientId).isNotEmpty()
+        else -> apiKeys.canRunDirect(conversation.selectedProvider, conversation.chatGptPlanClientId)
     }
 }
 
@@ -360,7 +361,7 @@ private suspend fun processDirectReply(
 
     val promptContext = loadDirectReplyPromptContext(context, reply.conversation)
     val providers = when (reply.conversation.selectedProvider) {
-        AiProvider.ALL -> apiKeys.configuredDirectProviders()
+        AiProvider.ALL -> apiKeys.directProvidersFor(reply.conversation.chatGptPlanClientId)
         else -> listOf(reply.conversation.selectedProvider)
     }
     if (providers.isEmpty()) {
@@ -388,8 +389,10 @@ private suspend fun processDirectReply(
             profile = promptContext.activeProfile,
             conversationHistory = reply.conversation.messages,
             allowSingleProviderSimulationFallback = false,
+            chatGptPlanClientId = reply.conversation.chatGptPlanClientId,
         ),
         aiChatService = AiChatService(),
+        chatGptPlanTokens = ChatGptPlanTokenSource(context),
     ).map { result ->
         result.message.copy(id = "direct_reply_${replyId}_${result.provider.id}")
     }
