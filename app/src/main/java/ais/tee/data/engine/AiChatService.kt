@@ -1067,7 +1067,7 @@ class AiChatService {
             require(provider == AiProvider.CHATGPT) { "ChatGPT plan auth applies only to ChatGPT" }
             return@withContext generateChatGptPlanResponse(
                 prompt = prompt,
-                model = resolveEffectiveModel(provider, modelName),
+                requestedModel = modelName.trim().takeUnless { it.isEmpty() || it == "all" },
                 auth = chatGptPlan,
                 systemInstruction = systemInstruction,
                 profile = profile,
@@ -1270,9 +1270,10 @@ class AiChatService {
      * ACCOUNT_PLAN route: streamed, store=false, history replayed in `input`. Errors stay errors:
      * no API key, no persona simulation, no other route.
      */
+    /** Null [requestedModel]: first model of this account's catalog, never the API-key default. */
     private suspend fun generateChatGptPlanResponse(
         prompt: String,
-        model: String,
+        requestedModel: String?,
         auth: ChatGptPlanAuth,
         systemInstruction: String?,
         profile: Profile?,
@@ -1281,6 +1282,7 @@ class AiChatService {
         toolsOffered: Boolean,
     ): ModelChatMessage {
         val startTime = System.currentTimeMillis()
+        var model = requestedModel.orEmpty()
         fun reply(text: String, isError: Boolean, result: OpenAiGenerationResult? = null) = ModelChatMessage(
             id = "msg_${System.currentTimeMillis()}_${AiProvider.CHATGPT.id}",
             sender = "assistant",
@@ -1297,6 +1299,15 @@ class AiChatService {
         // Function tools need the namespaced format on this route; not wired yet.
         if (toolsOffered) {
             return reply("⚠️ Tools aren't available in ChatGPT plan chats yet. Turn tools off for this chat.", true)
+        }
+        if (requestedModel == null) {
+            model = try {
+                fetchChatGptPlanModels(auth).firstOrNull()?.slug
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                return reply("⚠️ Couldn't load this ChatGPT account's models:\n\n${describeChatGptPlanError(error)}", true)
+            } ?: return reply("⚠️ This ChatGPT account lists no models.", true)
         }
         return try {
             val result = callOpenAiStreamApi(
