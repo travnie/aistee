@@ -14,9 +14,6 @@ class ChatGptPlanAuth(val clientId: String, val accessToken: String) {
     override fun toString(): String = "ChatGptPlanAuth(<redacted>)"
 }
 
-/** One entry of the signed-in account's model catalog; [slug] goes into `model`. */
-data class ChatGptPlanModel(val slug: String, val displayName: String)
-
 /** Provider error keeping HTTP status and machine-readable code; message stays the display text. */
 class ProviderApiException(message: String, val status: Int?, val code: String?) : IOException(message)
 
@@ -32,6 +29,8 @@ internal fun describeChatGptPlanError(error: Throwable): String {
             "ChatGPT plan usage isn't available for this account or workspace."
         "subscription_sharing_unsupported_capability" ->
             "This request uses something the ChatGPT plan route doesn't support."
+        "subscription_sharing_route_not_supported" ->
+            "The ChatGPT plan route doesn't support this endpoint or method."
         "subscription_sharing_invalid_user",
         "chatpass_v2_scope_not_authorized",
         "chatpass_v2_invalid_authorization_context" ->

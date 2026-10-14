@@ -3,6 +3,7 @@ package ais.tee.data.engine
 import ais.tee.data.model.AiProvider
 import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
+import ais.tee.data.model.ChatGptPlanModel
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.ProviderExecutionSource
 import java.io.IOException
@@ -169,6 +170,15 @@ class ChatGptPlanRouteTest {
             }
         }
         assertFalse(auth.toString().contains("access-secret"))
+    }
+
+    @Test
+    fun routeNotSupportedIsNotReportedAsPolicyBlock() {
+        val text = describeChatGptPlanError(
+            ProviderApiException("Route not supported", 403, "subscription_sharing_route_not_supported"),
+        )
+        assertTrue(text.contains("endpoint or method"))
+        assertFalse(text.contains("policy or region"))
     }
 
     private fun streamError(code: Int, body: String): ProviderApiException =

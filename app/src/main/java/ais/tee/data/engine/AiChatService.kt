@@ -6,6 +6,7 @@ import ais.tee.data.model.ApiProcessingMode
 import ais.tee.data.model.AsyncProviderJobState
 import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
+import ais.tee.data.model.ChatGptPlanModel
 import ais.tee.data.model.ClaudeReasoningCapabilities
 import ais.tee.data.model.parseClaudeReasoningCapabilities
 import ais.tee.data.model.resolveClaudeThinkingBudget
