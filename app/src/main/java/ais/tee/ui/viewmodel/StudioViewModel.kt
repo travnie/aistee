@@ -207,7 +207,7 @@ data class StudioUiState(
     /** Model-initiated skill call waiting for Allow/Deny; cleared when answered or the reply stops. */
     val pendingActiveSkillPrompt: PendingActiveSkillPrompt? = null,
     /** Signed-in ChatGPT accounts; loaded only when the ChatGPT route picker is shown. */
-    val chatGptPlanAccounts: List<ChatGptPlanViewModel.AccountRow> = emptyList(),
+    val chatGptPlanAccounts: List<ChatGptPlanAccountRow> = emptyList(),
     /** Model slugs per ChatGPT account, from that account's catalog. */
     val chatGptPlanModels: Map<String, List<String>> = emptyMap(),
 ) {
@@ -1481,7 +1481,18 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun setChatGptPlanAccount(clientId: String?) {
         if (!_uiState.value.isNativeConversationStoreReady) return
         updateActiveNativeConversation { it.copy(chatGptPlanClientId = clientId) }
-        if (clientId != null) refreshChatGptPlanModels(clientId)
+        if (clientId != null) {
+            refreshChatGptPlanModels(clientId)
+        } else {
+            // Back on the API key: a catalog-only slug may not exist there.
+            val state = _uiState.value
+            if (
+                state.selectedChatProvider == AiProvider.CHATGPT &&
+                state.selectedChatModel !in state.chatModelOptions(AiProvider.CHATGPT)
+            ) {
+                setChatModel(AiProvider.CHATGPT.defaultModel)
+            }
+        }
     }
 
     fun refreshChatGptPlanAccounts() {

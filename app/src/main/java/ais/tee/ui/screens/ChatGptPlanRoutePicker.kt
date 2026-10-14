@@ -27,7 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import ais.tee.ui.viewmodel.ChatGptPlanViewModel
+import ais.tee.ui.viewmodel.ChatGptPlanAccountRow
 
 /**
  * Per-chat ChatGPT funding route: API key or one signed-in account's plan. Lists only accounts
@@ -35,7 +35,7 @@ import ais.tee.ui.viewmodel.ChatGptPlanViewModel
  */
 @Composable
 internal fun ChatGptPlanRoutePicker(
-    accounts: List<ChatGptPlanViewModel.AccountRow>,
+    accounts: List<ChatGptPlanAccountRow>,
     boundClientId: String?,
     onRefresh: () -> Unit,
     onSelect: (String?) -> Unit,
