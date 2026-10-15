@@ -28,7 +28,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import ais.tee.ui.viewmodel.ChatGptPlanViewModel
 import ais.tee.ui.viewmodel.ChatGptPlanViewModel.Notice
 
-private const val CHATGPT_SETTINGS_URL = "https://chatgpt.com/"
+// Undocumented settings deep link; unknown hash falls back to chatgpt.com home, notice text names the path.
+private const val CHATGPT_SETTINGS_URL = "https://chatgpt.com/#settings/Security"
 
 /** Sign in with ChatGPT accounts. ViewModel created on first show, never on chat startup. */
 @Composable
@@ -144,10 +145,10 @@ private fun noticeText(notice: Notice): String = when (notice) {
     Notice.BROWSER_UNAVAILABLE -> "No browser available to sign in."
     Notice.SIGNED_OUT -> "Signed out."
     Notice.SIGNED_OUT_UNCONFIRMED ->
-        "Signed out on this device, but OpenAI didn't confirm it. You can disconnect Aistee in ChatGPT Settings."
+        "Signed out on this device, but OpenAI didn't confirm it. You can disconnect Aistee in ChatGPT Settings → Security and login → Sign in with ChatGPT."
     Notice.STORAGE_ERROR -> "Couldn't access secure storage on this device."
     Notice.DISCARDED_UNCONFIRMED ->
-        "Sign-in wasn't kept, and OpenAI didn't confirm ending it. You can disconnect Aistee in ChatGPT Settings."
+        "Sign-in wasn't kept, and OpenAI didn't confirm ending it. You can disconnect Aistee in ChatGPT Settings → Security and login → Sign in with ChatGPT."
 }
 
 private fun Notice.isProblem() = this in setOf(
