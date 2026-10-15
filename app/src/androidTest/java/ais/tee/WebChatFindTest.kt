@@ -88,15 +88,15 @@ class WebChatFindTest {
         openFind()
         composeRule.onNodeWithTag("web_find_query").performTextReplacement("nebula")
         awaitResult("1 / 3")
+        val pushed = AtomicBoolean(false)
         composeRule.runOnIdle {
             webView.evaluateJavascript(
                 "history.pushState({}, '', '/another-chat'); document.body.innerHTML = '<p>New chat</p>';",
-                null,
-            )
+            ) { pushed.set(true) }
         }
-        composeRule.waitUntil(5_000) {
-            composeRule.onAllNodesWithTag("web_find_query").fetchSemanticsNodes().isEmpty()
-        }
+        // Renderer is shared with the default provider's page still booting; judge the app only after the script ran.
+        composeRule.waitUntil(15_000) { pushed.get() }
+        assertFindClosed()
     }
 
     @Test
