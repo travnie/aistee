@@ -21,3 +21,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "Aistee"
 include(":app", ":shared", ":benchmark")
+
+// CodeQL autobuild traces kotlinc/javac; compile outputs restored from its cached ~/.gradle leave nothing to extract.
+buildCache { local { isEnabled = System.getenv("CODEQL_ACTION_VERSION") == null } }
