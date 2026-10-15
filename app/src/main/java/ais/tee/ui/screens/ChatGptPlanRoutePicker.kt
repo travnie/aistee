@@ -89,6 +89,16 @@ internal fun ChatGptPlanRoutePicker(
                     expanded = false
                 }
             }
+            // Bound but signed out, ungranted or removed: show it checked so the route stays visible.
+            if (boundClientId != null && usable.none { it.clientId == boundClientId }) {
+                DropdownMenuItem(
+                    text = { Text(label.removePrefix("ChatGPT plan · "), fontWeight = FontWeight.Bold) },
+                    onClick = { expanded = false },
+                    enabled = false,
+                    leadingIcon = { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    modifier = Modifier.testTag("chatgpt_route_unavailable"),
+                )
+            }
             if (usable.isEmpty()) {
                 DropdownMenuItem(
                     text = {
