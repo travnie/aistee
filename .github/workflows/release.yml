@@ -18,10 +18,11 @@ on: # yamllint disable-line rule:truthy
       - ".github/actions/setup-android-build/**"
   workflow_dispatch:
 
-# A pending run is replaced by a newer pending one in the same group, so a tag release must not share
-# the rolling group: a later main push would drop it. Each tag gets its own group.
+# One group serializes publishing, so versionCode order (GITHUB_RUN_NUMBER) matches publish order.
+# Trade-off: a pending run is replaced by a newer pending one. A tag release that gets cancelled that
+# way shows up as a cancelled run; re-push the tag.
 concurrency:
-  group: ${{ startsWith(github.ref, 'refs/tags/v') && format('aistee-release-{0}', github.ref) || 'aistee-rolling-release' }}
+  group: aistee-rolling-release
   cancel-in-progress: false
 
 permissions:
