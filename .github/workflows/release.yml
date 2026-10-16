@@ -1,8 +1,11 @@
-name: Rolling release
+name: Release
 
+# main -> rolling release `aistee-latest` (aistee.apk); tag vX.Y -> versioned release (aistee_X.Y.apk).
+# One workflow so GITHUB_RUN_NUMBER, the versionCode source, stays monotonic across both.
 on: # yamllint disable-line rule:truthy
   push:
     branches: ["main"]
+    tags: ["v*"]
     paths:
       - "gradlew"
       - "app/**"
@@ -15,6 +18,9 @@ on: # yamllint disable-line rule:truthy
       - ".github/actions/setup-android-build/**"
   workflow_dispatch:
 
+# One group serializes publishing, so versionCode order (GITHUB_RUN_NUMBER) matches publish order.
+# Trade-off: a pending run is replaced by a newer pending one. A tag release that gets cancelled that
+# way shows up as a cancelled run; re-push the tag.
 concurrency:
   group: aistee-rolling-release
   cancel-in-progress: false
@@ -24,7 +30,7 @@ permissions:
 
 jobs:
   release:
-    name: Build and publish rolling release
+    name: Build and publish release
     if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -36,12 +42,29 @@ jobs:
 
       - name: Resolve app version
         id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           version="$(sed -n 's/.*versionName = "\([^"]*\)".*/\1/p' app/build.gradle.kts | head -1)"
           if [ -z "$version" ]; then
             echo "::error::app/build.gradle.kts has no versionName."
             exit 1
           fi
+          kind=rolling
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            kind=versioned
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match versionName $version (expected v$version)."
+              exit 1
+            fi
+            # Only releases cut from main: the commit must be main itself or behind it.
+            compare="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$GITHUB_SHA" --jq .status)"
+            if [ "$compare" != "identical" ] && [ "$compare" != "behind" ]; then
+              echo "::error::Tagged commit is not on main (compare status: $compare)."
+              exit 1
+            fi
+          fi
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
           version_code="$GITHUB_RUN_NUMBER"
           if [ "$version_code" -lt 1 ] || [ "$version_code" -gt 2100000000 ]; then
             echo "::error::GITHUB_RUN_NUMBER is outside the Google Play versionCode range."
@@ -115,6 +138,7 @@ jobs:
         env:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
           RELEASE_VERSION_CODE: ${{ steps.release.outputs.version_code }}
+          RELEASE_KIND: ${{ steps.release.outputs.kind }}
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -133,10 +157,51 @@ jobs:
           grep -Eq '^META-INF/.*\.(RSA|DSA|EC)$' "$aab_files"
           jarsigner -verify "$aab" >/dev/null
 
-          cp "$apk" dist/aistee.apk
-          cp "$aab" dist/aistee.aab
+          if [ "$RELEASE_KIND" = versioned ]; then
+            cp "$apk" "dist/aistee_${RELEASE_VERSION}.apk"
+            cp "$aab" "dist/aistee_${RELEASE_VERSION}.aab"
+          else
+            cp "$apk" dist/aistee.apk
+            cp "$aab" dist/aistee.aab
+          fi
+
+      - name: Publish versioned release
+        if: steps.release.outputs.kind == 'versioned'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          # A published release is never overwritten; a draft is a failed earlier attempt and is replaced.
+          existing="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$tag\") | \"\(.id) \(.draft)\"")"
+          while read -r release_id is_draft; do
+            [ -n "$release_id" ] || continue
+            if [ "$is_draft" != true ]; then
+              echo "::error::Release $tag already exists; versioned releases are never overwritten."
+              exit 1
+            fi
+            echo "::warning::Deleting leftover draft release $release_id for $tag."
+            gh api --method DELETE "repos/$GH_REPO/releases/$release_id"
+          done <<< "$existing"
+          # The tag must still point at the commit that was built.
+          tagged_sha="$(gh api "repos/$GH_REPO/commits/refs/tags/$tag" --jq .sha)"
+          if [ "$tagged_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::Tag $tag moved to $tagged_sha during the build (built $GITHUB_SHA)."
+            exit 1
+          fi
+          # Draft first, publish once both assets are attached.
+          gh release create "$tag" \
+            "dist/aistee_${RELEASE_VERSION}.apk" "dist/aistee_${RELEASE_VERSION}.aab" \
+            --verify-tag --draft --latest=false \
+            --title "Aistee ${RELEASE_VERSION}" --generate-notes
+          test "$(gh release view "$tag" --json assets --jq '.assets | length')" -eq 2
+          gh release edit "$tag" --draft=false --latest=false
 
       - name: Publish rolling release
+        if: steps.release.outputs.kind == 'rolling'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
