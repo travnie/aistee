@@ -85,6 +85,13 @@ class CodexAppServerProtocolTest {
         assertEquals(CodexAppServerEvent.Ignored, CodexAppServerProtocol.event(request, "thr", "other"))
         val missingTurn = """{"id":"approval-5","method":"item/commandExecution/requestApproval","params":{"threadId":"thr"}}"""
         assertEquals(CodexAppServerEvent.Ignored, CodexAppServerProtocol.event(missingTurn, "thr", "a"))
+        val elicitation = """{"id":"form-1","method":"mcpServer/elicitation/request","params":{"threadId":"thr","serverName":"test","mode":"form"}}"""
+        val accepted = CodexAppServerProtocol.event(elicitation, "thr", "a") as CodexAppServerEvent.ServerRequest
+        assertEquals("form-1", accepted.id.content)
+        assertEquals("mcpServer/elicitation/request", accepted.method)
+        assertEquals(CodexAppServerEvent.Ignored, CodexAppServerProtocol.event(elicitation, "other", "a"))
+        val otherTurn = """{"id":"form-2","method":"mcpServer/elicitation/request","params":{"threadId":"thr","turnId":"b"}}"""
+        assertEquals(CodexAppServerEvent.Ignored, CodexAppServerProtocol.event(otherTurn, "thr", "a"))
         assertEquals(CodexAppServerEvent.Ignored,
             CodexAppServerProtocol.event("""{"method":"item/commandExecution/outputDelta","params":{"threadId":"thr","turnId":"a","delta":"secret"}}""", "thr", "a"))
     }
