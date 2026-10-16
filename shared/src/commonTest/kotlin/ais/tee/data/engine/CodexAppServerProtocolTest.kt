@@ -81,6 +81,10 @@ class CodexAppServerProtocolTest {
             (event as CodexAppServerEvent.ServerRequest).method)
         assertEquals("approval-4", event.id.content)
         assertEquals("rm -rf .", event.params["command"]?.jsonPrimitive?.content)
+        assertEquals(CodexAppServerEvent.Ignored, CodexAppServerProtocol.event(request, "other", "a"))
+        assertEquals(CodexAppServerEvent.Ignored, CodexAppServerProtocol.event(request, "thr", "other"))
+        val missingTurn = """{"id":"approval-5","method":"item/commandExecution/requestApproval","params":{"threadId":"thr"}}"""
+        assertEquals(CodexAppServerEvent.Ignored, CodexAppServerProtocol.event(missingTurn, "thr", "a"))
         assertEquals(CodexAppServerEvent.Ignored,
             CodexAppServerProtocol.event("""{"method":"item/commandExecution/outputDelta","params":{"threadId":"thr","turnId":"a","delta":"secret"}}""", "thr", "a"))
     }
