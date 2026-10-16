@@ -246,7 +246,9 @@ jobs:
           asset_count="$(gh api "repos/$GH_REPO/releases/$release_id/assets" --jq 'length')"
           test "$asset_count" -eq 2
 
-          if old_id="$(gh api "repos/$GH_REPO/releases/tags/$tag" --jq .id 2>/dev/null)"; then
+          # Only a 404 means "absent"; any other failure must not look like a missing release.
+          lookup_err="$RUNNER_TEMP/rolling-lookup.err"
+          if old_id="$(gh api "repos/$GH_REPO/releases/tags/$tag" --jq .id 2>"$lookup_err")"; then
             if ! old_ref_sha="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq .object.sha 2>/dev/null)"; then
               echo "::error::Existing rolling release has no matching git tag."
               exit 1
@@ -267,6 +269,34 @@ jobs:
               echo "::error::Previous rolling release or tag did not disappear within 60 seconds."
               exit 1
             fi
+          elif ! grep -q 'HTTP 404' "$lookup_err"; then
+            cat "$lookup_err" >&2
+            echo "::error::Could not look up the published rolling release."
+            exit 1
+          fi
+
+          # Leftover drafts from earlier failed promotions still claim the tag name, which blocks the
+          # PATCH below; the staged release carries a different tag name, so it is never matched.
+          stale_ids="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq ".[] | select(.draft and .tag_name == \"$tag\") | .id")"
+          for stale_id in $stale_ids; do
+            echo "::warning::Deleting stale draft release $stale_id for $tag."
+            gh api --method DELETE "repos/$GH_REPO/releases/$stale_id"
+          done
+
+          # A tag with no published release (e.g. only a draft holds the name) would stay on its old
+          # commit: promoting a release onto an existing tag reuses it and ignores target_commitish.
+          if gh api "repos/$GH_REPO/git/ref/tags/$tag" >/dev/null 2>"$lookup_err"; then
+            echo "::warning::Removing orphaned tag $tag; no published release owns it."
+            gh api --method DELETE "repos/$GH_REPO/git/refs/tags/$tag"
+            if ! wait_for_absent_release_and_tag "$tag"; then
+              echo "::error::Orphaned rolling tag did not disappear within 60 seconds."
+              exit 1
+            fi
+          elif ! grep -q 'HTTP 404' "$lookup_err"; then
+            cat "$lookup_err" >&2
+            echo "::error::Could not look up the rolling tag."
+            exit 1
           fi
 
           gh api --method PATCH "repos/$GH_REPO/releases/$release_id" \
