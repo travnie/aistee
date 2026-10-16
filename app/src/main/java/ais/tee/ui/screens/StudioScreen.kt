@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,7 +50,7 @@ fun StudioScreen(
     var saveOverlayDesc by remember { mutableStateOf("") }
     var toolsMenuExpanded by remember { mutableStateOf(false) }
 
-    var expandedSection by remember { mutableStateOf("personality") } // personality, collaboration, knowledge, output
+    var expandedSection by rememberSaveable { mutableStateOf("personality") } // personality, collaboration, knowledge, output
 
     val activeProfile = uiState.mergedProfile
 

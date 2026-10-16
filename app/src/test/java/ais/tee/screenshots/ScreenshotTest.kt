@@ -23,7 +23,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
@@ -87,7 +91,17 @@ class ScreenshotTest {
     fun instructions() =
         studio("instructions") { vm, state -> InstructionsScreen(vm, state, onNavigateToPlayground = {}) }
 
-    @Test fun playground() = studio("playground") { vm, state -> PlaygroundScreen(vm, state) }
+    @Test
+    fun playground() {
+        studio("playground") { vm, state -> PlaygroundScreen(vm, state) }
+        compose.onNodeWithTag("btn_send_prompt").assertIsNotEnabled()
+        compose.onNodeWithTag("playground_start_hint").assertExists()
+        compose.onNodeWithTag("input_prompt_text").performTextInput("hello")
+        compose.onNodeWithTag("btn_send_prompt").assertIsEnabled()
+    }
+
+    @Test
+    fun playgroundLight() = studio("playground_light", dark = false) { vm, state -> PlaygroundScreen(vm, state) }
 
     @Test fun yamlEditor() = studio("yaml_editor") { vm, state -> YamlEditorScreen(vm, state) }
 
