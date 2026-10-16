@@ -8,6 +8,8 @@ Kotlin Multiplatform workspace for using multiple AI services from one client in
 
 Rolling Android build: [download the signed APK](https://github.com/travnie/aistee/releases/download/aistee-latest/aistee.apk). The asset is replaced after each successful release build from `main`.
 
+Versioned releases: tag `vX.Y` (must equal `versionName`) on `main`; assets `aistee_X.Y.apk` / `aistee_X.Y.aab` on the [releases page](https://github.com/travnie/aistee/releases).
+
 ## What it is
 
 Aistee combines:
