@@ -18,8 +18,10 @@ on: # yamllint disable-line rule:truthy
       - ".github/actions/setup-android-build/**"
   workflow_dispatch:
 
+# A pending run is replaced by a newer pending one in the same group, so a tag release must not share
+# the rolling group: a later main push would drop it. Each tag gets its own group.
 concurrency:
-  group: aistee-rolling-release
+  group: ${{ startsWith(github.ref, 'refs/tags/v') && format('aistee-release-{0}', github.ref) || 'aistee-rolling-release' }}
   cancel-in-progress: false
 
 permissions:
@@ -171,8 +173,22 @@ jobs:
         run: |
           set -euo pipefail
           tag="$GITHUB_REF_NAME"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "::error::Release $tag already exists; versioned releases are never overwritten."
+          # A published release is never overwritten; a draft is a failed earlier attempt and is replaced.
+          existing="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq ".[] | select(.tag_name == \"$tag\") | \"\(.id) \(.draft)\"")"
+          while read -r release_id is_draft; do
+            [ -n "$release_id" ] || continue
+            if [ "$is_draft" != true ]; then
+              echo "::error::Release $tag already exists; versioned releases are never overwritten."
+              exit 1
+            fi
+            echo "::warning::Deleting leftover draft release $release_id for $tag."
+            gh api --method DELETE "repos/$GH_REPO/releases/$release_id"
+          done <<< "$existing"
+          # The tag must still point at the commit that was built.
+          tagged_sha="$(gh api "repos/$GH_REPO/commits/refs/tags/$tag" --jq .sha)"
+          if [ "$tagged_sha" != "$GITHUB_SHA" ]; then
+            echo "::error::Tag $tag moved to $tagged_sha during the build (built $GITHUB_SHA)."
             exit 1
           fi
           # Draft first, publish once both assets are attached.
