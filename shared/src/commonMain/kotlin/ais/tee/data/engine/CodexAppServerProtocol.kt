@@ -99,7 +99,9 @@ object CodexAppServerProtocol {
         // Never show approvals for another turn, even within the same thread.
         val serverRequestId = root["id"] as? JsonPrimitive
         if (serverRequestId != null) {
-            if ((params["turnId"] as? JsonPrimitive)?.contentOrNull != turnId) {
+            val requestTurnId = (params["turnId"] as? JsonPrimitive)?.contentOrNull
+            val allowsMissingTurnId = method == "mcpServer/elicitation/request"
+            if (requestTurnId != turnId && !(allowsMissingTurnId && requestTurnId == null)) {
                 return CodexAppServerEvent.Ignored
             }
             return CodexAppServerEvent.ServerRequest(serverRequestId, method, params)
