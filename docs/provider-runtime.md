@@ -200,3 +200,12 @@ Integration notes for the `ACCOUNT_PLAN` credential lifecycle. Shipped: sign-in,
 - Vercel AI Gateway OpenAI-compatible API: https://vercel.com/docs/ai-gateway/sdks-and-apis/openai-chat-completions
 
 Keep this file focused on provider/runtime behavior. Product-facing provider status belongs in `README.md`; implementation details should live next to code when they become stable enough to stop being TODOs.
+
+
+### Agent Lab: Codex app-server protocol foundation
+
+The shared CodexAppServerProtocol handles Codex stdio JSON request/notification framing only: initialize/initialized, thread start/resume, turn start/interrupt, request-ID validation, active-thread text deltas and explicit completed/failed/interrupted outcomes. Server-initiated requests (including command and patch approvals) are surfaced for an explicit host permission decision; none are automatically approved. New threads default to read-only sandbox and on-request approval. This does not alter existing native chat, Sign in with ChatGPT credentials, provider billing, or WebView sessions.
+
+**Not yet connected:** no Android Agent Lab UI, remote host pairing/transport, Codex process launcher, permissions bridge or token handoff in this slice. Future desktop/LAN/VPN host owns Codex process, workspace and secure permissions; Android stays a client. The host must not expose raw app-server stdio or its secrets to the network. When using plan-backed inference, follow the separately documented OAuth access-token refresh/restart/resume flow, never pass WebView cookies and never silently fall back to API-key billing.
+
+Protocol reference: https://developers.openai.com/siwc/token-sharing-open-source/codex-app-server
