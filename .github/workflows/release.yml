@@ -269,6 +269,17 @@ jobs:
             fi
           fi
 
+          # A tag with no published release (e.g. only a draft holds the name) would stay on its old
+          # commit: promoting a release onto an existing tag reuses it and ignores target_commitish.
+          if gh api "repos/$GH_REPO/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "::warning::Removing orphaned tag $tag; no published release owns it."
+            gh api --method DELETE "repos/$GH_REPO/git/refs/tags/$tag"
+            if ! wait_for_absent_release_and_tag "$tag"; then
+              echo "::error::Orphaned rolling tag did not disappear within 60 seconds."
+              exit 1
+            fi
+          fi
+
           gh api --method PATCH "repos/$GH_REPO/releases/$release_id" \
             -f tag_name="$tag" -f target_commitish="$GITHUB_SHA" \
             -f name='Aistee · rolling' -F draft=false -F prerelease=false \
