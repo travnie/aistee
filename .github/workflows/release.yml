@@ -275,6 +275,15 @@ jobs:
             exit 1
           fi
 
+          # Leftover drafts from earlier failed promotions still claim the tag name, which blocks the
+          # PATCH below; the staged release carries a different tag name, so it is never matched.
+          stale_ids="$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq ".[] | select(.draft and .tag_name == \"$tag\") | .id")"
+          for stale_id in $stale_ids; do
+            echo "::warning::Deleting stale draft release $stale_id for $tag."
+            gh api --method DELETE "repos/$GH_REPO/releases/$stale_id"
+          done
+
           # A tag with no published release (e.g. only a draft holds the name) would stay on its old
           # commit: promoting a release onto an existing tag reuses it and ignores target_commitish.
           if gh api "repos/$GH_REPO/git/ref/tags/$tag" >/dev/null 2>"$lookup_err"; then
