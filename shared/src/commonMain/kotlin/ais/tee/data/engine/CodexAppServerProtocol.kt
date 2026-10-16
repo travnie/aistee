@@ -91,16 +91,18 @@ object CodexAppServerProtocol {
         val method = (root["method"] as? JsonPrimitive)?.contentOrNull
             ?: return CodexAppServerEvent.Ignored
 
-        // Server-initiated RPC requests may request shell or patch approvals.
-        // Do not treat them as output, or automatically acknowledge them.
-        val serverRequestId = root["id"] as? JsonPrimitive
-        if (serverRequestId != null) {
-            return CodexAppServerEvent.ServerRequest(serverRequestId, method, (root["params"] as? JsonObject) ?: JsonObject(emptyMap()))
-        }
-
         val params = root["params"] as? JsonObject ?: return CodexAppServerEvent.Ignored
         if ((params["threadId"] as? JsonPrimitive)?.contentOrNull != threadId) {
             return CodexAppServerEvent.Ignored
+        }
+
+        // Never show approvals for another turn, even within the same thread.
+        val serverRequestId = root["id"] as? JsonPrimitive
+        if (serverRequestId != null) {
+            if ((params["turnId"] as? JsonPrimitive)?.contentOrNull != turnId) {
+                return CodexAppServerEvent.Ignored
+            }
+            return CodexAppServerEvent.ServerRequest(serverRequestId, method, params)
         }
         return when (method) {
             "item/agentMessage/delta" -> {
