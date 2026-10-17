@@ -28,6 +28,70 @@ class ChatGptPlanRouteTest {
     private val auth = ChatGptPlanAuth("oaiapp_a", "access-secret")
 
     @Test
+    fun planToolRoundTripUsesSignedInAccountAndReturnsFunctionOutputWithoutApiBilling() = runBlocking {
+        val requests = mutableListOf<JsonObject>()
+        val callCount = java.util.concurrent.atomic.AtomicInteger()
+        val client = okhttp3.OkHttpClient.Builder().addInterceptor { chain ->
+            val sent = okio.Buffer().also { chain.request().body!!.writeTo(it) }
+            requests += kotlinx.serialization.json.Json.parseToJsonElement(sent.readUtf8()).jsonObject
+            assertEquals("Bearer access-secret", chain.request().header("Authorization"))
+            val round = callCount.getAndIncrement()
+            val event = if (round == 0) {
+                """{"type":"response.completed","response":{"status":"completed","output":[{"type":"function_call","namespace":"aistee","call_id":"call_1","name":"inspect_text","arguments":"{}"}],"usage":{"input_tokens":5,"output_tokens":2,"total_tokens":7}}}"""
+            } else {
+                """{"type":"response.completed","response":{"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done"}]}],"usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4}}}"""
+            }
+            val delta = if (round == 1) """data: {"type":"response.output_text.delta","delta":"Done"}
+
+""" else ""
+            Response.Builder()
+                .request(chain.request())
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body((delta + "data: " + event + "\n\n").toResponseBody("text/event-stream".toMediaType()))
+                .build()
+        }.build()
+        var executed = 0
+        val reply = AiChatService(client).generateResponse(
+            prompt = "Use the local tool",
+            provider = AiProvider.CHATGPT,
+            modelName = MODEL,
+            apiKeys = ais.tee.data.model.ApiKeyConfig(openAiKey = "sk-must-not-be-used"),
+            systemInstruction = null,
+            profile = null,
+            tools = listOf(
+                ais.tee.data.model.NativeToolDefinition(
+                    name = "inspect_text",
+                    description = "Inspect text on this device.",
+                    inputSchema = kotlinx.serialization.json.buildJsonObject {
+                        put("type", kotlinx.serialization.json.JsonPrimitive("object"))
+                    },
+                ),
+            ),
+            executeTool = { call ->
+                executed++
+                ais.tee.data.model.NativeToolResult(call.callId, call.name, "ok")
+            },
+            chatGptPlan = auth,
+        )
+        assertFalse(reply.isError)
+        assertEquals("Done", reply.text)
+        assertEquals(1, executed)
+        assertEquals(2, requests.size)
+        val firstNamespace = (requests[0].getValue("tools") as JsonArray).single().jsonObject
+        assertEquals("aistee", firstNamespace.getValue("name").jsonPrimitive.content)
+        val secondInput = requests[1].getValue("input") as JsonArray
+        assertTrue(secondInput.any { item ->
+            val value = item as? JsonObject
+            value?.get("type")?.jsonPrimitive?.content == "function_call_output" &&
+                value["call_id"]?.jsonPrimitive?.content == "call_1"
+        })
+        assertTrue(reply.providerReplayState.orEmpty().contains("chatgpt_plan:oaiapp_a"))
+        assertEquals(11L, reply.usage?.totalTokens)
+    }
+
+    @Test
     fun accountPlanToolRoundsAccumulateReportedTokensWithoutGuessingMissingFields() {
         val first = ais.tee.data.model.ProviderUsage(
             inputTokens = 10, outputTokens = 5, totalTokens = 15,
