@@ -2603,6 +2603,7 @@ class AiChatService {
         val replayItems = mutableListOf<JsonObject>()
         val definitions = buildOpenAiPlanToolDefinitions(tools)
         var usage: ProviderUsage? = null
+        var allRoundsReportedUsage = true
         val visibleText = StringBuilder()
 
         repeat(MAX_NATIVE_TOOL_ROUNDS) { round ->
