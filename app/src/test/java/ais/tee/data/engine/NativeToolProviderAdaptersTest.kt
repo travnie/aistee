@@ -53,6 +53,27 @@ class NativeToolProviderAdaptersTest {
     }
 
     @Test
+    fun chatGptPlanToolsUseNamespaceAndRejectForeignNamespace() {
+        val definitions = buildOpenAiPlanToolDefinitions(listOf(definition))
+        val namespace = definitions.single().jsonObject
+        assertEquals("namespace", namespace["type"]?.jsonPrimitive?.content)
+        assertEquals("aistee", namespace["name"]?.jsonPrimitive?.content)
+        val nestedTool = namespace["tools"]!!.jsonArray.single().jsonObject
+        assertEquals("inspect_text", nestedTool["name"]?.jsonPrimitive?.content)
+
+        val accepted = json.parseToJsonElement(
+            """{"output":[{"type":"function_call","namespace":"aistee","call_id":"call_1","name":"inspect_text","arguments":"{}"}]}"""
+        ).jsonObject
+        assertEquals("inspect_text", parseOpenAiPlanToolCalls(accepted, json).single().call.name)
+        val foreign = json.parseToJsonElement(
+            """{"output":[{"type":"function_call","namespace":"foreign","call_id":"call_2","name":"inspect_text","arguments":"{}"}]}"""
+        ).jsonObject
+        org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+            parseOpenAiPlanToolCalls(foreign, json)
+        }
+    }
+
+    @Test
     fun claudeAdapterRoundTripsToolUseAndErrors() {
         val response = json.parseToJsonElement(
             """{"content":[{"type":"tool_use","id":"toolu_1","name":"inspect_text","input":{"text":"hello"}}]}"""
