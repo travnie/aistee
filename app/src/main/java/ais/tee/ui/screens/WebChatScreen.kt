@@ -178,6 +178,40 @@ fun WebChatScreen(
         focusManager.clearFocus()
         keyboard?.hide()
     }
+    // SPA pushState/replaceState may not trigger WebViewClient navigation callbacks.
+    // Compare successive JS locations only while Find is active, never the two JSON encodings.
+    val webChatActive by rememberUpdatedState(isActive)
+    LaunchedEffect(findSession, isActive) {
+        if (!isActive) return@LaunchedEffect
+        val activeSearch = findSession ?: return@LaunchedEffect
+        var stableLocation: String? = null
+        var candidateLocation: String? = null
+        var candidateReads = 0
+        while (findSession === activeSearch && webChatActive) {
+            activeSearch.webView.evaluateJavascript("window.location.href") { observed ->
+                if (webChatActive && findSession === activeSearch) {
+                    val location = runCatching {
+                        org.json.JSONTokener(observed).nextValue() as? String
+                    }.getOrNull()
+                    if (location != null) {
+                        if (stableLocation == null || activeSearch.query.isBlank()) {
+                            stableLocation = location
+                            candidateLocation = null
+                            candidateReads = 0
+                        } else if (location != stableLocation) {
+                            candidateReads = if (candidateLocation == location) candidateReads + 1 else 1
+                            candidateLocation = location
+                            if (candidateReads >= 2) closeFindInPage()
+                        } else {
+                            candidateLocation = null
+                            candidateReads = 0
+                        }
+                    }
+                }
+            }
+            delay(300L)
+        }
+    }
     val navigationSuiteType = NavigationSuiteScaffoldDefaults.navigationSuiteType(
         currentWindowAdaptiveInfoV2()
     )
