@@ -2653,7 +2653,7 @@ class AiChatService {
                 return OpenAiGenerationResult(
                     text = visibleText.toString().ifEmpty { "Received empty message content from OpenAI." },
                     replayState = state,
-                    usage = usage,
+                    usage = usage.takeIf { allRoundsReportedUsage },
                 )
             }
             if (round == MAX_NATIVE_TOOL_ROUNDS - 1) {
