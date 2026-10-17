@@ -34,3 +34,6 @@ generated/
 # OS/editor noise
 .DS_Store
 Thumbs.db
+
+# Claude Code: cloud hooks/settings live in the environment setup script; local .claude/ is per-machine
+.claude/
