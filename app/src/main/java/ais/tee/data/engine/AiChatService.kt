@@ -1038,6 +1038,20 @@ class AiChatService {
         )
     }
 
+    /** Aggregate two independent completed Responses requests, never stream fragments. */
+    internal fun sumCompletedPlanToolUsage(first: ProviderUsage, second: ProviderUsage): ProviderUsage {
+        fun sum(a: Long?, b: Long?): Long? = if (a != null && b != null) a + b else null
+        fun sumCost(a: Double?, b: Double?): Double? = if (a != null && b != null) a + b else null
+        return ProviderUsage(
+            inputTokens = sum(first.inputTokens, second.inputTokens),
+            outputTokens = sum(first.outputTokens, second.outputTokens),
+            totalTokens = sum(first.totalTokens, second.totalTokens),
+            cachedInputTokens = sum(first.cachedInputTokens, second.cachedInputTokens),
+            reasoningTokens = sum(first.reasoningTokens, second.reasoningTokens),
+            costUsd = sumCost(first.costUsd, second.costUsd),
+        )
+    }
+
     private fun bearerToken(apiKey: String): String = "Bearer $apiKey"
 
     internal fun resolveEffectiveModel(provider: AiProvider, modelName: String): String {
