@@ -28,6 +28,30 @@ class ChatGptPlanRouteTest {
     private val auth = ChatGptPlanAuth("oaiapp_a", "access-secret")
 
     @Test
+    fun accountPlanToolRoundsAccumulateReportedTokensWithoutGuessingMissingFields() {
+        val first = ais.tee.data.model.ProviderUsage(
+            inputTokens = 10, outputTokens = 5, totalTokens = 15,
+            cachedInputTokens = 2, reasoningTokens = 1,
+        )
+        val second = ais.tee.data.model.ProviderUsage(
+            inputTokens = 20, outputTokens = 8, totalTokens = 28,
+            cachedInputTokens = 4, reasoningTokens = 3,
+        )
+        val result = service.sumCompletedPlanToolUsage(first, second)
+        assertEquals(30L, result.inputTokens)
+        assertEquals(13L, result.outputTokens)
+        assertEquals(43L, result.totalTokens)
+        assertEquals(6L, result.cachedInputTokens)
+        assertEquals(4L, result.reasoningTokens)
+        assertEquals(null, result.costUsd)
+        val incomplete = service.sumCompletedPlanToolUsage(
+            first, ais.tee.data.model.ProviderUsage(inputTokens = 1),
+        )
+        assertEquals(null, incomplete.outputTokens)
+        assertEquals(null, incomplete.totalTokens)
+    }
+
+    @Test
     fun accountPlanPayloadCarriesOnlyPreviewSupportedFields() {
         val input = service.buildOpenAiResponseInput("hi", emptyList(), SYSTEM, MODEL)
         val payload = service.buildOpenAiRequestPayload(
