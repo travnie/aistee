@@ -84,6 +84,36 @@ internal fun buildOpenAiToolDefinitions(tools: List<NativeToolDefinition>): Json
         }
     }
 
+/** The ChatGPT-plan route requires client function tools inside a namespace. */
+internal fun buildOpenAiPlanToolDefinitions(tools: List<NativeToolDefinition>): JsonArray =
+    buildJsonArray {
+        if (tools.isNotEmpty()) {
+            add(buildJsonObject {
+                put("type", "namespace")
+                put("name", "aistee")
+                put("description", "User-approved tools executed locally by Aistee.")
+                put("tools", buildOpenAiToolDefinitions(tools))
+            })
+        }
+    }
+
+/** Refuse a function call explicitly addressed to a different namespace. */
+internal fun parseOpenAiPlanToolCalls(
+    response: JsonObject,
+    json: Json = Json,
+): List<ParsedProviderToolCall> {
+    val output = response["output"] as? JsonArray ?: return emptyList()
+    output.mapNotNull { it as? JsonObject }.forEach { item ->
+        if (item["type"]?.jsonPrimitive?.contentOrNull == "function_call") {
+            val namespace = item["namespace"]?.jsonPrimitive?.contentOrNull
+            require(namespace == null || namespace == "aistee") {
+                "ChatGPT plan returned a function call outside Aistee's namespace"
+            }
+        }
+    }
+    return parseOpenAiToolCalls(response, json)
+}
+
 internal fun parseOpenAiToolCalls(
     response: JsonObject,
     json: Json = Json,
