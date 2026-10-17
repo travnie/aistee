@@ -89,8 +89,31 @@ internal suspend fun executeNativeChatSend(
                 ).also(onResponse)
             }
         }
-        // Fan-out on a plan: blank lets the engine pick from the account catalog, not the static default.
-        val model = if (planAuth != null && !isTarget) "" else requestedModel
+        // Resolve the subscribed account model before publishing deltas or tool receipts.
+        val model = if (planAuth != null && !isTarget) {
+            val accountModel = try {
+                aiChatService.fetchChatGptPlanModels(planAuth).firstOrNull()?.slug
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            if (accountModel == null) {
+                return NativeChatGeneratedResponse(
+                    provider = provider,
+                    model = requestedModel,
+                    message = ModelChatMessage(
+                        id = "msg_${System.currentTimeMillis()}_${provider.id}",
+                        sender = "assistant",
+                        provider = provider,
+                        modelName = requestedModel,
+                        text = "⚠️ Couldn't resolve this ChatGPT plan account's models.",
+                        isError = true,
+                    ),
+                ).also(onResponse)
+            }
+            accountModel
+        } else requestedModel
         // The plan route reuses Aistee's consent-gated native tools with namespaced definitions.
         val providerTools = when (provider.runtimeCapabilities().clientToolCallingStrategy) {
             ClientToolCallingStrategy.GEMINI_FUNCTIONS,
