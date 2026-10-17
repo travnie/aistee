@@ -66,8 +66,8 @@ internal fun openExternalUri(context: Context, uri: Uri): Boolean {
     }
     val error = runCatching { context.startActivity(intent) }.exceptionOrNull() ?: return true
     when (error) {
-        is ActivityNotFoundException -> Log.w(WEBVIEW_LOG_TAG, "External URI handler unavailable", error)
-        is SecurityException -> Log.w(WEBVIEW_LOG_TAG, "External URI launch rejected", error)
+        is ActivityNotFoundException -> Log.w(WEBVIEW_LOG_TAG, "External URI handler unavailable")
+        is SecurityException -> Log.w(WEBVIEW_LOG_TAG, "External URI launch rejected")
         else -> throw error
     }
     return false

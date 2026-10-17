@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import ais.tee.ui.viewmodel.StudioViewModel
@@ -16,6 +17,7 @@ import ais.tee.ui.viewmodel.StudioViewModel
 internal enum class StudioToolsSection {
     SKILLS,
     BENCHES,
+    AGENTS,
     JOBS,
     PRIVACY
 }
@@ -31,6 +33,7 @@ internal enum class StudioToolsSection {
 @Composable
 fun SkillsBrowserScreen(viewModel: StudioViewModel) {
     var section by rememberSaveable { mutableStateOf(StudioToolsSection.SKILLS) }
+    val stateHolder = rememberSaveableStateHolder()
 
     Column(modifier = Modifier.fillMaxSize()) {
         PrimaryTabRow(selectedTabIndex = section.ordinal) {
@@ -43,6 +46,7 @@ fun SkillsBrowserScreen(viewModel: StudioViewModel) {
                             when (candidate) {
                                 StudioToolsSection.SKILLS -> "Skills"
                                 StudioToolsSection.BENCHES -> "Benches"
+                                StudioToolsSection.AGENTS -> "Agents"
                                 StudioToolsSection.JOBS -> "Jobs"
                                 StudioToolsSection.PRIVACY -> "Privacy"
                             }
@@ -60,6 +64,9 @@ fun SkillsBrowserScreen(viewModel: StudioViewModel) {
             StudioToolsSection.BENCHES -> BenchToolsScreen(
                 modifier = Modifier.weight(1f)
             )
+            StudioToolsSection.AGENTS -> stateHolder.SaveableStateProvider("claude-code") {
+                ClaudeCodeHandoffPanel(modifier = Modifier.weight(1f))
+            }
             StudioToolsSection.JOBS -> AsyncJobsPanel(
                 viewModel = viewModel,
                 modifier = Modifier.weight(1f)
