@@ -129,15 +129,20 @@ class ChatGptPlanRouteTest {
     }
 
     @Test
-    fun toolsAreRefusedWithoutSimulationOrApiKeyFallback() = runBlocking {
-        val reply = service.generateResponse(
-            prompt = "hi",
-            provider = AiProvider.CHATGPT,
-            modelName = MODEL,
-            apiKeys = ais.tee.data.model.ApiKeyConfig(openAiKey = "sk-should-not-be-used"),
-            systemInstruction = null,
-            profile = null,
-            tools = listOf(
+    fun boundPlanWithToolsStillFailsClosedWhenAccountIsUnavailable() = runBlocking {
+        val responses = executeNativeChatSend(
+            request = NativeChatSendRequest(
+                prompt = "hi",
+                targetProvider = AiProvider.CHATGPT,
+                providersToRun = listOf(AiProvider.CHATGPT),
+                selectedModel = MODEL,
+                apiKeys = ais.tee.data.model.ApiKeyConfig(openAiKey = "sk-should-not-be-used"),
+                systemInstruction = null,
+                profile = null,
+                conversationHistory = emptyList(),
+                allowSingleProviderSimulationFallback = true,
+                chatGptPlanClientId = "oaiapp_a",
+                tools = listOf(
                 ais.tee.data.model.NativeToolDefinition(
                     name = "noop",
                     description = "noop",
@@ -146,12 +151,15 @@ class ChatGptPlanRouteTest {
                     },
                 ),
             ),
-            executeTool = { error("not called") },
-            chatGptPlan = auth,
+                executeTool = { error("must not run without plan account") },
+            ),
+            aiChatService = service,
+            chatGptPlanTokens = { throw ChatGptPlanUnavailable(ChatGptPlanUnavailable.Reason.SIGNED_OUT) },
         )
+        val reply = responses.single().message
         assertTrue(reply.isError)
         assertFalse(reply.isSimulated)
-        assertTrue(reply.text.contains("Tools aren't available"))
+        assertTrue(reply.text.contains("signed out"))
     }
 
     @Test
