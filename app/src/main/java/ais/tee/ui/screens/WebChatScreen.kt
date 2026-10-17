@@ -178,6 +178,26 @@ fun WebChatScreen(
         focusManager.clearFocus()
         keyboard?.hide()
     }
+    // pushState/replaceState in a SPA do not consistently trigger WebViewClient callbacks.
+    // Watch only while Find is visible; never retain or log the provider URL.
+    LaunchedEffect(findSession) {
+        val activeSearch = findSession ?: return@LaunchedEffect
+        while (findSession === activeSearch) {
+            delay(300L)
+            val webView = activeSearch.webView
+            if (webView.url?.let { it != activeSearch.pageUrl } == true) {
+                closeFindInPage()
+                break
+            }
+            webView.evaluateJavascript("window.location.href") { observed ->
+                if (findSession === activeSearch && observed != "null" &&
+                    observed != org.json.JSONObject.quote(activeSearch.pageUrl.orEmpty())
+                ) {
+                    closeFindInPage()
+                }
+            }
+        }
+    }
     val navigationSuiteType = NavigationSuiteScaffoldDefaults.navigationSuiteType(
         currentWindowAdaptiveInfoV2()
     )
