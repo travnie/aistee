@@ -211,7 +211,13 @@ internal fun buildClaudeMetadataHttpClient(baseClient: OkHttpClient): OkHttpClie
         .callTimeout(CLAUDE_METADATA_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
-class AiChatService {
+class AiChatService(
+    private val httpClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .build(),
+) {
 
     private data class GeminiGenerationResult(
         val text: String,
@@ -255,11 +261,6 @@ class AiChatService {
         val credentialFingerprint: String
     )
 
-    private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
-        .build()
 
     private val streamingHttpClient: OkHttpClient = httpClient.newBuilder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
