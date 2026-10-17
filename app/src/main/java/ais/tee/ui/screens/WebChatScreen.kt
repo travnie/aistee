@@ -178,33 +178,38 @@ fun WebChatScreen(
         focusManager.clearFocus()
         keyboard?.hide()
     }
-    // SPA pushState/replaceState may not trigger a WebViewClient navigation callback.
-    // Poll only the active Find overlay; never retain, export, or log page URLs.
+    // SPA pushState/replaceState may not trigger WebViewClient navigation callbacks.
+    // Compare successive JS locations only while Find is active, never the two JSON encodings.
     val webChatActive by rememberUpdatedState(isActive)
     LaunchedEffect(findSession, isActive) {
         if (!isActive) return@LaunchedEffect
         val activeSearch = findSession ?: return@LaunchedEffect
-        var baselineUrl = activeSearch.pageUrl
+        var stableLocation: String? = null
+        var candidateLocation: String? = null
+        var candidateReads = 0
         while (findSession === activeSearch && webChatActive) {
-            delay(300L)
-            val webView = activeSearch.webView
-            val currentWebViewUrl = webView.url
-            if (baselineUrl == null) baselineUrl = currentWebViewUrl
-            val expectedUrl = baselineUrl ?: continue
-            if (currentWebViewUrl != null && currentWebViewUrl != expectedUrl) {
-                closeFindInPage()
-                break
-            }
-            webView.evaluateJavascript("window.location.href") { observed ->
-                val observedUrl = runCatching {
-                    org.json.JSONTokener(observed).nextValue() as? String
-                }.getOrNull()
-                if (webChatActive && findSession === activeSearch &&
-                    observedUrl != null && observedUrl != expectedUrl
-                ) {
-                    closeFindInPage()
+            activeSearch.webView.evaluateJavascript("window.location.href") { observed ->
+                if (webChatActive && findSession === activeSearch) {
+                    val location = runCatching {
+                        org.json.JSONTokener(observed).nextValue() as? String
+                    }.getOrNull()
+                    if (location != null) {
+                        if (stableLocation == null || activeSearch.query.isBlank()) {
+                            stableLocation = location
+                            candidateLocation = null
+                            candidateReads = 0
+                        } else if (location != stableLocation) {
+                            candidateReads = if (candidateLocation == location) candidateReads + 1 else 1
+                            candidateLocation = location
+                            if (candidateReads >= 2) closeFindInPage()
+                        } else {
+                            candidateLocation = null
+                            candidateReads = 0
+                        }
+                    }
                 }
             }
+            delay(300L)
         }
     }
     val navigationSuiteType = NavigationSuiteScaffoldDefaults.navigationSuiteType(
