@@ -28,6 +28,7 @@ Android also accepts shared text, images and application files. Web content is s
 | --- | --- | --- | --- | --- | --- |
 | ChatGPT Web | Full | Provider WebView | Yes | Generating + unread | Persistent session; mobile/desktop mode; Codex Cloud shortcut |
 | Claude Web | Full | Provider WebView | Yes | Generating + unread | Persistent session |
+| Claude Code (official app) | External handoff | Claude-owned app/site | Via Claude | Not tracked by Aistee | Studio Tools → Agents; optional plan/code task, GitHub repo + branch, explicit confirmation, no token proxy |
 | Gemini Chat Web | Partial | Fresh Google OAuth may reject embedded user-agents | Yes | Generating + unread | Existing sessions work; embedded OAuth is provider-limited |
 | DeepSeek Web | Full | Provider WebView | Yes | Generating + unread | Persistent session |
 | Kimi Web | Full | Provider WebView | Yes | Generating + unread | Persistent session |
