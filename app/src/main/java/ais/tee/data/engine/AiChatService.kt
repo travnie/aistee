@@ -1073,7 +1073,8 @@ class AiChatService {
                 profile = profile,
                 conversationHistory = conversationHistory,
                 onTextDelta = onTextDelta,
-                toolsOffered = tools.isNotEmpty(),
+                tools = tools,
+                executeTool = executeTool,
             )
         }
         if (tools.isNotEmpty()) {
@@ -1279,7 +1280,8 @@ class AiChatService {
         profile: Profile?,
         conversationHistory: List<ModelChatMessage>,
         onTextDelta: ((String) -> Unit)?,
-        toolsOffered: Boolean,
+        tools: List<NativeToolDefinition>,
+        executeTool: (suspend (NativeToolCall) -> NativeToolResult)?,
     ): ModelChatMessage {
         val startTime = System.currentTimeMillis()
         var model = requestedModel.orEmpty()
@@ -1296,10 +1298,7 @@ class AiChatService {
             activeProfileNotes = extractProfileNotes(profile),
             providerReplayState = result?.replayState,
         )
-        // Function tools need the namespaced format on this route; not wired yet.
-        if (toolsOffered) {
-            return reply("⚠️ Tools aren't available in ChatGPT plan chats yet. Turn tools off for this chat.", true)
-        }
+
         if (requestedModel == null) {
             model = try {
                 fetchChatGptPlanModels(auth).firstOrNull()?.slug
@@ -1310,17 +1309,31 @@ class AiChatService {
             } ?: return reply("⚠️ This ChatGPT account lists no models.", true)
         }
         return try {
-            val result = callOpenAiStreamApi(
-                prompt = prompt,
-                model = model,
-                apiKey = auth.accessToken,
-                systemInstruction = systemInstruction,
-                conversationHistory = conversationHistory,
-                onTextDelta = onTextDelta ?: {},
-                apiProcessingMode = ApiProcessingMode.AUTO,
-                executionSource = ProviderExecutionSource.ACCOUNT_PLAN,
-                replayScope = chatGptPlanReplayScope(auth.clientId),
-            )
+            val result = if (tools.isEmpty()) {
+                callOpenAiStreamApi(
+                    prompt = prompt,
+                    model = model,
+                    apiKey = auth.accessToken,
+                    systemInstruction = systemInstruction,
+                    conversationHistory = conversationHistory,
+                    onTextDelta = onTextDelta ?: {},
+                    apiProcessingMode = ApiProcessingMode.AUTO,
+                    executionSource = ProviderExecutionSource.ACCOUNT_PLAN,
+                    replayScope = chatGptPlanReplayScope(auth.clientId),
+                )
+            } else {
+                callOpenAiPlanToolApi(
+                    prompt = prompt,
+                    model = model,
+                    accessToken = auth.accessToken,
+                    systemInstruction = systemInstruction,
+                    conversationHistory = conversationHistory,
+                    onTextDelta = onTextDelta ?: {},
+                    replayScope = chatGptPlanReplayScope(auth.clientId),
+                    tools = tools,
+                    executeTool = checkNotNull(executeTool),
+                )
+            }
             reply(result.text, false, result)
         } catch (e: Exception) {
             currentCoroutineContext().ensureActive()
@@ -2552,6 +2565,86 @@ class AiChatService {
             replayState = replayState,
             usage = usage
         )
+    }
+
+    /** Namespaced client function tools run on Android using the existing consent and receipt boundary. */
+    private suspend fun callOpenAiPlanToolApi(
+        prompt: String,
+        model: String,
+        accessToken: String,
+        systemInstruction: String?,
+        conversationHistory: List<ModelChatMessage>,
+        onTextDelta: (String) -> Unit,
+        replayScope: String,
+        tools: List<NativeToolDefinition>,
+        executeTool: suspend (NativeToolCall) -> NativeToolResult,
+    ): OpenAiGenerationResult {
+        val input = buildOpenAiResponseInput(
+            prompt = prompt,
+            conversationHistory = conversationHistory,
+            systemInstruction = systemInstruction,
+            modelName = model,
+            replayScope = replayScope,
+        ).toMutableList()
+        val replayItems = mutableListOf<JsonObject>()
+        val definitions = buildOpenAiPlanToolDefinitions(tools)
+        var usage: ProviderUsage? = null
+        val visibleText = StringBuilder()
+
+        repeat(MAX_NATIVE_TOOL_ROUNDS) { round ->
+            val basePayload = buildOpenAiRequestPayload(
+                model = model,
+                stream = true,
+                systemInstruction = systemInstruction,
+                input = JsonArray(input),
+                executionSource = ProviderExecutionSource.ACCOUNT_PLAN,
+            )
+            val payload = JsonObject(basePayload + ("tools" to definitions))
+            val request = Request.Builder()
+                .url(OPENAI_RESPONSES_API_URL)
+                .addHeader(HEADER_AUTHORIZATION, bearerToken(accessToken))
+                .addHeader(HEADER_CONTENT_TYPE, JSON_MEDIA_TYPE)
+                .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
+                .build()
+            var completedResponse: JsonObject? = null
+            val roundText = executeSse(
+                request = request,
+                extractText = ::extractOpenAiStreamText,
+                isComplete = ::isOpenAiStreamComplete,
+                onTextDelta = onTextDelta,
+                onEvent = { event ->
+                    if (isOpenAiStreamComplete(event)) {
+                        completedResponse = event[STREAM_RESPONSE_KEY] as? JsonObject
+                    }
+                    usage = mergeProviderUsage(usage, extractOpenAiCompletedUsage(event))
+                },
+            )
+            visibleText.append(roundText)
+            val completed = completedResponse ?: throw IOException("ChatGPT plan response has no completed output")
+            val output = (completed[JSON_OUTPUT_KEY] as? JsonArray)
+                ?.mapNotNull { it as? JsonObject }
+                ?: throw IOException("ChatGPT plan response is missing output")
+            replayItems += output
+            val calls = parseOpenAiPlanToolCalls(completed, json)
+            if (calls.isEmpty()) {
+                val state = encodeOpenAiReplayState(replayItems)
+                    ?.let { scopeOpenAiReplayState(it, replayScope) }
+                return OpenAiGenerationResult(
+                    text = visibleText.toString().ifEmpty { "Received empty message content from OpenAI." },
+                    replayState = state,
+                    usage = usage,
+                )
+            }
+            if (round == MAX_NATIVE_TOOL_ROUNDS - 1) {
+                throw IOException("ChatGPT plan exceeded the local tool-call round limit")
+            }
+            input += output
+            val results = executeNativeToolBatch(calls, tools, executeTool)
+            val resultItems = buildOpenAiToolResultItems(results).mapNotNull { it as? JsonObject }
+            input += resultItems
+            replayItems += resultItems
+        }
+        throw IOException("ChatGPT plan tool-call loop ended unexpectedly")
     }
 
     private suspend fun callClaudeStreamApi(
