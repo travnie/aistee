@@ -91,8 +91,8 @@ internal suspend fun executeNativeChatSend(
         }
         // Fan-out on a plan: blank lets the engine pick from the account catalog, not the static default.
         val model = if (planAuth != null && !isTarget) "" else requestedModel
-        // Plan route: client tools need the namespaced format, not wired yet; reply without them.
-        val providerTools = if (planAuth != null) emptyList() else when (provider.runtimeCapabilities().clientToolCallingStrategy) {
+        // The plan route reuses Aistee's consent-gated native tools with namespaced definitions.
+        val providerTools = when (provider.runtimeCapabilities().clientToolCallingStrategy) {
             ClientToolCallingStrategy.GEMINI_FUNCTIONS,
             ClientToolCallingStrategy.OPENAI_RESPONSES_FUNCTIONS,
             ClientToolCallingStrategy.ANTHROPIC_CLIENT_TOOLS -> request.tools
