@@ -2622,6 +2622,7 @@ class AiChatService {
                 .post(payload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType()))
                 .build()
             var completedResponse: JsonObject? = null
+            var roundUsage: ProviderUsage? = null
             val roundText = executeSse(
                 request = request,
                 extractText = ::extractOpenAiStreamText,
@@ -2631,9 +2632,14 @@ class AiChatService {
                     if (isOpenAiStreamComplete(event)) {
                         completedResponse = event[STREAM_RESPONSE_KEY] as? JsonObject
                     }
-                    usage = mergeProviderUsage(usage, extractOpenAiCompletedUsage(event))
+                    roundUsage = mergeProviderUsage(roundUsage, extractOpenAiCompletedUsage(event))
                 },
             )
+            if (roundUsage == null) {
+                allRoundsReportedUsage = false
+            } else if (allRoundsReportedUsage) {
+                usage = usage?.let { sumCompletedPlanToolUsage(it, checkNotNull(roundUsage)) } ?: roundUsage
+            }
             visibleText.append(roundText)
             val completed = completedResponse ?: throw IOException("ChatGPT plan response has no completed output")
             val output = (completed[JSON_OUTPUT_KEY] as? JsonArray)
