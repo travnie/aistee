@@ -15,9 +15,8 @@ class ClaudeCodeHandoffTest {
             branch = "feat/agent-lab",
         )
         assertEquals(
-            "https://claude.ai/code?prompt=Plan%20the%20work%20before%20making%20changes.%0A%0A" +
-                "Preferred%20branch%3A%20feat%2Fagent-lab%0A%0AFix%20failing%20CI%20%26%20add%20tests" +
-                "&repositories=travnie%2Faistee",
+            "https://claude.ai/code/new?q=Fix%20failing%20CI%20%26%20add%20tests" +
+                "&mode=plan&repo=travnie%2Faistee&branch=feat%2Fagent-lab",
             link,
         )
         assertFalse(link.contains("token"))
@@ -27,7 +26,7 @@ class ClaudeCodeHandoffTest {
     @Test
     fun codeModeAndNoRepositoryRemainValid() {
         assertEquals(
-            "https://claude.ai/code?prompt=Review%20a%20patch",
+            "https://claude.ai/code/new?q=Review%20a%20patch&mode=code",
             ClaudeCodeHandoff.newSessionUrl("  Review a patch  ", mode = ClaudeCodeHandoff.Mode.CODE),
         )
         assertEquals("claude://code", ClaudeCodeHandoff.SESSIONS_URL)
