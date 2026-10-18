@@ -34,7 +34,7 @@ import java.net.URLEncoder
 internal object ClaudeCodeHandoff {
     const val SESSIONS_URL = "claude://code"
     const val WEB_URL = "https://claude.ai/code"
-    private const val NEW_SESSION_URL = "https://claude.ai/code"
+    private const val NEW_SESSION_URL = "https://claude.ai/code/new"
     const val MAX_TASK_CHARS = 2_000
     private val ownerPattern = Regex("^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
     private val repoPattern = Regex("^[A-Za-z0-9._-]{1,100}$")
@@ -75,13 +75,11 @@ internal object ClaudeCodeHandoff {
         fun encode(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
         return buildString {
             append(NEW_SESSION_URL)
-            append("?prompt=").append(encode(buildString {
-                if (mode == Mode.PLAN) append("Plan the work before making changes.\n\n")
-                if (branch.isNotBlank()) append("Preferred branch: ").append(branch.trim()).append("\n\n")
-                append(task.trim())
-            }))
+            append("?q=").append(encode(task.trim()))
+            append("&mode=").append(mode.value)
             if (repository.isNotBlank()) {
-                append("&repositories=").append(encode(repository.trim()))
+                append("&repo=").append(encode(repository.trim()))
+                if (branch.isNotBlank()) append("&branch=").append(encode(branch.trim()))
             }
         }
     }
@@ -127,7 +125,7 @@ internal fun ClaudeCodeHandoffPanel(modifier: Modifier = Modifier) {
         OutlinedTextField(
             value = branch,
             onValueChange = { branch = it },
-            label = { Text("Preferred branch (prompt hint)") },
+            label = { Text("Branch (optional)") },
             enabled = repository.isNotBlank(),
             singleLine = true,
             modifier = Modifier.fillMaxWidth().testTag("claude_code_branch"),
@@ -146,10 +144,6 @@ internal fun ClaudeCodeHandoffPanel(modifier: Modifier = Modifier) {
                 "No local Aistee files or chats are attached.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            "Plan and branch are prompt hints. Confirm the actual mode and branch in Claude Code.",
-            style = MaterialTheme.typography.bodySmall,
         )
         Button(
             onClick = { confirmation = true },
