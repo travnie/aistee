@@ -69,6 +69,9 @@ import ais.tee.ui.viewmodel.StudioUiState
 import ais.tee.ui.viewmodel.StudioViewModel
 import ais.tee.web.ProviderDiagnosticsProbeResult
 import ais.tee.web.ProviderWebRegistry
+import ais.tee.web.WebUserTurnDirection
+import ais.tee.web.WebUserTurnJumpResult
+import ais.tee.web.jumpToWebUserTurn
 import ais.tee.web.StudioPromptApplyResult
 import ais.tee.web.probeProviderDiagnostics
 import ais.tee.web.providerDiagnosticsHost
@@ -903,6 +906,42 @@ fun WebChatScreen(
         refreshProviderDiagnostics()
     }
 
+    fun jumpWebUserTurn(direction: WebUserTurnDirection) {
+        val service = selectedService
+        val webView = activeWebView ?: return
+        // Reassert the least-privilege invariant at this sensitive WebView entry point.
+        // The renderer is already initialized with these settings disabled.
+        webView.settings.allowContentAccess = false
+        webView.settings.allowFileAccess = false
+        val requestedUrl = webView.url
+        val requestedRevision = documentRevisions[service] ?: 0
+        closeFindInPage()
+        jumpToWebUserTurn(webView, service, direction) { result ->
+            // Ignore callbacks from switched providers, evicted renderers or SPA navigation.
+            if (!currentIsActive || selectedService != service ||
+                webViewMap[service] !== webView ||
+                (documentRevisions[service] ?: 0) != requestedRevision ||
+                requestedUrl == null || requestedUrl != webView.url
+            ) return@jumpToWebUserTurn
+
+            val message = when (result) {
+                WebUserTurnJumpResult.MOVED -> null
+                WebUserTurnJumpResult.NO_TURNS ->
+                    "No user turns detected in this provider page."
+                WebUserTurnJumpResult.BOUNDARY -> if (direction == WebUserTurnDirection.PREVIOUS) {
+                    "No earlier user turn in this conversation."
+                } else {
+                    "No later user turn in this conversation."
+                }
+                WebUserTurnJumpResult.OFF_PROVIDER ->
+                    "Open a supported provider conversation first."
+                WebUserTurnJumpResult.FAILED ->
+                    "Conversation navigation is not supported on this page."
+            }
+            if (message != null) viewModel.showSnackbar(message)
+        }
+    }
+
     fun applyStudioPrompt() {
         val prompt = studioPrompt ?: run {
             viewModel.showSnackbar("No Studio instructions are active.")
@@ -1174,6 +1213,8 @@ fun WebChatScreen(
                                 closeFindInPage()
                                 activeWebView?.let { findSession = WebFindInPageSession(it) }
                             },
+                            onPreviousUserTurn = { jumpWebUserTurn(WebUserTurnDirection.PREVIOUS) },
+                            onNextUserTurn = { jumpWebUserTurn(WebUserTurnDirection.NEXT) },
                             onToggleDesktopMode = {
                                 val service = selectedService
                                 val currentMode = pendingDesktopModes[service] ?: isDesktopMode
@@ -1699,6 +1740,8 @@ private fun WebChatToolbar(
     onShowSignInHelp: () -> Unit,
     onClearProviderSessions: () -> Unit,
     onFindInPage: () -> Unit,
+    onPreviousUserTurn: () -> Unit,
+    onNextUserTurn: () -> Unit,
     onToggleDesktopMode: () -> Unit,
     onShowSnackbar: (String) -> Unit
 ) {
@@ -1799,6 +1842,32 @@ private fun WebChatToolbar(
                             },
                             modifier = Modifier.testTag("btn_web_find")
                         )
+                        if (ProviderWebRegistry.turnAnchors(selectedService) != null) {
+                            DropdownMenuItem(
+                                text = { Text("Previous user turn (beta)") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = null)
+                                },
+                                enabled = activeWebView != null,
+                                onClick = {
+                                    menuExpanded = false
+                                    onPreviousUserTurn()
+                                },
+                                modifier = Modifier.testTag("btn_web_turn_previous")
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Next user turn (beta)") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
+                                },
+                                enabled = activeWebView != null,
+                                onClick = {
+                                    menuExpanded = false
+                                    onNextUserTurn()
+                                },
+                                modifier = Modifier.testTag("btn_web_turn_next")
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Back") },
                             leadingIcon = { Icon(Icons.Default.ArrowBack, contentDescription = null) },
