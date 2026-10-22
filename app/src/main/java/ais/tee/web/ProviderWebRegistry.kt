@@ -7,7 +7,9 @@ import java.net.URI
 
 /**
  * Candidate selectors for conversation turns on a loaded provider page. They are unverified until
- * provider diagnostics confirms non-zero counts on device; no feature may rely on them before that.
+ * provider diagnostics confirms non-zero counts on device. Automated features must not assume
+ * these selectors work. Explicit user-triggered, current-page actions may check live visible
+ * matches and fail closed without treating the candidates as verified provider capabilities.
  * [stableIdAttribute] names an attribute whose presence (never its value) diagnostics counts.
  */
 internal data class ProviderTurnAnchors(
