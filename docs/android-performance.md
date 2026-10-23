@@ -13,7 +13,7 @@ Aistee keeps Android performance tests in the `:benchmark` module.
 
 Regenerate Baseline Profiles when changing startup, covered Web provider switching, native chat list/detail/scroll journeys, the profile generator, or release/R8 configuration. Documentation-only and unrelated changes do not need this step.
 
-With a connected API 33+ device or emulator (CI uses API 36), run from the repository root:
+With a connected API 33+ device or emulator (CI uses API 36 with external WebView requests blocked for deterministic performance measurements), run from the repository root:
 
 ```bash
 ./gradlew :app:generateBaselineProfile \
