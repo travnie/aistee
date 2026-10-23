@@ -59,9 +59,21 @@ jobs:
       - name: Verify Baseline Profile and Macrobenchmark journeys
         uses: ./.github/actions/run-android-emulator
         with:
+          # Keep the same Android 16 image as smoke CI; control third-party WebView traffic below.
+          api-level: "36"
+          emulator-options: -no-snapshot -no-window -gpu software -noaudio -no-boot-anim -camera-back none
+          snapshot-emulator-options: -no-window -gpu software -noaudio -no-boot-anim -camera-back none
+          cache-key-suffix: -performance-software
           script: |
-            ./gradlew :app:generateBaselineProfile -Pandroidx.baselineprofile.forceonlyconnecteddevices -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.benchmark.BaselineProfileGenerator -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile --stacktrace
-            ./gradlew :benchmark:connectedBenchmarkReleaseAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.benchmark.StartupBenchmark,ais.tee.benchmark.ProviderSwitchBenchmark,ais.tee.benchmark.NativeChatBenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=Macrobenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.dryRunMode.enable=true -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR --stacktrace
+            # Third-party ChatGPT/Claude pages are live and non-deterministic. The profile
+            # measures Aistee's WebView switches, not their remote page-rendering cost.
+            # Make WebViews fail fast offline, without altering ADB or app code.
+            adb shell settings put global http_proxy 127.0.0.1:9
+            test "$(adb shell settings get global http_proxy | tr -d '\r')" = "127.0.0.1:9"
+            # The emulator runner invokes each line in its own shell.
+            # Keep Gradle bounded so the emulator and WebView can use runner RAM.
+            ./gradlew -Dorg.gradle.jvmargs="-Xmx1536m -Dfile.encoding=UTF-8" -Pkotlin.daemon.jvmargs=-Xmx1024m --max-workers=2 --no-parallel :app:generateBaselineProfile -Pandroidx.baselineprofile.forceonlyconnecteddevices -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.benchmark.BaselineProfileGenerator -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile --stacktrace || { rc=$?; echo "Performance runner memory:"; free -h; cat /sys/fs/cgroup/memory.events || true; adb devices -l || true; exit "$rc"; }
+            ./gradlew -Dorg.gradle.jvmargs="-Xmx1536m -Dfile.encoding=UTF-8" -Pkotlin.daemon.jvmargs=-Xmx1024m --max-workers=2 --no-parallel :benchmark:connectedBenchmarkReleaseAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.benchmark.StartupBenchmark,ais.tee.benchmark.ProviderSwitchBenchmark,ais.tee.benchmark.NativeChatBenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=Macrobenchmark -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.dryRunMode.enable=true -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR --stacktrace || { rc=$?; echo "Performance runner memory:"; free -h; cat /sys/fs/cgroup/memory.events || true; adb devices -l || true; exit "$rc"; }
 
       - name: Upload performance test reports
         if: always()

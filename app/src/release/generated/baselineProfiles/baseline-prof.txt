@@ -899,6 +899,8 @@ Lais/tee/ui/screens/WebChatObservationPolicyKt;
 SPLais/tee/ui/screens/WebChatObservationPolicyKt;->nextObservedWebChatActivityStatus(Lais/tee/data/model/WebChatActivityStatus;Lais/tee/data/model/WebChatGenerationObservation;ZZ)Lais/tee/data/model/WebChatActivityStatus;
 SPLais/tee/ui/screens/WebChatObservationPolicyKt;->shouldApplyWebChatObservation(Lais/tee/data/model/WebChatGenerationObservation;ZZZ)Z
 SPLais/tee/ui/screens/WebChatObservationPolicyKt;->shouldProbeWebChatActivity(ZZI)Z
+Lais/tee/ui/screens/WebChatScreenKt$WebChatScreen$webChatContent$1$1$1$11$1;
+SPLais/tee/ui/screens/WebChatScreenKt$WebChatScreen$webChatContent$1$1$1$11$1;-><init>(Ljava/lang/Object;)V
 Lais/tee/ui/screens/WebChatScreenKt;
 SPLais/tee/ui/screens/WebChatScreenKt;->$r8$lambda$-4wXxNAvn_4iOZ8UZhPruXuprdY(ZLais/tee/data/model/WebAiService;JLandroidx/compose/runtime/Composer;I)Lkotlin/Unit;
 SPLais/tee/ui/screens/WebChatScreenKt;->$r8$lambda$0Z8b5RDvxHjQC_0xty8y7W9wy3w(ZLais/tee/data/model/WebAiService;ZZZLandroidx/compose/runtime/MutableState;Landroidx/compose/runtime/MutableState;Landroidx/compose/runtime/MutableState;Landroid/webkit/WebView;)Lkotlin/Unit;
@@ -1503,6 +1505,11 @@ Lais/tee/web/StudioPromptBridgeKt;
 SPLais/tee/web/StudioPromptBridgeKt;->editableFinderScript()Ljava/lang/String;
 SPLais/tee/web/StudioPromptBridgeKt;->installStudioPromptTargetTracker(Landroid/webkit/WebView;Lais/tee/data/model/WebAiService;Ljava/lang/String;)V
 SPLais/tee/web/StudioPromptBridgeKt;->studioPromptTargetTrackerScript(Lais/tee/data/model/WebAiService;Ljava/lang/String;)Ljava/lang/String;
+Lais/tee/web/WebUserTurnJumpResult;
+SPLais/tee/web/WebUserTurnJumpResult;->$values()[Lais/tee/web/WebUserTurnJumpResult;
+SPLais/tee/web/WebUserTurnJumpResult;-><clinit>()V
+SPLais/tee/web/WebUserTurnJumpResult;-><init>(Ljava/lang/String;I)V
+SPLais/tee/web/WebUserTurnJumpResult;->values()[Lais/tee/web/WebUserTurnJumpResult;
 Lais/tee/widget/AisteeWidget;
 SPLais/tee/widget/AisteeWidget;-><clinit>()V
 SPLais/tee/widget/AisteeWidget;-><init>()V
@@ -21539,8 +21546,12 @@ SPLais/tee/data/model/ProviderRuntimeCapabilitiesKt;->supportedApiProcessingMode
 SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$-1804626649$app()Lkotlin/jvm/functions/Function2;
 SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$1798209196$app()Lkotlin/jvm/functions/Function2;
 SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$1835574369$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$-1219046535$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$1137943871$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$310090308$app()Lkotlin/jvm/functions/Function2;
 SPLais/tee/ui/screens/WebChatScreenKt$WebChatScreen$webChatContent$1$1$1$9$1;-><init>(Ljava/lang/Object;)V
 SPLais/tee/ui/screens/WebChatScreenKt;->WebChatToolbar(Landroid/webkit/WebView;Lais/tee/data/model/WebAiService;Lais/tee/data/model/WebChatActivityStatus;Landroid/graphics/Bitmap;Ljava/lang/String;ZZZZIZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
+SPLais/tee/ui/screens/WebChatScreenKt;->WebChatToolbar(Landroid/webkit/WebView;Lais/tee/data/model/WebAiService;Lais/tee/data/model/WebChatActivityStatus;Landroid/graphics/Bitmap;Ljava/lang/String;ZZZZIZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;III)V
 SPLais/tee/AisteeApplication;-><clinit>()V
 SPLais/tee/AisteeApplication;-><init>()V
 SPLais/tee/AisteeApplication;->onCreate()V

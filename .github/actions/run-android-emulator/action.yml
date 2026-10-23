@@ -22,6 +22,21 @@ inputs:
     required: false
     default: "aistee-ci"
 
+  emulator-options:
+    description: Override runtime emulator options (for example, a cold boot for performance checks).
+    required: false
+    default: "-no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none"
+
+  snapshot-emulator-options:
+    description: Emulator options when creating an AVD on a cache miss.
+    required: false
+    default: "-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none"
+
+  cache-key-suffix:
+    description: Isolate incompatible AVD caches without changing the default cache key.
+    required: false
+    default: ""
+
 runs:
   using: composite
   steps:
@@ -39,7 +54,7 @@ runs:
         path: |
           ~/.android/avd/*
           ~/.android/adb*
-        key: android-avd-${{ runner.os }}-${{ inputs.api-level }}-${{ inputs.arch }}-${{ inputs.target }}-runner-v2.38.0-v1
+        key: android-avd-${{ runner.os }}-${{ inputs.api-level }}-${{ inputs.arch }}-${{ inputs.target }}-runner-v2.38.0-v1${{ inputs.cache-key-suffix }}
 
     - name: Create cached AVD snapshot
       if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -51,7 +66,7 @@ runs:
         avd-name: ${{ inputs.avd-name }}
         force-avd-creation: false
         disable-animations: false
-        emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+        emulator-options: ${{ inputs.snapshot-emulator-options }}
         script: echo "Generated reusable AVD snapshot."
 
     - name: Save clean Android AVD snapshot
@@ -72,5 +87,5 @@ runs:
         avd-name: ${{ inputs.avd-name }}
         force-avd-creation: false
         disable-animations: true
-        emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+        emulator-options: ${{ inputs.emulator-options }}
         script: ${{ inputs.script }}
