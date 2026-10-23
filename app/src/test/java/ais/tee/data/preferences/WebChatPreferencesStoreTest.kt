@@ -23,6 +23,17 @@ class WebChatPreferencesStoreTest {
     }
 
     @Test
+    fun disabledTurnNavigationIdsResolveByProviderAndIgnoreUnknownEntries() {
+        assertEquals(
+            linkedSetOf(WebAiService.CHATGPT, WebAiService.GEMINI),
+            resolveDisabledTurnNavigationServices(
+                setOf("gemini", "CHATGPT", "retired-provider")
+            )
+        )
+        assertEquals(emptySet<WebAiService>(), resolveDisabledTurnNavigationServices(emptySet()))
+    }
+
+    @Test
     fun preferredIdentityMethodResolvesCaseInsensitivelyAndRejectsUnknownValues() {
         assertEquals(
             ProviderIdentityMethod.GITHUB,

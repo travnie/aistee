@@ -14,6 +14,12 @@ internal enum class WebUserTurnJumpResult {
     FAILED
 }
 
+/** Provider-scoped opt-out for experimental, user-triggered navigation. */
+internal fun webUserTurnNavigationEnabled(
+    service: WebAiService,
+    disabledServices: Set<WebAiService>
+): Boolean = ProviderWebRegistry.turnAnchors(service) != null && service !in disabledServices
+
 /**
  * The registry contains candidate selectors, not an assertion of compatibility. On each user
  * action, verify visible matching nodes in the loaded document and fail closed if none match.

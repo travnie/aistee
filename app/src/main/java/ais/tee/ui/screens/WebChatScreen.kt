@@ -72,6 +72,7 @@ import ais.tee.web.ProviderWebRegistry
 import ais.tee.web.WebUserTurnDirection
 import ais.tee.web.WebUserTurnJumpResult
 import ais.tee.web.jumpToWebUserTurn
+import ais.tee.web.webUserTurnNavigationEnabled
 import ais.tee.web.StudioPromptApplyResult
 import ais.tee.web.probeProviderDiagnostics
 import ais.tee.web.providerDiagnosticsHost
@@ -223,6 +224,9 @@ fun WebChatScreen(
     var showSignInHelp by remember(selectedService, isActive) { mutableStateOf(false) }
     val webPreferences = remember(context.applicationContext) {
         WebChatPreferencesStore(context.applicationContext)
+    }
+    var disabledTurnNavigationServices by remember {
+        mutableStateOf(webPreferences.loadDisabledTurnNavigationServices())
     }
     var preferredIdentityMethod by remember { mutableStateOf(webPreferences.loadPreferredIdentityMethod()) }
     val browserLaunchFailure = stringResource(R.string.web_sign_in_browser_failure)
@@ -908,6 +912,7 @@ fun WebChatScreen(
 
     fun jumpWebUserTurn(direction: WebUserTurnDirection) {
         val service = selectedService
+        if (!webUserTurnNavigationEnabled(service, disabledTurnNavigationServices)) return
         val webView = activeWebView ?: return
         // Reassert the least-privilege invariant at this sensitive WebView entry point.
         // The renderer is already initialized with these settings disabled.
@@ -1212,6 +1217,21 @@ fun WebChatScreen(
                             onFindInPage = {
                                 closeFindInPage()
                                 activeWebView?.let { findSession = WebFindInPageSession(it) }
+                            },
+                            turnNavigationEnabled = webUserTurnNavigationEnabled(
+                                selectedService, disabledTurnNavigationServices
+                            ),
+                            onToggleTurnNavigation = {
+                                val service = selectedService
+                                disabledTurnNavigationServices =
+                                    if (service in disabledTurnNavigationServices) {
+                                        disabledTurnNavigationServices - service
+                                    } else {
+                                        disabledTurnNavigationServices + service
+                                    }
+                                webPreferences.saveDisabledTurnNavigationServices(
+                                    disabledTurnNavigationServices
+                                )
                             },
                             onPreviousUserTurn = { jumpWebUserTurn(WebUserTurnDirection.PREVIOUS) },
                             onNextUserTurn = { jumpWebUserTurn(WebUserTurnDirection.NEXT) },
@@ -1740,6 +1760,8 @@ private fun WebChatToolbar(
     onShowSignInHelp: () -> Unit,
     onClearProviderSessions: () -> Unit,
     onFindInPage: () -> Unit,
+    turnNavigationEnabled: Boolean,
+    onToggleTurnNavigation: () -> Unit,
     onPreviousUserTurn: () -> Unit,
     onNextUserTurn: () -> Unit,
     onToggleDesktopMode: () -> Unit,
@@ -1843,6 +1865,22 @@ private fun WebChatToolbar(
                             modifier = Modifier.testTag("btn_web_find")
                         )
                         if (ProviderWebRegistry.turnAnchors(selectedService) != null) {
+                            DropdownMenuItem(
+                                text = { Text("Turn navigation (beta)") },
+                                trailingIcon = {
+                                    Checkbox(
+                                        checked = turnNavigationEnabled,
+                                        onCheckedChange = null
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onToggleTurnNavigation()
+                                },
+                                modifier = Modifier.testTag("toggle_web_turn_navigation")
+                            )
+                        }
+                        if (turnNavigationEnabled) {
                             DropdownMenuItem(
                                 text = { Text("Previous user turn (beta)") },
                                 leadingIcon = {
