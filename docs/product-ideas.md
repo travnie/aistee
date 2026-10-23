@@ -14,6 +14,8 @@ Prioritize the next feature wave in this order. Items 1 and 2 come first because
 5. **Live Agent Lab sessions** — extend existing Claude Code handoffs and portable runtime protocols into resumable, permission-aware sessions controlled from Android. See [Agent Lab](#agent-lab--runtime-interoperability).
 6. **Adaptive workspace** — evolve the current [Material 3 Adaptive UI](#uiux-architecture-and-smoothness) into optional multi-pane chat, conversation and Project Library layouts.
 7. **Sign-in recovery UX** — refine provider-specific browser/embedded sign-in troubleshooting under [identity-assisted onboarding](#identity-assisted-provider-onboarding); never imply that external browser login transfers a WebView session.
+8. **Skill and plugin studio** — create/import/edit/validate portable `SKILL.md` bundles and multi-target plugin packages with Docbench and Project Library; deterministic scaffolding first, opt-in AI repair when needed. See [Skill and plugin studio](#skill-and-plugin-studio).
+9. **Gemini account-backed enhancements** — preserve the official Google-account Web experience while adding Aistee-owned skill/tool affordances only through supported host capabilities and explicit user actions. See [Gemini account-backed enhancements](#gemini-account-backed-enhancements).
 
 Ongoing work remains: verify Qwen, Copilot, Z.ai, Grok, Character.AI, Venice and Meta AI Web sign-in/uploads/activity; maintain long-chat performance and privacy/security release gates; keep processing modes and Jobs unobtrusive. Sign in with ChatGPT is already shipped for eligible account-plan inference, not a new backlog feature. Keep Grok Web, xAI developer API, SuperGrok and Grok Bot separate, with independent authorization and capability checks.
 
@@ -54,6 +56,25 @@ Ongoing work remains: verify Qwen, Copilot, Z.ai, Grok, Character.AI, Venice and
 Portable `SKILL.md` files are local, editable and trust-gated. Active skill bundles are implemented behind a disabled-by-default switch with digest-bound trust, sandboxed execution and per-call consent; network skills remain out of scope.
 
 Keep skill source directly inspectable and editable. Importing Markdown must never execute code or grant file, network, secret or provider-session access. See [skills-runtime.md](skills-runtime.md) for the execution boundary.
+
+## Skill and plugin studio
+
+- Build on the existing Markdown Workspace/Docbench editor and Project Library revision, asset-provenance and trust models; do not create another skill store or fork Docbench. Provide a creation wizard and a direct expert editor for skills and plugins.
+- Accept a remote MCP endpoint URL, selected local or imported `SKILL.md`/reference files, scripts/assets, icon/logo, display name, descriptions, capabilities, permissions and intended destinations. Preview, safely inspect and select files before including them; importing never executes code or silently connects to a server.
+- Keep one canonical portable package model, then generate validated, target-specific outputs for OpenAI ChatGPT/Codex, Claude/Anthropic and Gemini CLI/other supported hosts. Start with root `plugin.json`, `skills/<name>/SKILL.md`, optional root `mcp.json`, assets and optional OpenAI `.app.json` registration mapping / compatibility `.codex-plugin/plugin.json`; adapt each host's actual current requirements without scattering ad hoc file templates or implying all hosts accept the same manifest.
+- Auto-create only necessary folders, manifests, metadata, paths, MCP connection mappings, descriptions and optional compatibility files. Validate schemas, referenced paths, icon formats, skill triggers, URLs/auth configuration and target-specific limitations; show the generated tree, diffs and warnings before export/install. Never embed credentials, invent registered IDs or silently publish/install/enable anything.
+- Add lightweight **opt-in AI assistance** for ambiguous descriptions, converting hand-written guidance into a valid skill, fixing validator failures and suggesting tool boundaries. Reuse an explicitly chosen, eligible Aistee chat/runtime with visible destination/funding and user-reviewed output; prefer deterministic scaffolding for routine cases.
+- First slice: offline skills-only import/create/edit/validate/export using Docbench and Project Library. Then portable skills + MCP manifest scaffolding and selected multi-host adapters. Later add test connection/discovery, permission previews and publication helpers. A successful export is not equivalent to a live or authorized plugin connection.
+
+## Gemini account-backed enhancements
+
+- Keep Google's signed-in `gemini.google.com/app` WebView and any Google AI plan usage entirely provider-owned, as with the other Web account surfaces. Do not reuse its cookies to call Gemini API, route consumer-plan usage into metered API requests or impersonate Google's first-party tool endpoints.
+- Offer Aistee-owned custom skills, prompt presets, selected local context and approved Bench/MCP tool workflows alongside the Gemini tab. For ordinary provider Web chat, use explicit preview/copy/insert/share or a verified user-initiated handoff; never claim arbitrary native tool execution inside Gemini's page merely because it is embedded.
+- **Investigate official Gemini custom connected apps:** Google's current MCP URL integration belongs to Gemini Spark and is eligibility-gated (currently US, 18+, personal Google account, Keep Activity enabled and English). Expose connection or guidance only when the actual account/surface supports it; never fake broad availability in Poland. Google is also migrating classic Gems to skills in November 2026, so discover the live capability rather than building a permanent adapter to a retiring menu.
+- **Separate runtime alternatives:** the Gemini API is a separately funded/authenticated route with genuine function calling and MCP-capable Aistee orchestration where supported. Gemini CLI/Antigravity skills and MCP use their own host-specific configuration and authorization. Consumer Google AI Pro/Ultra sign-in for Gemini CLI/Code Assist was discontinued on 18 June 2026, so it is not a general-purpose subscription bridge for Aistee.
+- First slice: local skill/prompt selection, user-reviewed insertion and clear capability badges in the existing Gemini Web tab. Next: official MCP-connected-app handoff for eligible accounts and deeper account-backed integration only if Google publishes a supported interface. Keep provider-owned data and capability boundaries intact.
+
+References: [OpenAI portable plugin packaging](https://developers.openai.com/plugins/build/plugins), [Gemini custom connected apps](https://support.google.com/gemini/answer/17209137), [Gems migration](https://support.google.com/gemini/answer/15146780), [Gemini consumer CLI deprecation](https://developers.google.com/gemini-code-assist/docs/deprecations/code-assist-individuals).
 
 ## Projects and libraries
 
