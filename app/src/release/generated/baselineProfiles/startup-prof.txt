@@ -20029,3 +20029,14 @@ SPLais/tee/ui/screens/WebChatScreenKt$WebChatScreen$8$1;-><init>(Landroid/webkit
 SPLais/tee/ui/screens/WebChatScreenKt$WebChatScreen$8$1;->create(Ljava/lang/Object;Lkotlin/coroutines/Continuation;)Lkotlin/coroutines/Continuation;
 SPLais/tee/ui/screens/WebChatScreenKt$WebChatScreen$8$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 SPLais/tee/ui/screens/WebFindInPageSession;-><clinit>()V
+SPLais/tee/data/model/LocalProject;->getId()Ljava/lang/String;
+SPLais/tee/data/model/ProjectLibraryKt;->normalizedAssets(Lais/tee/data/model/ProjectLibraryArchive;Ljava/util/Set;)Ljava/util/List;
+SPLais/tee/data/model/ProjectLibraryKt;->normalizedContents(Lais/tee/data/model/ProjectLibraryArchive;J)Lais/tee/data/model/ProjectLibraryArchive;
+SPLais/tee/data/model/ProjectLibraryKt;->normalizedProjectsWithInbox(Lais/tee/data/model/ProjectLibraryArchive;J)Ljava/util/List;
+SPLais/tee/data/preferences/ProjectLibraryStore;->recoverUnavailableAssetRevisions(Lais/tee/data/model/ProjectLibraryArchive;)Lais/tee/data/model/ProjectLibraryArchive;
+SPLais/tee/data/preferences/WebChatPreferencesStore;->loadDisabledTurnNavigationServices()Ljava/util/Set;
+SPLais/tee/data/preferences/WebChatPreferencesStoreKt;->resolveDisabledTurnNavigationServices(Ljava/util/Set;)Ljava/util/Set;
+SPLais/tee/data/preferences/WebChatPreferencesStoreKt;->resolveWebServices(Ljava/util/Set;)Ljava/util/Set;
+SPLais/tee/web/ProviderWebProfile;->getTurnAnchors()Lais/tee/web/ProviderTurnAnchors;
+SPLais/tee/web/ProviderWebRegistry;->turnAnchors(Lais/tee/data/model/WebAiService;)Lais/tee/web/ProviderTurnAnchors;
+SPLais/tee/web/WebUserTurnNavigationKt;->webUserTurnNavigationEnabled(Lais/tee/data/model/WebAiService;Ljava/util/Set;)Z
