@@ -225,9 +225,6 @@ fun WebChatScreen(
     val webPreferences = remember(context.applicationContext) {
         WebChatPreferencesStore(context.applicationContext)
     }
-    var disabledTurnNavigationServices by remember {
-        mutableStateOf(webPreferences.loadDisabledTurnNavigationServices())
-    }
     var preferredIdentityMethod by remember { mutableStateOf(webPreferences.loadPreferredIdentityMethod()) }
     val browserLaunchFailure = stringResource(R.string.web_sign_in_browser_failure)
     val currentPendingWebShare by rememberUpdatedState(uiState.pendingWebShare)
@@ -912,7 +909,9 @@ fun WebChatScreen(
 
     fun jumpWebUserTurn(direction: WebUserTurnDirection) {
         val service = selectedService
-        if (!webUserTurnNavigationEnabled(service, disabledTurnNavigationServices)) return
+        if (!webUserTurnNavigationEnabled(
+            service, webPreferences.loadDisabledTurnNavigationServices()
+        )) return
         val webView = activeWebView ?: return
         // Reassert the least-privilege invariant at this sensitive WebView entry point.
         // The renderer is already initialized with these settings disabled.
@@ -1217,21 +1216,6 @@ fun WebChatScreen(
                             onFindInPage = {
                                 closeFindInPage()
                                 activeWebView?.let { findSession = WebFindInPageSession(it) }
-                            },
-                            turnNavigationEnabled = webUserTurnNavigationEnabled(
-                                selectedService, disabledTurnNavigationServices
-                            ),
-                            onToggleTurnNavigation = {
-                                val service = selectedService
-                                disabledTurnNavigationServices =
-                                    if (service in disabledTurnNavigationServices) {
-                                        disabledTurnNavigationServices - service
-                                    } else {
-                                        disabledTurnNavigationServices + service
-                                    }
-                                webPreferences.saveDisabledTurnNavigationServices(
-                                    disabledTurnNavigationServices
-                                )
                             },
                             onPreviousUserTurn = { jumpWebUserTurn(WebUserTurnDirection.PREVIOUS) },
                             onNextUserTurn = { jumpWebUserTurn(WebUserTurnDirection.NEXT) },
@@ -1760,8 +1744,6 @@ private fun WebChatToolbar(
     onShowSignInHelp: () -> Unit,
     onClearProviderSessions: () -> Unit,
     onFindInPage: () -> Unit,
-    turnNavigationEnabled: Boolean,
-    onToggleTurnNavigation: () -> Unit,
     onPreviousUserTurn: () -> Unit,
     onNextUserTurn: () -> Unit,
     onToggleDesktopMode: () -> Unit,
@@ -1770,6 +1752,15 @@ private fun WebChatToolbar(
     val context = LocalContext.current
     val brandColor = Color(selectedService.brandHexColor)
     var menuExpanded by remember { mutableStateOf(false) }
+    val turnPreferences = remember(context.applicationContext) {
+        WebChatPreferencesStore(context.applicationContext)
+    }
+    var disabledTurnNavigationServices by remember {
+        mutableStateOf(turnPreferences.loadDisabledTurnNavigationServices())
+    }
+    val turnNavigationEnabled = webUserTurnNavigationEnabled(
+        selectedService, disabledTurnNavigationServices
+    )
 
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -1875,7 +1866,15 @@ private fun WebChatToolbar(
                                 },
                                 onClick = {
                                     menuExpanded = false
-                                    onToggleTurnNavigation()
+                                    disabledTurnNavigationServices =
+                                        if (selectedService in disabledTurnNavigationServices) {
+                                            disabledTurnNavigationServices - selectedService
+                                        } else {
+                                            disabledTurnNavigationServices + selectedService
+                                        }
+                                    turnPreferences.saveDisabledTurnNavigationServices(
+                                        disabledTurnNavigationServices
+                                    )
                                 },
                                 modifier = Modifier.testTag("toggle_web_turn_navigation")
                             )
