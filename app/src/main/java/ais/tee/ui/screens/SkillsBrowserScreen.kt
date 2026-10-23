@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,6 +72,7 @@ fun SkillsBrowserScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedItemContent by remember { mutableStateOf<Pair<String, String>?>(null) } // Title to Content dialog
     var skillImportPreview by remember { mutableStateOf<SkillImportPreview?>(null) }
+    var showSkillCreationDialog by rememberSaveable { mutableStateOf(false) }
     var pendingSkillReplacement by remember { mutableStateOf<SkillImportPreview?>(null) }
     var pendingSkillEditName by remember { mutableStateOf<String?>(null) }
     var skillImportLoading by remember { mutableStateOf(false) }
@@ -255,6 +257,7 @@ fun SkillsBrowserScreen(
                         LocalSkillPreviewCard(
                             loading = skillImportLoading,
                             onPreview = ::launchSkillPreview,
+                            onCreate = { showSkillCreationDialog = true },
                             activeSkillsEnabled = activeSkillsEnabled,
                             onActiveSkillsEnabledChange = { enabled ->
                                 activeSkillsPreferences.setEnabled(enabled)
@@ -570,6 +573,26 @@ fun SkillsBrowserScreen(
         )
     }
 
+    if (showSkillCreationDialog) {
+        SkillCreationDialog(
+            onDismiss = { showSkillCreationDialog = false },
+            onPreview = { source ->
+                scope.launch {
+                    val preview = buildSkillImportPreview(
+                        displayName = "SKILL.md",
+                        source = source
+                    )
+                    if (preview.isValid) {
+                        showSkillCreationDialog = false
+                        skillImportPreview = preview
+                    } else {
+                        viewModel.showSnackbar("Review the skill fields and try again.")
+                    }
+                }
+            }
+        )
+    }
+
     skillImportPreview?.let { preview ->
         SkillImportPreviewDialog(
             preview = preview,
@@ -633,6 +656,7 @@ fun SkillsBrowserScreen(
 private fun LocalSkillPreviewCard(
     loading: Boolean,
     onPreview: () -> Unit,
+    onCreate: () -> Unit,
     activeSkillsEnabled: Boolean,
     onActiveSkillsEnabledChange: (Boolean) -> Unit
 ) {
@@ -678,6 +702,15 @@ private fun LocalSkillPreviewCard(
                 }
                 Spacer(Modifier.width(8.dp))
                 Text(if (loading) "Reading…" else if (activeSkillsEnabled) "Choose SKILL.md or .zip" else "Choose SKILL.md")
+            }
+            OutlinedButton(
+                onClick = onCreate,
+                enabled = !loading,
+                modifier = Modifier.testTag("create_local_skill_button")
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Create SKILL.md")
             }
             HorizontalDivider()
             Row(verticalAlignment = Alignment.CenterVertically) {
