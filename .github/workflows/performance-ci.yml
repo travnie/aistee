@@ -30,6 +30,7 @@ on: # yamllint disable-line rule:truthy
       - "app/src/main/AndroidManifest.xml"
       - "app/src/main/java/ais/tee/AisteeApplication.kt"
       - "app/src/main/java/ais/tee/MainActivity.kt"
+      - "app/src/main/java/ais/tee/ui/screens/WebChatScreen.kt"
       - "app/src/**/baselineProfiles/**"
       - "gradle/libs.versions.toml"
       - "gradle.properties"

@@ -24,6 +24,15 @@ class WebUserTurnNavigationTest {
     }
 
     @Test
+    fun betaNavigationOptOutIsIndependentForEachProvider() {
+        val disabled = setOf(WebAiService.GEMINI)
+        assertTrue(webUserTurnNavigationEnabled(WebAiService.CHATGPT, disabled))
+        assertTrue(webUserTurnNavigationEnabled(WebAiService.CLAUDE, disabled))
+        assertTrue(!webUserTurnNavigationEnabled(WebAiService.GEMINI, disabled))
+        assertTrue(!webUserTurnNavigationEnabled(WebAiService.QWEN, emptySet()))
+    }
+
+    @Test
     fun untrustedProviderPathNeverBecomesJavaScriptSource() {
         val path = "https://chatgpt.com/c/123?x=%22%3Balert(1)%2F%2F#fragment"
         val script = requireNotNull(
