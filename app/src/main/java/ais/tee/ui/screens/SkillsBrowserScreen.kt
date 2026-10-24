@@ -62,6 +62,7 @@ fun SkillsBrowserScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val studioState by viewModel.uiState.collectAsState()
     val markdownWorkspaceViewModel: MarkdownWorkspaceViewModel = viewModel()
     val localSkillStore = remember(context) {
         LocalSkillLibraryStore(
@@ -576,6 +577,12 @@ fun SkillsBrowserScreen(
     if (showSkillCreationDialog) {
         SkillCreationDialog(
             onDismiss = { showSkillCreationDialog = false },
+            assistantRoute = if (studioState.isNativeConversationStoreReady) {
+                viewModel.skillAssistRoute()
+            } else null,
+            onAssist = { route, field, name, description, instructions ->
+                viewModel.suggestSkillField(route, field, name, description, instructions)
+            },
             onPreview = { source ->
                 scope.launch {
                     val preview = buildSkillImportPreview(
