@@ -98,10 +98,10 @@ class McpHttpDiscoveryTest {
                         val input = it.getInputStream().bufferedReader()
                         while (input.readLine()?.isNotEmpty() == true) Unit
                         val response = if (index == 0) {
-                            "HTTP/1.1 302 Found\\r\\nLocation: http://127.0.0.1:${server.localPort}/next\\r\\n" +
-                                "Content-Length: 0\\r\\nConnection: close\\r\\n\\r\\n"
+                            "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:${server.localPort}/next\r\n" +
+                                "Content-Length: 0\r\nConnection: close\r\n\r\n"
                         } else {
-                            "HTTP/1.1 200 OK\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n"
+                            "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
                         }
                         it.getOutputStream().write(response.toByteArray())
                         it.getOutputStream().flush()
