@@ -28,6 +28,8 @@ import ais.tee.data.document.MarkdownDocumentFileAccess
 import ais.tee.data.repository.SkillsAndDocsRepository
 import ais.tee.data.preferences.ActiveSkillsPreferencesStore
 import ais.tee.data.skills.LocalSkillAlreadyExistsException
+import ais.tee.data.skills.StudioPackageFiles
+import ais.tee.data.skills.StudioPackageZip
 import ais.tee.data.skills.readSkillArchive
 import ais.tee.data.skills.LocalSkillLibraryStore
 import ais.tee.ui.theme.*
@@ -73,6 +75,7 @@ fun SkillsBrowserScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedItemContent by remember { mutableStateOf<Pair<String, String>?>(null) } // Title to Content dialog
     var skillImportPreview by remember { mutableStateOf<SkillImportPreview?>(null) }
+    var pluginPackagePreview by remember { mutableStateOf<StudioPackageFiles?>(null) }
     var showSkillCreationDialog by rememberSaveable { mutableStateOf(false) }
     var pendingSkillReplacement by remember { mutableStateOf<SkillImportPreview?>(null) }
     var pendingSkillEditName by remember { mutableStateOf<String?>(null) }
@@ -108,6 +111,31 @@ fun SkillsBrowserScreen(
             ExternalMarkdownOpenResult.TOO_LARGE -> viewModel.showSnackbar(
                 "This local skill is larger than the 8 MiB Markdown workspace limit."
             )
+        }
+    }
+
+    val pluginExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        val draft = pluginPackagePreview
+        if (uri != null && draft != null) {
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri)?.use { output ->
+                            StudioPackageZip.write(output, draft)
+                        } ?: throw IOException("Cannot open the selected export destination.")
+                    }
+                    pluginPackagePreview = null
+                    viewModel.showSnackbar("Exported " + draft.name + ".zip. No plugin was installed.")
+                } catch (_: SecurityException) {
+                    viewModel.showSnackbar("The export destination could not be accessed.")
+                } catch (_: IOException) {
+                    viewModel.showSnackbar("Could not export this plugin. Choose another destination.")
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                }
+            }
         }
     }
 
@@ -577,6 +605,10 @@ fun SkillsBrowserScreen(
     if (showSkillCreationDialog) {
         SkillCreationDialog(
             onDismiss = { showSkillCreationDialog = false },
+            onPluginPreview = { preview ->
+                showSkillCreationDialog = false
+                pluginPackagePreview = preview
+            },
             assistantRoute = if (studioState.isNativeConversationStoreReady) {
                 viewModel.skillAssistRoute()
             } else null,
@@ -595,6 +627,40 @@ fun SkillsBrowserScreen(
                     } else {
                         viewModel.showSnackbar("Review the skill fields and try again.")
                     }
+                }
+            }
+        )
+    }
+
+    pluginPackagePreview?.let { draft ->
+        AlertDialog(
+            onDismissRequest = { pluginPackagePreview = null },
+            title = { Text("Review plugin package") },
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("This ZIP will contain:", style = MaterialTheme.typography.bodyMedium)
+                    draft.files.keys.forEach { path ->
+                        Text(path, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(
+                        "Portable Agent Plugins 1.0 draft. Export does not connect MCP, " +
+                            "register an app, request permissions, or install or publish anything.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { pluginExportLauncher.launch(draft.name + ".zip") },
+                    modifier = Modifier.testTag("studio_plugin_export")
+                ) { Text("Export ZIP") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pluginPackagePreview = null }) {
+                    Text("Back")
                 }
             }
         )
