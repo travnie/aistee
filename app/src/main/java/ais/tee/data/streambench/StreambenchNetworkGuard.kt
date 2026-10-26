@@ -59,8 +59,11 @@ private fun isBlockedIpv6(bytes: ByteArray): Boolean {
     val second = bytes[1].unsigned()
 
     if ((first and 0xFE) == 0xFC) return true
-    if (first == 0x20 && second == 0x01 && bytes[2].unsigned() == 0x0D && bytes[3].unsigned() == 0xB8) {
-        return true
+    if (first == 0x20 && second == 0x01) {
+        // Documentation prefix (2001:db8::/32) and benchmarking (2001:2::/48).
+        if (bytes[2].unsigned() == 0x0D && bytes[3].unsigned() == 0xB8) return true
+        if (bytes[2].unsigned() == 0 && bytes[3].unsigned() == 2 &&
+            bytes[4].unsigned() == 0 && bytes[5].unsigned() == 0) return true
     }
 
     val mappedIpv4 = ipv4MappedAddress(bytes)

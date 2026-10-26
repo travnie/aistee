@@ -56,8 +56,11 @@ class StreambenchNetworkGuardTest {
             ipv4(172, 20, 1, 1),
             ipv4(192, 168, 1, 1),
             ipv4(198, 18, 0, 1),
+            ipv4(198, 51, 100, 10),
+            ipv4(203, 0, 113, 10),
             ipv6(0xFC),
-            ipv6(0xFD)
+            ipv6(0xFD),
+            ipv6(0x20, 0x01, 0x00, 0x02, 0x00, 0x00)
         ).forEach { address ->
             assertFalse(address.hostAddress, isPublicStreambenchAddress(address))
         }
