@@ -56,6 +56,25 @@ class McpHttpDiscoveryTest {
     }
 
     @Test
+    fun sanitizedFailuresDistinguishInputNetworkAndMalformedData() = runBlocking {
+        val transport = discovery { req -> ok(req, result(1)) }
+        assertEquals(
+            McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_ENDPOINT),
+            transport.discoverChecked("http://example.org/mcp", "demo")
+        )
+        val malformed = discovery { req -> ok(req, "{bad-json") }
+        assertEquals(
+            McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_RESPONSE),
+            malformed.discoverChecked(url, "demo")
+        )
+        val failing = discovery { throw IOException("Do not expose remote diagnostics") }
+        assertEquals(
+            McpDiscoveryOutcome.Failure(McpDiscoveryFailure.NETWORK_FAILURE),
+            failing.discoverChecked(url, "demo")
+        )
+    }
+
+    @Test
     fun paginatedHttpDiscoveryUsesRequestMetadataAndCurrentCatalog() = runBlocking {
         val seen = mutableListOf<String?>()
         val client = discovery { request ->

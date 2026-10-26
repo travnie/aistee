@@ -52,6 +52,16 @@ private const val MAX_CURSOR_LENGTH = 2_048
 private val MCP_SERVER_ID = Regex("^[A-Za-z0-9_-]{1,20}$")
 private val JSON_CONTENT_TYPE = "application/json; charset=utf-8".toMediaType()
 
+/** Coarse metadata-only failure reasons for a future user-reviewed connection diagnostic. */
+internal enum class McpDiscoveryFailure {
+    INVALID_ENDPOINT, INVALID_RESPONSE, NETWORK_FAILURE, TIMEOUT,
+}
+
+internal sealed interface McpDiscoveryOutcome {
+    data class Success(val catalog: McpToolCatalog) : McpDiscoveryOutcome
+    data class Failure(val reason: McpDiscoveryFailure) : McpDiscoveryOutcome
+}
+
 /**
  * On-demand, unauthenticated Streamable HTTP tools/list discovery for MCP 2026-07-28.
  *
@@ -84,10 +94,16 @@ internal class McpHttpDiscovery(
 ) {
 
     suspend fun discover(endpoint: String, serverId: String): McpToolCatalog? =
+        (discoverChecked(endpoint, serverId) as? McpDiscoveryOutcome.Success)?.catalog
+
+    suspend fun discoverChecked(endpoint: String, serverId: String): McpDiscoveryOutcome =
         withTimeoutOrNull(TOTAL_DISCOVERY_MILLIS) {
             withContext(Dispatchers.IO) {
-            if (!MCP_SERVER_ID.matches(serverId)) return@withContext null
-            val url = validateEndpoint(endpoint) ?: return@withContext null
+            if (!MCP_SERVER_ID.matches(serverId)) {
+                return@withContext McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_ENDPOINT)
+            }
+            val url = validateEndpoint(endpoint)
+                ?: return@withContext McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_ENDPOINT)
             try {
                 val generation = ByteArray(16).also(random::nextBytes)
                     .joinToString("") { "%02x".format(it.toInt() and 0xff) }
@@ -105,29 +121,44 @@ internal class McpHttpDiscovery(
                         .header("MCP-Protocol-Version", MCP_VERSION)
                         .header("Mcp-Method", "tools/list")
                         .build()
-                    val responseJson = requestPage(request, id) ?: return@withContext null
+                    val responseJson = requestPage(request, id)
+                        ?: return@withContext McpDiscoveryOutcome.Failure(
+                            McpDiscoveryFailure.INVALID_RESPONSE
+                        )
                     pages += responseJson
                     val result = Json.parseToJsonElement(responseJson).jsonObject["result"]
-                        as? JsonObject ?: return@withContext null
+                        as? JsonObject ?: return@withContext McpDiscoveryOutcome.Failure(
+                            McpDiscoveryFailure.INVALID_RESPONSE
+                        )
                     val next = result["nextCursor"]
                     cursor = if (next == null) null else {
                         (next as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
-                            ?: return@withContext null
+                            ?: return@withContext McpDiscoveryOutcome.Failure(
+                                McpDiscoveryFailure.INVALID_RESPONSE
+                            )
                     }
                     if (cursor != null && (cursor.isNullOrBlank() ||
                             cursor!!.length > MAX_CURSOR_LENGTH ||
-                            !seenCursors.add(cursor!!))) return@withContext null
-                    if (cursor != null && pages.size >= MAX_CATALOG_PAGES) return@withContext null
+                            !seenCursors.add(cursor!!))) {
+                        return@withContext McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_RESPONSE)
+                    }
+                    if (cursor != null && pages.size >= MAX_CATALOG_PAGES) {
+                        return@withContext McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_RESPONSE)
+                    }
                 } while (cursor != null)
-                McpToolCatalog.fromToolsListResponses(serverId, generation, pages)
+                val catalog = McpToolCatalog.fromToolsListResponses(serverId, generation, pages)
+                if (catalog == null) McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_RESPONSE)
+                else McpDiscoveryOutcome.Success(catalog)
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (_: IOException) {
+                McpDiscoveryOutcome.Failure(McpDiscoveryFailure.NETWORK_FAILURE)
             } catch (_: Exception) {
                 // No provider-owned identifiers or response bodies enter diagnostics.
-                null
+                McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_RESPONSE)
             }
             }
-        }
+        } ?: McpDiscoveryOutcome.Failure(McpDiscoveryFailure.TIMEOUT)
 
     private fun validateEndpoint(raw: String): HttpUrl? {
         val url = raw.toHttpUrlOrNull() ?: return null
