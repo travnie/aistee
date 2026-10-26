@@ -22,6 +22,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
+import okhttp3.CookieJar
 import okhttp3.Dns
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -49,12 +50,13 @@ private val JSON_CONTENT_TYPE = "application/json; charset=utf-8".toMediaType()
 internal class McpHttpDiscovery(
     client: OkHttpClient = OkHttpClient(),
     private val random: SecureRandom = SecureRandom(),
-    dns: Dns = StreambenchPublicDns(),
+    dns: Dns = Dns.SYSTEM,
 ) {
     // Always enforce the shared public-address DNS guard, even for injected test clients.
     // No automatic redirects, proxy tunnelling, cookies, bearer tokens or retrying POSTs.
     private val http = client.newBuilder()
-        .dns(dns)
+        .dns(StreambenchPublicDns(dns))
+        .cookieJar(CookieJar.NO_COOKIES)
         .proxy(Proxy.NO_PROXY)
         .followRedirects(false)
         .followSslRedirects(false)
