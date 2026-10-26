@@ -9,6 +9,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -27,29 +31,44 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import ais.tee.data.skills.AgentSkillDraftFactory
 import ais.tee.data.skills.AgentSkillManifestParser
+import ais.tee.data.skills.StudioPackageBuilder
+import ais.tee.data.skills.StudioPackageFiles
 import ais.tee.data.skills.SkillAssistField
 import ais.tee.data.skills.SkillAssistRoute
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
 
-/** Deterministic skills-only entry point; preview and persistence reuse the existing import flow. */
+/** One Studio entry for standalone skills and portable plugin drafts with embedded skills. */
 @Composable
 internal fun SkillCreationDialog(
     onDismiss: () -> Unit,
     onPreview: (String) -> Unit,
+    onPluginPreview: (StudioPackageFiles) -> Unit,
     assistantRoute: SkillAssistRoute?,
     onAssist: suspend (SkillAssistRoute, SkillAssistField, String, String, String) -> String
 ) {
     var name by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
     var instructions by rememberSaveable { mutableStateOf("") }
+    var asPlugin by rememberSaveable { mutableStateOf(false) }
+    var pluginName by rememberSaveable { mutableStateOf("") }
     val source = remember(name, description, instructions) {
         AgentSkillDraftFactory.create(name, description, instructions)
     }
     val validation = remember(source) { AgentSkillManifestParser.parse(source) }
     val missingInstructions = instructions.isBlank()
-    val ready = validation.isValid && !missingInstructions
+    val pluginDraft = remember(asPlugin, pluginName, name, description, source) {
+        if (!asPlugin) null else runCatching {
+            StudioPackageBuilder.createPlugin(
+                name = pluginName.ifBlank { name.trim() + "-plugin" },
+                description = description,
+                skillSources = listOf(source),
+            )
+        }
+    }
+    val ready = validation.isValid && !missingInstructions &&
+        (!asPlugin || pluginDraft?.isSuccess == true)
     val scope = rememberCoroutineScope()
     var assisting by remember { mutableStateOf(false) }
     var assistanceError by remember { mutableStateOf<String?>(null) }
@@ -83,7 +102,7 @@ internal fun SkillCreationDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("skill_creation_dialog"),
-        title = { Text("Create portable skill") },
+        title = { Text("Create skill or plugin") },
         text = {
             Column(
                 modifier = Modifier
@@ -93,11 +112,41 @@ internal fun SkillCreationDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    "Create an instructions-only SKILL.md. Review the generated source before saving. " +
-                        "It stays disabled until you enable it in the local library.",
+                    "One editor for a standalone SKILL.md or a portable plugin containing " +
+                        "that skill. Nothing is installed, enabled or published automatically.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !asPlugin,
+                        onClick = { asPlugin = false },
+                        label = { Text("Standalone skill") },
+                        modifier = Modifier.testTag("studio_standalone_mode")
+                    )
+                    FilterChip(
+                        selected = asPlugin,
+                        onClick = { asPlugin = true },
+                        label = { Text("Plugin + skill") },
+                        modifier = Modifier.testTag("studio_plugin_mode")
+                    )
+                }
+                if (asPlugin) {
+                    OutlinedTextField(
+                        value = pluginName,
+                        onValueChange = { pluginName = it },
+                        label = { Text("Plugin name (optional)") },
+                        placeholder = { Text("my-helper-plugin") },
+                        supportingText = { Text("Defaults to the skill name plus -plugin.") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("studio_plugin_name")
+                    )
+                    Text(
+                        "Exports plugin.json and skills/<name>/SKILL.md as a ZIP. " +
+                            "More skills and MCP components will use this same package builder.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -182,7 +231,8 @@ internal fun SkillCreationDialog(
                 }
                 if (!ready) {
                     val problem = validation.issues.firstOrNull()?.message
-                        ?: if (missingInstructions) "Instructions are required." else null
+                        ?: if (missingInstructions) "Instructions are required."
+                        else pluginDraft?.exceptionOrNull()?.message
                     problem?.let {
                         Text(
                             text = it,
@@ -196,10 +246,13 @@ internal fun SkillCreationDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onPreview(source) },
+                onClick = {
+                    if (asPlugin) pluginDraft?.getOrNull()?.let(onPluginPreview)
+                    else onPreview(source)
+                },
                 enabled = ready,
                 modifier = Modifier.testTag("skill_creation_preview")
-            ) { Text("Preview SKILL.md") }
+            ) { Text(if (asPlugin) "Preview plugin files" else "Preview SKILL.md") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )

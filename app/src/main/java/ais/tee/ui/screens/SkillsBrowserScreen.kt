@@ -5,6 +5,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -28,6 +30,8 @@ import ais.tee.data.document.MarkdownDocumentFileAccess
 import ais.tee.data.repository.SkillsAndDocsRepository
 import ais.tee.data.preferences.ActiveSkillsPreferencesStore
 import ais.tee.data.skills.LocalSkillAlreadyExistsException
+import ais.tee.data.skills.StudioPackageFiles
+import ais.tee.data.skills.StudioPendingPluginExport
 import ais.tee.data.skills.readSkillArchive
 import ais.tee.data.skills.LocalSkillLibraryStore
 import ais.tee.ui.theme.*
@@ -73,6 +77,10 @@ fun SkillsBrowserScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedItemContent by remember { mutableStateOf<Pair<String, String>?>(null) } // Title to Content dialog
     var skillImportPreview by remember { mutableStateOf<SkillImportPreview?>(null) }
+    var pluginPackagePreview by remember { mutableStateOf<StudioPackageFiles?>(null) }
+    // Only an opaque cache reference enters the saved Android view state.
+    var pendingPluginExportId by rememberSaveable { mutableStateOf<String?>(null) }
+    var preparingPluginExport by remember { mutableStateOf(false) }
     var showSkillCreationDialog by rememberSaveable { mutableStateOf(false) }
     var pendingSkillReplacement by remember { mutableStateOf<SkillImportPreview?>(null) }
     var pendingSkillEditName by remember { mutableStateOf<String?>(null) }
@@ -108,6 +116,40 @@ fun SkillsBrowserScreen(
             ExternalMarkdownOpenResult.TOO_LARGE -> viewModel.showSnackbar(
                 "This local skill is larger than the 8 MiB Markdown workspace limit."
             )
+        }
+    }
+
+    val pluginExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        val pendingId = pendingPluginExportId
+        if (pendingId != null) {
+            scope.launch {
+                try {
+                    if (uri != null) {
+                        withContext(Dispatchers.IO) {
+                            context.contentResolver.openOutputStream(uri)?.use { output ->
+                                StudioPendingPluginExport.copyTo(context.cacheDir, pendingId, output)
+                            } ?: throw IOException("Cannot open the selected export destination.")
+                        }
+                        pluginPackagePreview = null
+                        viewModel.showSnackbar("Plugin ZIP exported. No plugin was installed.")
+                    }
+                } catch (_: SecurityException) {
+                    viewModel.showSnackbar("The export destination could not be accessed.")
+                } catch (_: IOException) {
+                    viewModel.showSnackbar(
+                        "Could not export plugin ZIP. The temporary draft may have expired."
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } finally {
+                    withContext(Dispatchers.IO) {
+                        StudioPendingPluginExport.discard(context.cacheDir, pendingId)
+                    }
+                    pendingPluginExportId = null
+                }
+            }
         }
     }
 
@@ -577,6 +619,10 @@ fun SkillsBrowserScreen(
     if (showSkillCreationDialog) {
         SkillCreationDialog(
             onDismiss = { showSkillCreationDialog = false },
+            onPluginPreview = { preview ->
+                showSkillCreationDialog = false
+                pluginPackagePreview = preview
+            },
             assistantRoute = if (studioState.isNativeConversationStoreReady) {
                 viewModel.skillAssistRoute()
             } else null,
@@ -595,6 +641,57 @@ fun SkillsBrowserScreen(
                     } else {
                         viewModel.showSnackbar("Review the skill fields and try again.")
                     }
+                }
+            }
+        )
+    }
+
+    pluginPackagePreview?.let { draft ->
+        AlertDialog(
+            onDismissRequest = { pluginPackagePreview = null },
+            title = { Text("Review plugin package") },
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("This ZIP will contain:", style = MaterialTheme.typography.bodyMedium)
+                    draft.files.keys.forEach { path ->
+                        Text(path, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(
+                        "Portable Agent Plugins 1.0 draft. Export does not connect MCP, " +
+                            "register an app, request permissions, or install or publish anything.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (preparingPluginExport || pendingPluginExportId != null) return@Button
+                        preparingPluginExport = true
+                        scope.launch {
+                            try {
+                                val id = withContext(Dispatchers.IO) {
+                                    StudioPendingPluginExport.prepare(context.cacheDir, draft)
+                                }
+                                pendingPluginExportId = id
+                                pluginExportLauncher.launch(draft.name + ".zip")
+                            } catch (_: Exception) {
+                                viewModel.showSnackbar("Could not prepare the plugin ZIP export.")
+                            } finally {
+                                preparingPluginExport = false
+                            }
+                        }
+                    },
+                    enabled = !preparingPluginExport && pendingPluginExportId == null,
+                    modifier = Modifier.testTag("studio_plugin_export")
+                ) { Text(if (preparingPluginExport) "Preparing…" else "Export ZIP") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pluginPackagePreview = null }) {
+                    Text("Back")
                 }
             }
         )
