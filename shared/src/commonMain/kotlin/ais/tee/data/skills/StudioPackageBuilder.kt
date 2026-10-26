@@ -73,6 +73,9 @@ object StudioPackageBuilder {
             }
             require(server.name !in validatedServers) { "Duplicate MCP server alias." }
             val endpoint = server.url.trim()
+            require(endpoint.none { it.isWhitespace() || it.code < 0x20 || it.code == 0x7F }) {
+                "MCP endpoint may not contain whitespace or control characters."
+            }
             val match = mcpUrl.matchEntire(endpoint)
             require(endpoint.length <= 2_048 && match != null) {
                 "MCP endpoint must be an HTTPS domain URL without credentials, query or fragment."

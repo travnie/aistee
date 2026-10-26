@@ -272,6 +272,16 @@ internal fun SkillCreationDialog(
                     }) { Text("Discard suggestion") }
                 }
                 }
+                if (asPlugin && !includeDraftSkill) {
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        label = { Text("Plugin description") },
+                        minLines = 2,
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth().testTag("studio_plugin_description")
+                    )
+                }
                 if (!ready) {
                     val problem = if (asPlugin) pluginDraft?.exceptionOrNull()?.message
                     else validation.issues.firstOrNull()?.message
