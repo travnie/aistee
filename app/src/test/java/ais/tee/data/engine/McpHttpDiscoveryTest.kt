@@ -6,6 +6,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.CookieJar
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -43,6 +44,16 @@ class McpHttpDiscoveryTest {
     private fun ok(request: Request, body: String, type: String = "application/json"): Response =
         Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
             .code(200).message("OK").body(body.toResponseBody(type.toMediaType())).build()
+
+    @Test
+    fun productionClientHasNoInheritedHooksCredentialsOrRedirects() {
+        val client = secureMcpHttpClient()
+        assertTrue(client.interceptors.isEmpty())
+        assertTrue(client.networkInterceptors.isEmpty())
+        assertFalse(client.followRedirects)
+        assertFalse(client.followSslRedirects)
+        assertEquals(CookieJar.NO_COOKIES, client.cookieJar)
+    }
 
     @Test
     fun paginatedHttpDiscoveryUsesRequestMetadataAndCurrentCatalog() = runBlocking {
@@ -88,9 +99,22 @@ class McpHttpDiscoveryTest {
     }
 
     @Test
+    fun acceptsBomCrOnlyAndUnknownSseFields() = runBlocking {
+        val transport = discovery { req ->
+            ok(req, "\uFEFF: comment\rextension: value\rdata: " + result(1) + "\r\r",
+                "text/event-stream")
+        }
+        assertEquals(1, transport.discover(url, "demo")?.count)
+    }
+
+    @Test
     fun refusesUncorrelatedResponsesAndServerRequests() = runBlocking {
         val wrongId = discovery { req -> ok(req, result(99)) }
         assertNull(wrongId.discover(url, "demo"))
+        val quotedId = discovery { req ->
+            ok(req, result(1).replace("\"id\":1", "\"id\":\"1\""))
+        }
+        assertNull(quotedId.discover(url, "demo"))
         val serverRequest = discovery { req ->
             val events = "data: {\"jsonrpc\":\"2.0\",\"id\":88,\"method\":\"sampling/createMessage\"}\n\n" +
                 "data: " + result(1) + "\n\n"
@@ -122,7 +146,9 @@ class McpHttpDiscoveryTest {
     fun rejectsUnboundedOrRepeatedPagesAndUnsupportedResultType() = runBlocking {
         val large = discovery { req -> ok(req, result(1) + " ".repeat(256_001)) }
         assertNull(large.discover(url, "demo"))
+        var repeatedRequests = 0
         val repeat = discovery { req ->
+            repeatedRequests++
             val body = okio.Buffer().also { req.body!!.writeTo(it) }.readUtf8()
             val cursor = Json.parseToJsonElement(body).jsonObject["params"]!!.jsonObject[
                 "cursor"
@@ -131,6 +157,7 @@ class McpHttpDiscoveryTest {
             else ok(req, result(2, "repeat"))
         }
         assertNull(repeat.discover(url, "demo"))
+        assertEquals(2, repeatedRequests)
         val inputRequired = discovery { req ->
             ok(req, result(1).replace("\"complete\"", "\"input_required\""))
         }
