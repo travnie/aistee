@@ -6,6 +6,8 @@ import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -35,6 +37,10 @@ internal enum class StudioToolsSection {
 fun SkillsBrowserScreen(viewModel: StudioViewModel) {
     var section by rememberSaveable { mutableStateOf(StudioToolsSection.SKILLS) }
     val stateHolder = rememberSaveableStateHolder()
+    val mcpPreview = remember { McpPreviewState() }
+    DisposableEffect(mcpPreview) {
+        onDispose { mcpPreview.cancelPending() }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         PrimaryScrollableTabRow(selectedTabIndex = section.ordinal) {
@@ -70,6 +76,7 @@ fun SkillsBrowserScreen(viewModel: StudioViewModel) {
                 ClaudeCodeHandoffPanel(modifier = Modifier.weight(1f))
             }
             StudioToolsSection.MCP -> McpDiscoveryPanel(
+                state = mcpPreview,
                 modifier = Modifier.weight(1f)
             )
             StudioToolsSection.JOBS -> AsyncJobsPanel(

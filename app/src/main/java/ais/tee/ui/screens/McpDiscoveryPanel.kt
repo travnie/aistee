@@ -16,29 +16,41 @@ import ais.tee.data.engine.McpHttpDiscovery
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/** Manual, ephemeral preview: no saved endpoints, background activity or tool execution. */
-@Composable
-internal fun McpDiscoveryPanel(modifier: Modifier = Modifier) {
-    val transport = remember { McpHttpDiscovery() }
-    val scope = rememberCoroutineScope()
-    var endpoint by remember { mutableStateOf("") }
-    var query by remember { mutableStateOf("") }
-    var outcome by remember { mutableStateOf<McpDiscoveryOutcome?>(null) }
-    var selectedTool by remember { mutableStateOf<String?>(null) }
-    var busy by remember { mutableStateOf(false) }
-    var epoch by remember { mutableIntStateOf(0) }
-    var job by remember { mutableStateOf<Job?>(null) }
-    fun reset() {
+/** In-memory state survives Studio tab switches but never leaves the Studio destination. */
+internal class McpPreviewState {
+    var endpoint by mutableStateOf("")
+    var query by mutableStateOf("")
+    var outcome by mutableStateOf<McpDiscoveryOutcome?>(null)
+    var selectedTool by mutableStateOf<String?>(null)
+    var busy by mutableStateOf(false)
+    var epoch = 0
+    var job: Job? = null
+
+    fun cancelPending() {
         epoch++
         job?.cancel()
         job = null
         busy = false
+    }
+
+    fun reset() {
+        cancelPending()
         outcome = null
         selectedTool = null
         query = ""
     }
-    val catalog = (outcome as? McpDiscoveryOutcome.Success)?.catalog
-    val tools = catalog?.browse(query, limit = 128).orEmpty()
+}
+
+/** Manual, ephemeral preview: no saved endpoints, background activity or tool execution. */
+@Composable
+internal fun McpDiscoveryPanel(state: McpPreviewState, modifier: Modifier = Modifier) {
+    val transport = remember { McpHttpDiscovery() }
+    val scope = rememberCoroutineScope()
+    DisposableEffect(state) {
+        onDispose { state.cancelPending() }
+    }
+    val catalog = (state.outcome as? McpDiscoveryOutcome.Success)?.catalog
+    val tools = catalog?.browse(state.query, limit = 128).orEmpty()
 
     LazyColumn(
         modifier = modifier.fillMaxSize().testTag("mcp_discovery_panel"),
@@ -56,31 +68,33 @@ internal fun McpDiscoveryPanel(modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.bodySmall,
                 )
                 OutlinedTextField(
-                    value = endpoint,
-                    onValueChange = { endpoint = it.take(2048); reset() },
+                    value = state.endpoint,
+                    onValueChange = { state.endpoint = it.take(2048); state.reset() },
                     label = { Text("MCP endpoint (HTTPS)") },
                     placeholder = { Text("https://example.org/mcp") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("mcp_endpoint"),
                 )
                 Button(
-                    onClick = {
-                        val requestEpoch = ++epoch
-                        val url = endpoint.trim()
-                        job?.cancel()
-                        outcome = null
-                        busy = true
-                        job = scope.launch {
+                    onClick = click@{
+                        // State changes synchronously, before Compose recomposes the disabled button.
+                        if (state.busy) return@click
+                        state.busy = true
+                        val requestEpoch = ++state.epoch
+                        val url = state.endpoint.trim()
+                        state.outcome = null
+                        state.job = scope.launch {
                             val response = transport.discoverChecked(url, "preview")
-                            if (requestEpoch == epoch) {
-                                outcome = response
-                                busy = false
+                            if (requestEpoch == state.epoch) {
+                                state.outcome = response
+                                state.busy = false
+                                state.job = null
                             }
                         }
                     },
-                    enabled = endpoint.isNotBlank() && !busy,
+                    enabled = state.endpoint.isNotBlank() && !state.busy,
                     modifier = Modifier.testTag("mcp_discover"),
-                ) { Text(if (busy) "Discovering…" else "Discover tools") }
+                ) { Text(if (state.busy) "Discovering…" else "Discover tools") }
                 Text(
                     "No account cookies, API keys, chats or local files are attached. " +
                         "This preview cannot execute tools.",
@@ -89,15 +103,15 @@ internal fun McpDiscoveryPanel(modifier: Modifier = Modifier) {
                 )
             }
         }
-        when (val response = outcome) {
+        when (val response = state.outcome) {
             is McpDiscoveryOutcome.Success -> {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(response.catalog.count.toString() + " discovered tools",
                             style = MaterialTheme.typography.titleSmall)
                         OutlinedTextField(
-                            value = query,
-                            onValueChange = { query = it.take(256); selectedTool = null },
+                            value = state.query,
+                            onValueChange = { state.query = it.take(256); state.selectedTool = null },
                             label = { Text("Search tools") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth().testTag("mcp_search"),
@@ -122,14 +136,14 @@ internal fun McpDiscoveryPanel(modifier: Modifier = Modifier) {
                             }
                             OutlinedButton(
                                 onClick = {
-                                    selectedTool = if (selectedTool == summary.nativeName) null
+                                    state.selectedTool = if (state.selectedTool == summary.nativeName) null
                                     else summary.nativeName
                                 }
                             ) {
-                                Text(if (selectedTool == summary.nativeName) "Hide schema"
+                                Text(if (state.selectedTool == summary.nativeName) "Hide schema"
                                     else "Inspect schema")
                             }
-                            if (selectedTool == summary.nativeName) {
+                            if (state.selectedTool == summary.nativeName) {
                                 val schema = response.catalog.loadDefinition(summary.nativeName)
                                     ?.inputSchema?.toString()
                                 if (schema != null) {

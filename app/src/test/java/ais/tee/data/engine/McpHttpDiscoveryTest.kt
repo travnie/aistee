@@ -180,6 +180,24 @@ class McpHttpDiscoveryTest {
     }
 
     @Test
+    fun refusesDeepJsonBeforeParsingInHttpAndSse() = runBlocking {
+        val deep = result(1).replace(
+            "\"tools\":[",
+            "\"nested\":" + "[".repeat(100) + "0" + "]".repeat(100) + ",\"tools\":["
+        )
+        val http = discovery { req -> ok(req, deep) }
+        assertEquals(
+            McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_RESPONSE),
+            http.discoverChecked(url, "demo")
+        )
+        val sse = discovery { req -> ok(req, "data: " + deep + "\n\n", "text/event-stream") }
+        assertEquals(
+            McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_RESPONSE),
+            sse.discoverChecked(url, "demo")
+        )
+    }
+
+    @Test
     fun refusesUncorrelatedResponsesAndServerRequests() = runBlocking {
         val wrongId = discovery { req -> ok(req, result(99)) }
         assertNull(wrongId.discover(url, "demo"))

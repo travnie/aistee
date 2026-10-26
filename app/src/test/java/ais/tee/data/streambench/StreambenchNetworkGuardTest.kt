@@ -60,6 +60,9 @@ class StreambenchNetworkGuardTest {
             ipv4(203, 0, 113, 10),
             ipv6(0xFC),
             ipv6(0xFD),
+            // Well-known and local-use NAT64 translators cannot be trusted for SSRF.
+            ipv6(0x00, 0x64, 0xFF, 0x9B, 0, 0, 0, 0, 0, 0, 0, 0, 10, 1, 2, 3),
+            ipv6(0x00, 0x64, 0xFF, 0x9B, 0, 1, 0, 0, 0, 0, 0, 0, 192, 168, 0, 1),
             ipv6(0x20, 0x01, 0x00, 0x02, 0x00, 0x00)
         ).forEach { address ->
             assertFalse(address.hostAddress, isPublicStreambenchAddress(address))
