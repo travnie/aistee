@@ -2,6 +2,10 @@ package ais.tee.data.engine
 
 import java.security.SecureRandom
 import java.io.IOException
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.SocketTimeoutException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -72,6 +76,55 @@ class McpHttpDiscoveryTest {
             McpDiscoveryOutcome.Failure(McpDiscoveryFailure.NETWORK_FAILURE),
             failing.discoverChecked(url, "demo")
         )
+    }
+
+    @Test
+    fun actualHttpRedirectDoesNotReachSecondEndpoint() {
+        // A test-only local server verifies OkHttp's redirect behavior. Production discovery
+        // rejects loopback targets independently through endpoint and public-DNS validation.
+        val visited = AtomicInteger()
+        val server = ServerSocket(0, 2, InetAddress.getByName("127.0.0.1"))
+        server.soTimeout = 1_000
+        val worker = Thread {
+            try {
+                repeat(2) { index ->
+                    val socket = try {
+                        server.accept()
+                    } catch (_: SocketTimeoutException) {
+                        return@Thread
+                    }
+                    socket.use {
+                        visited.incrementAndGet()
+                        val input = it.getInputStream().bufferedReader()
+                        while (input.readLine()?.isNotEmpty() == true) Unit
+                        val response = if (index == 0) {
+                            "HTTP/1.1 302 Found\\r\\nLocation: http://127.0.0.1:${server.localPort}/next\\r\\n" +
+                                "Content-Length: 0\\r\\nConnection: close\\r\\n\\r\\n"
+                        } else {
+                            "HTTP/1.1 200 OK\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n"
+                        }
+                        it.getOutputStream().write(response.toByteArray())
+                        it.getOutputStream().flush()
+                    }
+                }
+            } catch (_: IOException) {
+                // Listener closes after the assertion; absence of a second request is expected.
+            }
+        }
+        worker.start()
+        try {
+            val testClient = secureMcpHttpClient().newBuilder()
+                .dns(okhttp3.Dns.SYSTEM).build()
+            testClient.newCall(
+                okhttp3.Request.Builder()
+                    .url("http://127.0.0.1:${server.localPort}/start").build()
+            ).execute().use { assertEquals(302, it.code) }
+            worker.join(2_000)
+            assertEquals(1, visited.get())
+        } finally {
+            server.close()
+            worker.join(2_000)
+        }
     }
 
     @Test
