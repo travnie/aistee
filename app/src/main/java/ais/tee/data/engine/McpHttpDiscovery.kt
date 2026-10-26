@@ -46,6 +46,7 @@ import okhttp3.Response
 
 private const val MCP_VERSION = "2026-07-28"
 private const val MAX_RESPONSE_BYTES = 256_000
+private const val MAX_REMOTE_JSON_DEPTH = 64
 private const val MAX_CATALOG_PAGES = 16
 private const val TOTAL_DISCOVERY_MILLIS = 40_000L
 private const val MAX_CURSOR_LENGTH = 2_048
@@ -251,6 +252,7 @@ internal class McpHttpDiscovery(
                 if (event.isEmpty()) return true
                 val data = event.toString().removeSuffix("\n")
                 event.clear()
+                if (!hasSafeMcpJsonDepth(data)) return false
                 val envelope = runCatching { Json.parseToJsonElement(data) as? JsonObject }
                     .getOrNull() ?: return false
                 if (envelope.containsKey("id")) {
@@ -287,6 +289,7 @@ internal class McpHttpDiscovery(
     }
 
     private fun verifiedResponse(raw: String, expectedId: Int): String? {
+        if (!hasSafeMcpJsonDepth(raw)) return null
         val obj = runCatching { Json.parseToJsonElement(raw) as? JsonObject }
             .getOrNull() ?: return null
         val id = obj["id"] as? JsonPrimitive
@@ -297,6 +300,33 @@ internal class McpHttpDiscovery(
         val type = result["resultType"]
         if (type != null && (type as? JsonPrimitive)?.contentOrNull != "complete") return null
         return obj.toString()
+    }
+
+    /**
+     * Reject oversized nesting before invoking kotlinx.serialization's recursive JSON parser.
+     * Count object/array nesting outside of strings, respecting backslash escapes.
+     * The normal JSON decoder still validates syntax and schema after this bound.
+     */
+    private fun hasSafeMcpJsonDepth(raw: String): Boolean {
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (char in raw) {
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    char == '\\' -> escaped = true
+                    char == '"' -> inString = false
+                }
+            } else {
+                when (char) {
+                    '"' -> inString = true
+                    '{', '[' -> if (++depth > MAX_REMOTE_JSON_DEPTH) return false
+                    '}', ']' -> if (--depth < 0) return false
+                }
+            }
+        }
+        return !inString && depth == 0
     }
 
     private fun readBoundedUtf8(stream: java.io.InputStream): String {

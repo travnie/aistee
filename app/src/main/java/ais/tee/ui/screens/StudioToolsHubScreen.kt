@@ -2,10 +2,12 @@ package ais.tee.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -18,6 +20,7 @@ internal enum class StudioToolsSection {
     SKILLS,
     BENCHES,
     AGENTS,
+    MCP,
     JOBS,
     PRIVACY
 }
@@ -34,9 +37,13 @@ internal enum class StudioToolsSection {
 fun SkillsBrowserScreen(viewModel: StudioViewModel) {
     var section by rememberSaveable { mutableStateOf(StudioToolsSection.SKILLS) }
     val stateHolder = rememberSaveableStateHolder()
+    val mcpPreview = remember { McpPreviewState() }
+    DisposableEffect(mcpPreview) {
+        onDispose { mcpPreview.cancelPending() }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        PrimaryTabRow(selectedTabIndex = section.ordinal) {
+        PrimaryScrollableTabRow(selectedTabIndex = section.ordinal) {
             StudioToolsSection.entries.forEach { candidate ->
                 Tab(
                     selected = section == candidate,
@@ -47,6 +54,7 @@ fun SkillsBrowserScreen(viewModel: StudioViewModel) {
                                 StudioToolsSection.SKILLS -> "Skills"
                                 StudioToolsSection.BENCHES -> "Benches"
                                 StudioToolsSection.AGENTS -> "Agents"
+                                StudioToolsSection.MCP -> "MCP"
                                 StudioToolsSection.JOBS -> "Jobs"
                                 StudioToolsSection.PRIVACY -> "Privacy"
                             }
@@ -67,6 +75,10 @@ fun SkillsBrowserScreen(viewModel: StudioViewModel) {
             StudioToolsSection.AGENTS -> stateHolder.SaveableStateProvider("claude-code") {
                 ClaudeCodeHandoffPanel(modifier = Modifier.weight(1f))
             }
+            StudioToolsSection.MCP -> McpDiscoveryPanel(
+                state = mcpPreview,
+                modifier = Modifier.weight(1f)
+            )
             StudioToolsSection.JOBS -> AsyncJobsPanel(
                 viewModel = viewModel,
                 modifier = Modifier.weight(1f)

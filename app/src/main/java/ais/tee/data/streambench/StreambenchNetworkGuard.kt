@@ -58,6 +58,14 @@ private fun isBlockedIpv6(bytes: ByteArray): Boolean {
     val first = bytes[0].unsigned()
     val second = bytes[1].unsigned()
 
+    // NAT64 translation may expose a private IPv4 address under a public-looking IPv6
+    // literal. Reject both well-known (64:ff9b::/96) and local-use (64:ff9b:1::/48)
+    // prefixes in this public-only DNS boundary, rather than trying to trust a translator.
+    if (first == 0x00 && second == 0x64 && bytes[2].unsigned() == 0xFF &&
+        bytes[3].unsigned() == 0x9B &&
+        (bytes[4].unsigned() == 0 && bytes[5].unsigned() == 1 ||
+            bytes.sliceArray(4..11).all { it == 0.toByte() })) return true
+
     if ((first and 0xFE) == 0xFC) return true
     if (first == 0x20 && second == 0x01) {
         // Documentation prefix (2001:db8::/32) and benchmarking (2001:2::/48).
