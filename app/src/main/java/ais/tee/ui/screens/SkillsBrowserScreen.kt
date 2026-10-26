@@ -29,7 +29,7 @@ import ais.tee.data.repository.SkillsAndDocsRepository
 import ais.tee.data.preferences.ActiveSkillsPreferencesStore
 import ais.tee.data.skills.LocalSkillAlreadyExistsException
 import ais.tee.data.skills.StudioPackageFiles
-import ais.tee.data.skills.StudioPackageZip
+import ais.tee.data.skills.StudioPendingPluginExport
 import ais.tee.data.skills.readSkillArchive
 import ais.tee.data.skills.LocalSkillLibraryStore
 import ais.tee.ui.theme.*
@@ -76,6 +76,9 @@ fun SkillsBrowserScreen(
     var selectedItemContent by remember { mutableStateOf<Pair<String, String>?>(null) } // Title to Content dialog
     var skillImportPreview by remember { mutableStateOf<SkillImportPreview?>(null) }
     var pluginPackagePreview by remember { mutableStateOf<StudioPackageFiles?>(null) }
+    // Only an opaque cache reference enters the saved Android view state.
+    var pendingPluginExportId by rememberSaveable { mutableStateOf<String?>(null) }
+    var preparingPluginExport by remember { mutableStateOf(false) }
     var showSkillCreationDialog by rememberSaveable { mutableStateOf(false) }
     var pendingSkillReplacement by remember { mutableStateOf<SkillImportPreview?>(null) }
     var pendingSkillEditName by remember { mutableStateOf<String?>(null) }
@@ -117,23 +120,32 @@ fun SkillsBrowserScreen(
     val pluginExportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
-        val draft = pluginPackagePreview
-        if (uri != null && draft != null) {
+        val pendingId = pendingPluginExportId
+        if (pendingId != null) {
             scope.launch {
                 try {
-                    withContext(Dispatchers.IO) {
-                        context.contentResolver.openOutputStream(uri)?.use { output ->
-                            StudioPackageZip.write(output, draft)
-                        } ?: throw IOException("Cannot open the selected export destination.")
+                    if (uri != null) {
+                        withContext(Dispatchers.IO) {
+                            context.contentResolver.openOutputStream(uri)?.use { output ->
+                                StudioPendingPluginExport.copyTo(context.cacheDir, pendingId, output)
+                            } ?: throw IOException("Cannot open the selected export destination.")
+                        }
+                        pluginPackagePreview = null
+                        viewModel.showSnackbar("Plugin ZIP exported. No plugin was installed.")
                     }
-                    pluginPackagePreview = null
-                    viewModel.showSnackbar("Exported " + draft.name + ".zip. No plugin was installed.")
                 } catch (_: SecurityException) {
                     viewModel.showSnackbar("The export destination could not be accessed.")
                 } catch (_: IOException) {
-                    viewModel.showSnackbar("Could not export this plugin. Choose another destination.")
+                    viewModel.showSnackbar(
+                        "Could not export plugin ZIP. The temporary draft may have expired."
+                    )
                 } catch (cancelled: CancellationException) {
                     throw cancelled
+                } finally {
+                    withContext(Dispatchers.IO) {
+                        StudioPendingPluginExport.discard(context.cacheDir, pendingId)
+                    }
+                    pendingPluginExportId = null
                 }
             }
         }
@@ -654,9 +666,26 @@ fun SkillsBrowserScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = { pluginExportLauncher.launch(draft.name + ".zip") },
+                    onClick = {
+                        if (preparingPluginExport || pendingPluginExportId != null) return@Button
+                        preparingPluginExport = true
+                        scope.launch {
+                            try {
+                                val id = withContext(Dispatchers.IO) {
+                                    StudioPendingPluginExport.prepare(context.cacheDir, draft)
+                                }
+                                pendingPluginExportId = id
+                                pluginExportLauncher.launch(draft.name + ".zip")
+                            } catch (_: Exception) {
+                                viewModel.showSnackbar("Could not prepare the plugin ZIP export.")
+                            } finally {
+                                preparingPluginExport = false
+                            }
+                        }
+                    },
+                    enabled = !preparingPluginExport && pendingPluginExportId == null,
                     modifier = Modifier.testTag("studio_plugin_export")
-                ) { Text("Export ZIP") }
+                ) { Text(if (preparingPluginExport) "Preparing…" else "Export ZIP") }
             },
             dismissButton = {
                 TextButton(onClick = { pluginPackagePreview = null }) {
