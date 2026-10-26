@@ -259,6 +259,7 @@ Interaction references inspected in September 2026:
 - **Typeset display math:** keep the Unicode approximation for inline math, but render `$$` display blocks with a real TeX layout engine (bundled math font) when the expression is supported; fall back to the current TeX-source view. Copy keeps returning TeX source.
 - **Offline Mermaid:** render supported Mermaid blocks from a bundled, pinned library inside an isolated, network-off WebView (same sandboxing stance as the `:skills` process), never from a CDN. Rendering failure shows the source block.
 - **Tool/state micro-animations:** small vector or state-machine animations for running tools (web, MCP, memory, file, image) and thinking/search states can make tool activity legible without extra text. Keep them optional, reduced-motion aware and cheap enough for long chats.
+- **Model and provider icons:** show brand icons next to model/provider names in pickers, gateway model lists (OpenRouter, AiHubMix) and chat headers. Port the keyword/regex mapping from lobe-icons `src/features/modelConfig.ts` (MIT; model ID such as `deepseek/deepseek-chat` or `glm-4.6` → icon) into `shared` as data, ordered most-specific first, with a neutral fallback. Bundle the needed SVGs from `@lobehub/icons-static-svg` as vector drawables instead of loading a CDN at runtime; record source and licence in `THIRD_PARTY_NOTICES.md`. Mono/colour variants follow the theme. Reference: [ModelIcon](https://icons.lobehub.com/features/model-icon).
 
 ### UI construction shortlist from the inspected APK batch
 
