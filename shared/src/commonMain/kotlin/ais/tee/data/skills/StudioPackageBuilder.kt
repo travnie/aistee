@@ -52,9 +52,10 @@ object StudioPackageBuilder {
             require(packageName.matches(manifest.name) && manifest.name.length <= 64) {
                 "Plugin skill folder names must use lowercase ASCII letters, digits and single hyphens."
             }
-            require(sourcesByName.putIfAbsent(manifest.name, source) == null) {
+            require(manifest.name !in sourcesByName) {
                 "Duplicate skill names are not allowed in one plugin."
             }
+            sourcesByName[manifest.name] = source
         }
         val manifest = buildJsonObject {
             put("\$schema", "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json")
