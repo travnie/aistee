@@ -31,6 +31,8 @@ import ais.tee.data.repository.SkillsAndDocsRepository
 import ais.tee.data.preferences.ActiveSkillsPreferencesStore
 import ais.tee.data.skills.LocalSkillAlreadyExistsException
 import ais.tee.data.skills.StudioPackageFiles
+import ais.tee.data.skills.StudioPackageAdapters
+import ais.tee.data.skills.StudioPackageHost
 import ais.tee.data.skills.StudioPendingPluginExport
 import ais.tee.data.skills.readSkillArchive
 import ais.tee.data.skills.LocalSkillLibraryStore
@@ -78,6 +80,7 @@ fun SkillsBrowserScreen(
     var selectedItemContent by remember { mutableStateOf<Pair<String, String>?>(null) } // Title to Content dialog
     var skillImportPreview by remember { mutableStateOf<SkillImportPreview?>(null) }
     var pluginPackagePreview by remember { mutableStateOf<StudioPackageFiles?>(null) }
+    var pluginExportHost by remember { mutableStateOf(StudioPackageHost.PORTABLE) }
     // Only an opaque cache reference enters the saved Android view state.
     var pendingPluginExportId by rememberSaveable { mutableStateOf<String?>(null) }
     var preparingPluginExport by remember { mutableStateOf(false) }
@@ -621,6 +624,7 @@ fun SkillsBrowserScreen(
             onDismiss = { showSkillCreationDialog = false },
             onPluginPreview = { preview ->
                 showSkillCreationDialog = false
+                pluginExportHost = StudioPackageHost.PORTABLE
                 pluginPackagePreview = preview
             },
             assistantRoute = if (studioState.isNativeConversationStoreReady) {
@@ -647,6 +651,9 @@ fun SkillsBrowserScreen(
     }
 
     pluginPackagePreview?.let { draft ->
+        val exportDraft = remember(draft, pluginExportHost) {
+            runCatching { StudioPackageAdapters.forHost(draft, pluginExportHost) }
+        }
         AlertDialog(
             onDismissRequest = { pluginPackagePreview = null },
             title = { Text("Review plugin package") },
@@ -655,13 +662,39 @@ fun SkillsBrowserScreen(
                     modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    Text("Export format", style = MaterialTheme.typography.bodyMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = pluginExportHost == StudioPackageHost.PORTABLE,
+                            onClick = { pluginExportHost = StudioPackageHost.PORTABLE },
+                            label = { Text("Portable") },
+                            modifier = Modifier.testTag("studio_export_portable")
+                        )
+                        FilterChip(
+                            selected = pluginExportHost == StudioPackageHost.CLAUDE_CODE,
+                            onClick = { pluginExportHost = StudioPackageHost.CLAUDE_CODE },
+                            label = { Text("Claude Code") },
+                            modifier = Modifier.testTag("studio_export_claude")
+                        )
+                    }
                     Text("This ZIP will contain:", style = MaterialTheme.typography.bodyMedium)
-                    draft.files.keys.forEach { path ->
+                    exportDraft.getOrNull()?.files?.keys?.forEach { path ->
                         Text(path, style = MaterialTheme.typography.bodySmall)
                     }
+                    exportDraft.exceptionOrNull()?.message?.let { message ->
+                        Text(message, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
                     Text(
-                        "Portable Agent Plugins 1.0 draft. Export does not connect MCP, " +
-                            "register an app, request permissions, or install or publish anything.",
+                        if (pluginExportHost == StudioPackageHost.CLAUDE_CODE)
+                            "Claude Code files are generated from the portable manifest, " +
+                                "not maintained separately. Use claude plugin validate before installation."
+                        else "Portable Agent Plugins 1.0 draft.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        "Export does not connect MCP, register an app, grant permissions, " +
+                            "or install or publish anything.",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
@@ -673,8 +706,9 @@ fun SkillsBrowserScreen(
                         preparingPluginExport = true
                         scope.launch {
                             try {
+                                val staged = exportDraft.getOrThrow()
                                 val id = withContext(Dispatchers.IO) {
-                                    StudioPendingPluginExport.prepare(context.cacheDir, draft)
+                                    StudioPendingPluginExport.prepare(context.cacheDir, staged)
                                 }
                                 pendingPluginExportId = id
                                 pluginExportLauncher.launch(draft.name + ".zip")
@@ -685,7 +719,8 @@ fun SkillsBrowserScreen(
                             }
                         }
                     },
-                    enabled = !preparingPluginExport && pendingPluginExportId == null,
+                    enabled = !preparingPluginExport && pendingPluginExportId == null &&
+                        exportDraft.isSuccess,
                     modifier = Modifier.testTag("studio_plugin_export")
                 ) { Text(if (preparingPluginExport) "Preparing…" else "Export ZIP") }
             },
