@@ -3,6 +3,7 @@ package ais.tee.data.model
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.int
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -67,6 +68,40 @@ class McpToolCatalogTest {
         assertNull(catalog.loadDefinition("other"))
         assertNull(catalog.resolveTarget("mcp_other_0"))
         assertEquals("tools.save", catalog.browse("SAVE", limit = 1).single().remoteName)
+    }
+
+    @Test
+    fun callDraftContainsOnlyRequestFieldsAndNeverExecutes() {
+        val catalog = assertNotNull(parse(toolsList))
+        val name = catalog.browse().first().nativeName
+        val draft = assertNotNull(catalog.exportToolCallDraft(name, """{"query":"cats"}"""))
+        val envelope = Json.parseToJsonElement(draft).jsonObject
+        assertEquals("2.0", envelope["jsonrpc"]?.jsonPrimitive?.content)
+        assertEquals(1, envelope["id"]?.jsonPrimitive?.int)
+        assertEquals("tools/call", envelope["method"]?.jsonPrimitive?.content)
+        val params = assertNotNull(envelope["params"]?.jsonObject)
+        assertEquals("docs.search/v2", params["name"]?.jsonPrimitive?.content)
+        assertEquals("cats", params["arguments"]?.jsonObject?.get("query")?.jsonPrimitive?.content)
+        assertEquals(setOf("jsonrpc", "id", "method", "params"), envelope.keys)
+        assertFalse(draft.contains(firstDiscovery))
+        assertFalse(draft.contains("Search private documents"))
+    }
+
+    @Test
+    fun callDraftRejectsMalformedOversizedOrStaleArguments() {
+        val catalog = assertNotNull(parse(toolsList))
+        val name = catalog.browse().first().nativeName
+        assertNull(catalog.exportToolCallDraft("unknown", "{}"))
+        assertNull(catalog.exportToolCallDraft(name, ""))
+        assertNull(catalog.exportToolCallDraft(name, "[]"))
+        assertNull(catalog.exportToolCallDraft(name, "null"))
+        assertNull(catalog.exportToolCallDraft(name, """{"bad":}"""))
+        assertNull(catalog.exportToolCallDraft(name, " ".repeat(8193)))
+        val nested = (1..25).fold("{}") { value, _ -> """{"v":$value}""" }
+        assertNull(catalog.exportToolCallDraft(name, nested))
+        val refreshed = assertNotNull(parse(toolsList, nextDiscovery))
+        assertNull(refreshed.exportToolCallDraft(name, "{}"))
+        assertNotNull(catalog.exportToolCallDraft(name, "{}"))
     }
 
     @Test
