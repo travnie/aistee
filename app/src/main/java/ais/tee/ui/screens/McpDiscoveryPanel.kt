@@ -25,6 +25,8 @@ internal class McpPreviewState {
     var outcome by mutableStateOf<McpDiscoveryOutcome?>(null)
     var selectedTool by mutableStateOf<String?>(null)
     var copiedTool by mutableStateOf<String?>(null)
+    var draftArguments by mutableStateOf("{}")
+    var copiedCallDraft by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
     var epoch = 0
     var job: Job? = null
@@ -41,6 +43,8 @@ internal class McpPreviewState {
         outcome = null
         selectedTool = null
         copiedTool = null
+        copiedCallDraft = null
+        draftArguments = "{}"
         query = ""
     }
 }
@@ -116,7 +120,12 @@ internal fun McpDiscoveryPanel(state: McpPreviewState, modifier: Modifier = Modi
                             style = MaterialTheme.typography.titleSmall)
                         OutlinedTextField(
                             value = state.query,
-                            onValueChange = { state.query = it.take(256); state.selectedTool = null },
+                            onValueChange = {
+                                state.query = it.take(256)
+                                state.selectedTool = null
+                                state.copiedCallDraft = null
+                                state.draftArguments = "{}"
+                            },
                             label = { Text("Search tools") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth().testTag("mcp_search"),
@@ -144,6 +153,8 @@ internal fun McpDiscoveryPanel(state: McpPreviewState, modifier: Modifier = Modi
                                     state.selectedTool = if (state.selectedTool == summary.nativeName) null
                                     else summary.nativeName
                                     state.copiedTool = null
+                                    state.copiedCallDraft = null
+                                    state.draftArguments = "{}"
                                 }
                             ) {
                                 Text(if (state.selectedTool == summary.nativeName) "Hide schema"
@@ -170,6 +181,37 @@ internal fun McpDiscoveryPanel(state: McpPreviewState, modifier: Modifier = Modi
                                                 "Copied spec" else "Copy tool spec")
                                         }
                                     }
+                                    OutlinedTextField(
+                                        value = state.draftArguments,
+                                        onValueChange = {
+                                            state.draftArguments = it.take(8_192)
+                                            state.copiedCallDraft = null
+                                        },
+                                        label = { Text("tools/call arguments (JSON object)") },
+                                        minLines = 2,
+                                        maxLines = 6,
+                                        modifier = Modifier.fillMaxWidth().testTag("mcp_call_draft_args"),
+                                    )
+                                    val draft = response.catalog.exportToolCallDraft(
+                                        summary.nativeName, state.draftArguments)
+                                    OutlinedButton(
+                                        onClick = {
+                                            if (draft != null && copyPlainTextToClipboard(
+                                                    context, "MCP tools/call draft", draft, sensitive = true
+                                                )) state.copiedCallDraft = summary.nativeName
+                                        },
+                                        enabled = draft != null,
+                                        modifier = Modifier.testTag("mcp_copy_call_draft"),
+                                    ) {
+                                        Text(if (state.copiedCallDraft == summary.nativeName)
+                                            "Copied call draft" else "Copy tools/call draft")
+                                    }
+                                    Text(
+                                        "Local draft only. JSON syntax is checked, not the " +
+                                            "server schema. No tool runs and nothing is sent.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 }
                             }
                         }
