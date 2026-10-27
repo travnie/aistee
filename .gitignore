@@ -27,9 +27,6 @@ __pycache__/
 !app/src/release/generated/baselineProfiles/
 !app/src/release/generated/baselineProfiles/*.txt
 generated/
-!app/src/release/generated/
-!app/src/release/generated/baselineProfiles/
-!app/src/release/generated/baselineProfiles/*.txt
 
 # OS/editor noise
 .DS_Store
@@ -37,3 +34,8 @@ Thumbs.db
 
 # Claude Code: cloud hooks/settings live in the environment setup script; local .claude/ is per-machine
 .claude/
+
+# Local tooling / agent state
+*.log
+node_modules/
+CLAUDE.local.md
