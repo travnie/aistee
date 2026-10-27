@@ -146,6 +146,48 @@ Integration notes for the `ACCOUNT_PLAN` credential lifecycle. Shipped: sign-in,
 
 **Policy:** `AGENTS.md` carries a narrow exception for this grant only: persisted Keystore-encrypted, excluded from backup/export, never logged. WebView provider sessions, cookies and tokens stay off-limits.
 
+### GitHub Copilot SDK as an optional agent runtime
+
+The official [Copilot SDK](https://github.com/github/copilot-sdk) can use an eligible
+GitHub Copilot account (including Free allowances) via GitHub OAuth, or an explicit
+BYOK route with separate API billing. It drives the Copilot CLI agent runtime through
+JSON-RPC; do **not** treat a GitHub login, a Copilot WebView or a generic GitHub token
+as an interchangeable Aistee inference credential. The Java SDK alone is not a
+drop-in Android inference backend: prove its CLI host and execution boundary first.
+
+Adopt the SDK's session lifecycle, streaming, pre/post tool hooks, permission
+requests and MCP integration behind the **existing** Aistee runtime and capability
+registries. Do not add a second chat history, memory store, tool registry or
+permission system. Route/funding stays explicit (`ACCOUNT_PLAN` versus `API_KEY`
+or `WEB_HANDOFF`); external agent execution location is a separate dimension.
+Copilot's own opaque session state must remain provider-scoped.
+
+Incremental acceptance plan:
+
+1. **Host proof:** exercise a disposable, least-privileged Copilot CLI/SDK session
+   on a supported JVM/desktop host with a real signed-in user, stream/cancel/resume,
+   discover accessible models and verify Free/paid allowance and error reporting.
+   Do not silently retry through BYOK or an owner's automation credentials.
+2. **Secure pairing:** design an opt-in Android-to-agent connection with
+   authenticated transport, scoped session access, expiry/revocation and per-user
+   isolation. Keep CLI bound to loopback by default; never expose unauthenticated
+   headless RPC to LAN/public networks or store CLI OAuth tokens in WebView state.
+3. **Existing Aistee contracts:** adapt session, model, streaming and tool events
+   into the KMP chat model. Feed tools through current capability decisions,
+   explicit side-effect approval and local receipts. Fail closed on lost consent,
+   stale sessions or host changes; make reconnect/cancel and usage visible.
+4. **User-owned context:** opt-in, bounded retrieval from Project Library and
+   `trvny/.ai` adapters. Surface which sources will be sent before dispatch.
+   Provider-owned web history, hidden reasoning and opaque replay never migrate.
+5. **Tests:** cover authorization failures, budget exhaustion, reconnect/resume,
+   cancellation, malicious tool/schema output, multi-session isolation and
+   offline Android without an agent host. Keep account-free Aistee usable.
+
+Inspirations are not dependencies: Vercel AI SDK's provider registry and streaming,
+Copilot SDK's agent loop and hooks, and OpenAI's separate plan-backed route each
+inform the existing KMP design. Unsupported Claude/Gemini consumer OAuth bridges
+remain out of scope until an official third-party contract is available.
+
 ## Web/account-chat TODO
 
 - [x] Never invent a fallback Studio prompt when no rendered instructions are active.
