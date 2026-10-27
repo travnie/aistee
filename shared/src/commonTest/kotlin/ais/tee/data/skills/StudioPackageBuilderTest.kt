@@ -66,6 +66,55 @@ class StudioPackageBuilderTest {
         assertFalse(pack.toString().contains("quotes"))
     }
 
+
+    @Test
+    fun supportsMcpOnlyAndCombinedPackagesWithoutDuplicatedEndpoints() {
+        val mcp = StudioMcpServer("docsApi", "https://docs.example.org:443/mcp")
+        val only = StudioPackageBuilder.createPlugin(
+            name = "docs-only", description = "Read documentation",
+            skillSources = emptyList(), mcpServers = listOf(mcp)
+        )
+        assertEquals(setOf("plugin.json", "mcp.json"), only.files.keys)
+        val server = Json.parseToJsonElement(only.files.getValue("mcp.json"))
+            .jsonObject.getValue("mcpServers").jsonObject.getValue("docsApi").jsonObject
+        assertEquals("streamable-http", server.getValue("type").jsonPrimitive.content)
+        assertEquals(mcp.url, server.getValue("url").jsonPrimitive.content)
+        val combined = StudioPackageBuilder.createPlugin(
+            "doc-suite", "Docs + skill", listOf(skill("reader")), listOf(mcp)
+        )
+        assertEquals(3, combined.files.size)
+        assertFalse(combined.files.getValue("plugin.json").contains("mcpServers"))
+    }
+
+    @Test
+    fun rejectsUnsupportedMcpMappingsAndKeepsCredentialsOut() {
+        val invalid = listOf(
+            "http://docs.example.org/mcp",
+            "https://alice:secret@docs.example.org/mcp",
+            "https://docs.example.org/mcp?token=SECRET",
+            "https://docs.example.org/mcp#fragment",
+            "https://127.0.0.1/mcp",
+            "https://localhost/mcp",
+            "https://docs.example.org:99999/mcp",
+            "https://docs.example.org/mcp\ninjection",
+            "https://docs.example.org@127.0.0.1/mcp"
+        )
+        invalid.forEach { url ->
+            assertFailsWith<IllegalArgumentException>(url) {
+                StudioPackageBuilder.createPlugin(
+                    "docs", "Description", emptyList(), listOf(StudioMcpServer("docs", url))
+                )
+            }
+        }
+        assertFailsWith<IllegalArgumentException> {
+            StudioPackageBuilder.createPlugin(
+                "docs", "Description", emptyList(),
+                listOf(StudioMcpServer("same", "https://one.example.org/mcp"),
+                    StudioMcpServer("same", "https://two.example.org/mcp"))
+            )
+        }
+    }
+
     @Test
     fun rejectsLargeOrEmptySkillContents() {
         assertFailsWith<IllegalArgumentException> {

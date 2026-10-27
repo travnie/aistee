@@ -33,6 +33,7 @@ import ais.tee.data.skills.AgentSkillDraftFactory
 import ais.tee.data.skills.AgentSkillManifestParser
 import ais.tee.data.skills.StudioPackageBuilder
 import ais.tee.data.skills.StudioPackageFiles
+import ais.tee.data.skills.StudioMcpServer
 import ais.tee.data.skills.SkillAssistField
 import ais.tee.data.skills.SkillAssistRoute
 import kotlinx.coroutines.CancellationException
@@ -53,22 +54,37 @@ internal fun SkillCreationDialog(
     var instructions by rememberSaveable { mutableStateOf("") }
     var asPlugin by rememberSaveable { mutableStateOf(false) }
     var pluginName by rememberSaveable { mutableStateOf("") }
+    var includeDraftSkill by rememberSaveable { mutableStateOf(true) }
+    var mcpAlias by rememberSaveable { mutableStateOf("") }
+    var mcpEndpoint by rememberSaveable { mutableStateOf("") }
     val source = remember(name, description, instructions) {
         AgentSkillDraftFactory.create(name, description, instructions)
     }
     val validation = remember(source) { AgentSkillManifestParser.parse(source) }
     val missingInstructions = instructions.isBlank()
-    val pluginDraft = remember(asPlugin, pluginName, name, description, source) {
+    val pluginDraft = remember(
+        asPlugin, pluginName, name, description, source,
+        includeDraftSkill, mcpAlias, mcpEndpoint
+    ) {
         if (!asPlugin) null else runCatching {
+            require(mcpAlias.isBlank() || mcpEndpoint.isNotBlank()) {
+                "Enter an MCP URL for the configured server alias."
+            }
             StudioPackageBuilder.createPlugin(
-                name = pluginName.ifBlank { name.trim() + "-plugin" },
+                name = if (includeDraftSkill) pluginName.ifBlank { name.trim() + "-plugin" }
+                    else pluginName,
                 description = description,
-                skillSources = listOf(source),
+                skillSources = if (includeDraftSkill) listOf(source) else emptyList(),
+                mcpServers = if (mcpEndpoint.isBlank()) emptyList()
+                    else listOf(StudioMcpServer(
+                        name = mcpAlias.ifBlank { "mcp" },
+                        url = mcpEndpoint.trim()
+                    )),
             )
         }
     }
-    val ready = validation.isValid && !missingInstructions &&
-        (!asPlugin || pluginDraft?.isSuccess == true)
+    val ready = if (asPlugin) pluginDraft?.isSuccess == true
+        else validation.isValid && !missingInstructions
     val scope = rememberCoroutineScope()
     var assisting by remember { mutableStateOf(false) }
     var assistanceError by remember { mutableStateOf<String?>(null) }
@@ -127,7 +143,7 @@ internal fun SkillCreationDialog(
                     FilterChip(
                         selected = asPlugin,
                         onClick = { asPlugin = true },
-                        label = { Text("Plugin + skill") },
+                        label = { Text("Plugin") },
                         modifier = Modifier.testTag("studio_plugin_mode")
                     )
                 }
@@ -135,19 +151,45 @@ internal fun SkillCreationDialog(
                     OutlinedTextField(
                         value = pluginName,
                         onValueChange = { pluginName = it },
-                        label = { Text("Plugin name (optional)") },
+                        label = { Text(if (includeDraftSkill) "Plugin name (optional)"
+                            else "Plugin name") },
                         placeholder = { Text("my-helper-plugin") },
-                        supportingText = { Text("Defaults to the skill name plus -plugin.") },
+                        supportingText = { Text(if (includeDraftSkill)
+                            "Defaults to the skill name plus -plugin."
+                            else "Required for an MCP-only plugin.") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().testTag("studio_plugin_name")
                     )
+                    FilterChip(
+                        selected = includeDraftSkill,
+                        onClick = { includeDraftSkill = !includeDraftSkill },
+                        label = { Text("Include drafted skill") },
+                        modifier = Modifier.testTag("studio_plugin_include_skill")
+                    )
+                    OutlinedTextField(
+                        value = mcpAlias,
+                        onValueChange = { mcpAlias = it.take(64) },
+                        label = { Text("MCP server alias (optional)") },
+                        placeholder = { Text("docsApi") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("studio_mcp_alias")
+                    )
+                    OutlinedTextField(
+                        value = mcpEndpoint,
+                        onValueChange = { mcpEndpoint = it.take(2048) },
+                        label = { Text("MCP endpoint (HTTPS, optional)") },
+                        placeholder = { Text("https://docs.example.org/mcp") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("studio_mcp_endpoint")
+                    )
                     Text(
-                        "Exports plugin.json and skills/<name>/SKILL.md as a ZIP. " +
-                            "More skills and MCP components will use this same package builder.",
+                        "This writes only portable mcp.json metadata. No server is contacted, " +
+                            "authenticated or enabled. A plugin needs at least one skill or MCP.",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
-                OutlinedTextField(
+                if (!asPlugin || includeDraftSkill) {
+                    OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Skill name") },
@@ -229,10 +271,21 @@ internal fun SkillCreationDialog(
                         proposal = ""
                     }) { Text("Discard suggestion") }
                 }
+                }
+                if (asPlugin && !includeDraftSkill) {
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        label = { Text("Plugin description") },
+                        minLines = 2,
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth().testTag("studio_plugin_description")
+                    )
+                }
                 if (!ready) {
-                    val problem = validation.issues.firstOrNull()?.message
-                        ?: if (missingInstructions) "Instructions are required."
-                        else pluginDraft?.exceptionOrNull()?.message
+                    val problem = if (asPlugin) pluginDraft?.exceptionOrNull()?.message
+                    else validation.issues.firstOrNull()?.message
+                        ?: if (missingInstructions) "Instructions are required." else null
                     problem?.let {
                         Text(
                             text = it,
