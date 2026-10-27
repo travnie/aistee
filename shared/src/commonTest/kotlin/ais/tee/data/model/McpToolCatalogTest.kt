@@ -1,5 +1,8 @@
 package ais.tee.data.model
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -54,6 +57,13 @@ class McpToolCatalogTest {
         val selected = assertNotNull(catalog.loadDefinition(match.nativeName))
         assertEquals(match.nativeName, selected.name)
         assertEquals("object", selected.inputSchema["type"]?.toString()?.trim('"'))
+        val spec = assertNotNull(catalog.exportToolSpec(match.nativeName))
+        val copied = Json.parseToJsonElement(spec).jsonObject
+        assertEquals("docs.search/v2", copied["name"]?.jsonPrimitive?.content)
+        assertEquals("Search private documents", copied["description"]?.jsonPrimitive?.content)
+        assertEquals("object", copied["inputSchema"]?.jsonObject?.get("type")?.jsonPrimitive?.content)
+        assertFalse(spec.contains(firstDiscovery))
+        assertNull(catalog.exportToolSpec("other"))
         assertNull(catalog.loadDefinition("other"))
         assertNull(catalog.resolveTarget("mcp_other_0"))
         assertEquals("tools.save", catalog.browse("SAVE", limit = 1).single().remoteName)

@@ -5,6 +5,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 
@@ -71,6 +73,16 @@ class McpToolCatalog private constructor(
             inputSchema = entry.inputSchema,
         )
     }
+
+    /** Explicit, portable descriptor copy. Never export ephemeral aliases or discovery credentials. */
+    fun exportToolSpec(nativeName: String): String? =
+        entries.firstOrNull { it.summary.nativeName == nativeName }?.let { entry ->
+            buildJsonObject {
+                put("name", entry.summary.remoteName)
+                put("description", entry.summary.description)
+                put("inputSchema", entry.inputSchema)
+            }.toString()
+        }
 
     fun resolveTarget(nativeName: String): McpToolTarget? =
         entries.firstOrNull { it.summary.nativeName == nativeName }?.let {
