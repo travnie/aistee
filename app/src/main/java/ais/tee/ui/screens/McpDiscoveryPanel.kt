@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -13,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import ais.tee.data.engine.McpDiscoveryFailure
 import ais.tee.data.engine.McpDiscoveryOutcome
 import ais.tee.data.engine.McpHttpDiscovery
+import ais.tee.share.copyPlainTextToClipboard
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -22,6 +24,7 @@ internal class McpPreviewState {
     var query by mutableStateOf("")
     var outcome by mutableStateOf<McpDiscoveryOutcome?>(null)
     var selectedTool by mutableStateOf<String?>(null)
+    var copiedTool by mutableStateOf<String?>(null)
     var busy by mutableStateOf(false)
     var epoch = 0
     var job: Job? = null
@@ -37,6 +40,7 @@ internal class McpPreviewState {
         cancelPending()
         outcome = null
         selectedTool = null
+        copiedTool = null
         query = ""
     }
 }
@@ -46,6 +50,7 @@ internal class McpPreviewState {
 internal fun McpDiscoveryPanel(state: McpPreviewState, modifier: Modifier = Modifier) {
     val transport = remember { McpHttpDiscovery() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     DisposableEffect(state) {
         onDispose { state.cancelPending() }
     }
@@ -138,6 +143,7 @@ internal fun McpDiscoveryPanel(state: McpPreviewState, modifier: Modifier = Modi
                                 onClick = {
                                     state.selectedTool = if (state.selectedTool == summary.nativeName) null
                                     else summary.nativeName
+                                    state.copiedTool = null
                                 }
                             ) {
                                 Text(if (state.selectedTool == summary.nativeName) "Hide schema"
@@ -150,6 +156,20 @@ internal fun McpDiscoveryPanel(state: McpPreviewState, modifier: Modifier = Modi
                                     Text(schema.take(2000) +
                                         if (schema.length > 2000) "\n… Preview truncated" else "",
                                         style = MaterialTheme.typography.bodySmall)
+                                    val spec = response.catalog.exportToolSpec(summary.nativeName)
+                                    if (spec != null) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                if (copyPlainTextToClipboard(
+                                                        context, "MCP tool spec", spec, sensitive = true
+                                                    )) state.copiedTool = summary.nativeName
+                                            },
+                                            modifier = Modifier.testTag("mcp_copy_selected_tool"),
+                                        ) {
+                                            Text(if (state.copiedTool == summary.nativeName)
+                                                "Copied spec" else "Copy tool spec")
+                                        }
+                                    }
                                 }
                             }
                         }
