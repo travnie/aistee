@@ -70,4 +70,11 @@
     <string name="web_sign_in_browser">Open in browser</string>
     <string name="web_sign_in_close">Close</string>
     <string name="web_sign_in_browser_failure">Could not launch external browser</string>
+    <string name="web_load_failed_title">Could not load %1$s</string>
+    <string name="web_load_failed_connection">Check your connection and try again.</string>
+    <string name="web_load_failed_timeout">The page took too long to respond. Try again when your connection is ready.</string>
+    <string name="web_load_failed_secure">A secure connection could not be established. Check your device date and network, then try again.</string>
+    <string name="web_load_failed_other">This page could not be opened. Try again or return to the provider home page.</string>
+    <string name="web_load_retry">Try again</string>
+    <string name="web_load_home">Open %1$s home</string>
 </resources>
