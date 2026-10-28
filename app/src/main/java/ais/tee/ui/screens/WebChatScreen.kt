@@ -11,6 +11,7 @@ import android.net.Uri
 import android.net.http.SslError
 import android.util.Log
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.webkit.*
@@ -1251,6 +1252,7 @@ fun WebChatScreen(
                 key(service, webViewInstanceRevisions[service] ?: 0) {
                     val isCurrentService = selectedService == service
                     val isRendererInactivityConfirmed = rendererInactivityConfirmed[service] == true
+                    val pageLoadState = remember { WebPageLoadState(service) }
 
                     Box(
                         modifier = if (isCurrentService) {
@@ -1278,6 +1280,7 @@ fun WebChatScreen(
                                 service = service,
                                 initialUrl = lastKnownUrls[service] ?: service.url,
                                 isDesktop = initialDesktopMode,
+                                pageLoadState = pageLoadState,
                                 isServiceSelected = { viewModel.uiState.value.selectedWebService == service },
                                 isRendererInactivityConfirmed = {
                                     rendererInactivityConfirmed[service] == true
@@ -1422,6 +1425,11 @@ fun WebChatScreen(
                         },
                         update = { wv ->
                             wv.visibility = providerWebViewVisibility(isCurrentService)
+                            wv.importantForAccessibility = if (pageLoadState.failure == null) {
+                                View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                            } else {
+                                View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                            }
                             wv.setRendererPriorityPolicy(
                                 WebView.RENDERER_PRIORITY_IMPORTANT,
                                 rendererPriorityWaivedWhenNotVisible(
@@ -1450,6 +1458,19 @@ fun WebChatScreen(
                         },
                         modifier = Modifier.fillMaxSize()
                             )
+                            if (isCurrentService) {
+                                pageLoadState.failure?.let { failure ->
+                                    WebPageLoadFailureContent(
+                                        service = service,
+                                        failure = failure,
+                                        canRetry = pageLoadState.retryUrl != null,
+                                        onRetry = {
+                                            pageLoadState.retryUrl?.let { webViewMap[service]?.loadUrl(it) }
+                                        },
+                                        onOpenHome = { webViewMap[service]?.loadUrl(service.url) }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -2306,6 +2327,7 @@ private fun createConfiguredWebView(
     service: WebAiService,
     initialUrl: String,
     isDesktop: Boolean,
+    pageLoadState: WebPageLoadState,
     isServiceSelected: () -> Boolean,
     isRendererInactivityConfirmed: () -> Boolean,
     onDocumentStarted: () -> Unit,
@@ -2384,7 +2406,7 @@ private fun createConfiguredWebView(
 
         webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                onProgressChanged(newProgress)
+                onProgressChanged(if (pageLoadState.failure == null) newProgress else 100)
                 onNavStateChanged(view?.canGoBack() ?: false, view?.canGoForward() ?: false)
             }
 
@@ -2417,6 +2439,7 @@ private fun createConfiguredWebView(
             }
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                pageLoadState.onPageStarted(url)
                 onDocumentStarted()
                 url?.let { pageUrl ->
                     onUrlChanged(pageUrl)
@@ -2430,7 +2453,7 @@ private fun createConfiguredWebView(
             override fun onPageFinished(view: WebView?, url: String?) {
                 url?.let { pageUrl ->
                     onUrlChanged(pageUrl)
-                    view?.let { webView ->
+                    view?.takeIf { pageLoadState.failure == null }?.let { webView ->
                         applyProviderWebTweaks(webView, service, pageUrl)
                         installStudioPromptTargetTracker(webView, service, pageUrl)
                         installProviderGenerationTracker(
@@ -2444,15 +2467,31 @@ private fun createConfiguredWebView(
                 CookieManager.getInstance().flush()
             }
 
+            override fun onPageCommitVisible(view: WebView?, url: String?) {
+                pageLoadState.onPageCommitVisible(url)
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                if (pageLoadState.onReceivedError(request, error?.errorCode)) {
+                    onProgressChanged(100)
+                }
+            }
+
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val navigation = request ?: return true
-                return handleMainFrameNavigation(
+                val handled = handleMainFrameNavigation(
                     context,
                     service,
                     navigation,
                     onExternalIntentRequested,
                     onExternalNavigationFailed
                 )
+                if (!handled) pageLoadState.onRedirect(navigation)
+                return handled
             }
 
             override fun onRenderProcessGone(
@@ -2469,6 +2508,7 @@ private fun createConfiguredWebView(
                 error: SslError?
             ) {
                 handler?.cancel()
+                if (pageLoadState.onReceivedSslError(error?.url)) onProgressChanged(100)
             }
         }
 

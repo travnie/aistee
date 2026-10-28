@@ -52,6 +52,7 @@ Provider-specific verification and API research live in [docs/provider-capabilit
 
 - Provider account sessions stay provider-owned. Aistee does not copy passwords, cookies, OAuth tokens or browser sessions.
 - WebViews are pooled and evicted under memory pressure; provider tweaks are static, host-scoped and bundled with the app.
+- Failed Web page loads offer explicit GET retry or provider home navigation. Subresource errors and provider HTTP responses keep the provider page visible; the recovery action never replays POSTs.
 - Diagnostics exclude page text, full URLs, form values, file names and credentials.
 - Aistee has no account wall. Local chats, projects, files, tools, settings and backup/import/export remain usable without an Aistee cloud account.
 - Native API keys are encrypted at rest with an Android Keystore-backed AES-GCM key and are never logged or exported.
