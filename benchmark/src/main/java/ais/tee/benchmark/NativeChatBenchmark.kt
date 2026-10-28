@@ -30,7 +30,7 @@ class NativeChatBenchmark {
             iterations = 5,
             setupBlock = {
                 pressHome()
-                startActivityAndWait()
+                startActivityInCompareHub()
                 openStudioTab()
             }
         ) {
