@@ -26,10 +26,13 @@ updates:
     rebase-strategy: "disabled"
     commit-message:
       prefix: "deps"
-    # Re-enable this release after CodeQL adds compiler support.
     ignore:
+      # Re-enable this release after CodeQL adds compiler support.
       - dependency-name: "org.jetbrains.kotlin*"
         versions: ["2.4.20"]
+      # 0.112.0 breaks YAML/Docbench JVM tests with NoSuchMethodError (#432).
+      - dependency-name: "io.heapy.kotaml:kotaml"
+        versions: ["0.112.0"]
     groups:
       kotlin:
         patterns:
