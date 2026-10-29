@@ -1,6 +1,6 @@
 # Android intelligence system - research and plan
 
-Status: **proposal, not implemented**. Reviewed against current Android developer guidance on 29 October 2026. Aistee already uses compileSdk 37 / targetSdk 36, but AppFunctions and ML Kit Prompt API are not yet dependencies.
+Status: **Android platform integration remains proposed**. A device-independent, default-deny local token-count action is available as AppFunctions preparation; no system assistant can invoke it yet. Reviewed against Android guidance on 29 October 2026. Aistee uses compileSdk 37 / targetSdk 36; AppFunctions and ML Kit Prompt API are not yet dependencies.
 
 ## AppFunctions (Android MCP)
 
@@ -28,6 +28,13 @@ Plan for Aistee:
 - Every function goes through the shared Bench registry decision and qualifies only if it would be `ALLOW` for an explicit user action on a network-free route.
 - All functions ship with `isEnabled = false`. An opt-in Privacy toggle, "Allow system assistants to use Aistee tools", enables them with `setAppFunctionEnabled`; turning it off or Delete all local data disables them.
 - Tests: JVM tests for the exposure allowlist (the registry decision per function), instrumentation test that functions are disabled until the toggle is on, and an `execute-app-function` smoke script in CI once an emulator image supports it.
+
+
+### Safe local first slice
+
+`SystemAssistantTokenCountAction` is the first device-independent implementation slice. It accepts **inline text provided in a specific user request** only after the separate future system-assistant opt-in, explicit user initiation, first-party Docbench enablement and `READ_USER_SELECTED_CONTENT` grant are all present. It re-evaluates the existing `BuiltInBenchTool.DOCBENCH_DOCUMENT.availability` decision for a network-free explicit action, and calls the existing `LocalTokenCounter` off the caller thread. It has no network, storage, UI, cookies, conversation reads or exported Android component.
+
+The first JVM tests are in `SystemAssistantTokenCountActionTest`. An Android system-agent adapter **must not** wire this to discovery until the platform service, Android 16+ checks, Privacy opt-in, per-request consent, cancellation and enabled/disabled instrumentation tests in phase 2 are implemented. Do not advertise AppFunctions support in the README or the shipped-features index before then.
 
 ## On-device model provider (Gemini Nano)
 
@@ -63,8 +70,8 @@ The [open product backlog](product-ideas.md) owns feature priority. This file ow
 
 | Phase | Smallest deliverable | Acceptance / blocker |
 | --- | --- | --- |
-| 0 · Current | Fix CodeQL Kotlin build on JDK 21 in the existing shared Android CI toolchain. | Advanced CodeQL analyses for Actions and Java/Kotlin pass; central repo settings stop re-enabling Default Setup. Tracking: [Aistee PR #438](https://github.com/travnie/aistee/pull/438), [central PR #66](https://github.com/trvny/.github/pull/66). |
-| 1 · Device-free | Inventory existing Bench transforms, the allowlist/consent decision, Project Library save flow and Android manifest. Select **one** read-only AppFunction such as local `countTokens`; do not invent another implementation of the tokenizer. | JVM tests cover data types, network-free routing, allowlist and revoked/disabled permission behavior. No new SDK dependency until the contract and a compatible build route are verified. |
+| 0 · Done | Fix CodeQL Kotlin build on JDK 21 in the existing shared Android CI toolchain. | Advanced CodeQL and central setup policy shipped in [Aistee PR #438](https://github.com/travnie/aistee/pull/438), [central PR #66](https://github.com/trvny/.github/pull/66), with compile-only extraction follow-up in [Aistee PR #440](https://github.com/travnie/aistee/pull/440). |
+| 1 · In progress, device-free | Add a **non-exported** local `countTokens(text)` action using the existing Docbench capability decision, first-party enablement and o200k tokenizer. No new tool registry. | JVM tests cover default-deny, user initiation, explicit content grant, revoked opt-in, invalid input and tokenizer parity. This is a preparation boundary only: **no AppFunctions service, OS exposure, manifest entry or Privacy toggle ships yet**. |
 | 2 · Device-gated | AppFunctions service adapter behind an explicit, default-off Privacy toggle. Reuse existing app dependency wiring; generated service and XML match the merged manifest. | JDK/KSP/AGP-compatible build; OS discovery and invocation on a supported Android 16+ device; opt-out, cancellation, background thread, error paths and Delete all local data tested. Never expose chat reads, account state, network or arbitrary filesystem. |
 | 3 · Device-gated, after Skill Studio | Optional Gemini Nano drafting **once the planned Skill and plugin studio has shipped**. Until then, prototype only through the existing Markdown Workspace/skill editor with explicit preview and approval. | FeatureStatus checks, user-approved download, measured memory/latency, cancellation, client `close()`, unsupported-device fallback, structured-output feature detection and a reviewed diff before saving. No silent cloud/API fallback. |
 | 4 · Device-gated | Test Android Computer Control with App lock and Screen privacy while a provider WebView is signed in. | Document real OEM/platform behavior and any available opt-out. No assumption that `FLAG_SECURE` blocks every form of UI automation. |
