@@ -45,7 +45,7 @@ private const val NORMALIZE_EOL = "docbench_normalize_eol"
 private const val INSPECT_TEXT = "docbench_inspect_text"
 private const val COUNT_TOKENS = "docbench_count_tokens"
 private const val GENERATE_QR = "codebench_generate_qr"
-private const val MAX_INLINE_TOOL_TEXT_CHARS = 20_000
+internal const val MAX_INLINE_TOOL_TEXT_CHARS = 20_000
 private const val MAX_INSPECTOR_FINDINGS_FOR_MODEL = 64
 
 /**
