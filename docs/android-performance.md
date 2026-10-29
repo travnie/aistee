@@ -42,4 +42,4 @@ Use the existing Robolectric/Roborazzi screenshots, Compose tests and device smo
 - Keep external provider pages and network services mocked or blocked. CI's compact/wide screenshots and Roborazzi **record-only** artifacts are the starting point, not a second test stack. CI currently runs with `roborazzi.test.record=true`: it records PNGs but does **not** verify them against committed baselines.
 - New Web activity selectors, account flows and permission dialogs need a real WebView/device check before claiming provider support. Metadata-only selectors must not collect provider message text, page bodies or credentials.
 
-These are **future test cases**, not a claim that every width/font-scale combination is already covered.
+The record-only `AdaptiveMarkdownTableScreenshotTest` now captures the existing Markdown table screen at **400 dp / 1.5× font**, **610 dp / landscape** and **900 dp / expanded**. These PNGs join the existing `aistee-screenshots-jvm` CI artifact for human comparison. They do **not** enforce visual baseline diffs, and other surfaces and width/font-scale combinations remain future test cases.
