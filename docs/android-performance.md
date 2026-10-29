@@ -32,3 +32,14 @@ Without an emulator, mark profile regeneration as unverified in the PR. Use the 
 Generate the shipping profile with `:app:generateBaselineProfile`. The generated profile under `app/src/**/generated/baselineProfiles/` is the release source of truth and should be regenerated when startup or covered critical journeys materially change.
 
 CI regenerates the profiles and compares canonical Aistee-owned (Lais/tee/) rule coverage. It ignores H/S/P hotness prefixes and framework-owned rules because emulator collection can vary those between otherwise equivalent runs.
+
+## Adaptive UI verification
+
+Use the existing Robolectric/Roborazzi screenshots, Compose tests and device smoke journeys. Do not install a second screenshot framework or replace the current adaptive navigation shell.
+
+- Cover the affected compact, medium and expanded layouts, including chat list/detail, WebView chrome, composer + IME, system back, and local Library previews. For larger navigation changes, representative test widths are **400 / 610 / 900 dp**; add tall/short and **1.5× font scale** cases where content can clip.
+- Prefer semantic actions/assertions and stable test tags only when accessible semantics are insufficient; inspect generated image diffs rather than blindly replacing baselines.
+- Keep external provider pages and network services mocked or blocked for deterministic tests. The existing CI compact/wide tests and Roborazzi baselines are the starting point, not new parallel coverage.
+- New Web activity selectors, account flows and permission dialogs need a real WebView/device check before claiming provider support. Metadata-only selectors must not collect provider message text, page bodies or credentials.
+
+These are **future test cases**, not a claim that every width/font-scale combination is already covered.

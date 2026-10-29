@@ -57,3 +57,22 @@ Plan for Aistee:
 
 - Add it to the threat model: an unlocked Aistee with signed-in provider WebViews is reachable by such automation.
 - Once testable, record how App lock and Screen privacy (`FLAG_SECURE`) interact with it, and adopt an opt-out if the framework offers one. Until then App lock is the user's control.
+## Delivery order and acceptance gates
+
+The [open product backlog](product-ideas.md) owns feature priority. This file owns the Android-specific approach; do not add a second tool registry, skill store, or Android-only domain core.
+
+| Phase | Smallest deliverable | Acceptance / blocker |
+| --- | --- | --- |
+| 0 · Current | Fix CodeQL Kotlin build on JDK 21 in the existing shared Android CI toolchain. | Advanced CodeQL analyses for Actions and Java/Kotlin pass; central repo settings stop re-enabling Default Setup. Tracking: [Aistee PR #438](https://github.com/travnie/aistee/pull/438), [central PR #66](https://github.com/trvny/.github/pull/66). |
+| 1 · Device-free | Inventory existing Bench transforms, the allowlist/consent decision, Project Library save flow and Android manifest. Select **one** read-only AppFunction such as local `countTokens`; do not invent another implementation of the tokenizer. | JVM tests cover data types, network-free routing, allowlist and revoked/disabled permission behavior. No new SDK dependency until the contract and a compatible build route are verified. |
+| 2 · Device-gated | AppFunctions service adapter behind an explicit, default-off Privacy toggle. Reuse existing app dependency wiring; generated service and XML match the merged manifest. | JDK/KSP/AGP-compatible build; OS discovery and invocation on a supported Android 16+ device; opt-out, cancellation, background thread, error paths and Delete all local data tested. Never expose chat reads, account state, network or arbitrary filesystem. |
+| 3 · Device-gated | Optional on-device Gemini Nano drafting in the **existing** Skill Studio; deterministic editing remains the default. | FeatureStatus checks, user-approved download, measured memory/latency, cancellation, client `close()`, unsupported-device fallback, structured-output feature detection and a reviewed diff before saving. No silent cloud/API fallback. |
+| 4 · Device-gated | Test Android Computer Control with App lock and Screen privacy while a provider WebView is signed in. | Document real OEM/platform behavior and any available opt-out. No assumption that `FLAG_SECURE` blocks every form of UI automation. |
+
+**Implementation notes from the Android development skill:**
+
+- AppFunctions beta APIs require fresh verification before compiling: `@AppFunctionDeclaration`, explicit `isDescribedByKDoc`, `appfn:instructions`, `AppFunctionName` from `androidx.appfunctions`, and a KSP-generated service, with `BIND_APP_FUNCTION_SERVICE` manifest protection. Aistee currently has **no AppFunctions/KSP integration**. Do not add Hilt, Koin or a second DI layer just for this.
+- Unsupported Android devices still use all existing local tools. Handle missing/omitted typed arguments and explicit nulls deliberately, preserve coroutine cancellation, and check actual `adb shell cmd app_function help` before writing invocation scripts.
+- For Gemini Nano, separate library minSdk from device/AICore availability; only infer when `FeatureStatus.AVAILABLE`, close the client on teardown, reject untrusted output as tool instructions, and guard structured output behind `isStructuredOutputFeatureAvailable()`.
+- Favor JVM fakes for pure decisions and Robolectric for Android host glue. Only the generated service, manifest integration, OS discovery and user authentication boundaries require instrumented/device tests. See [Android performance](android-performance.md) for the existing test stack and Baseline Profile rules.
+
