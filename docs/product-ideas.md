@@ -19,7 +19,20 @@ Prioritize the next feature wave in this order. Items 1 and 2 come first because
 8. **Skill and plugin studio** — create/import/edit/validate portable `SKILL.md` bundles and multi-target plugin packages with Docbench and Project Library; deterministic scaffolding first, opt-in AI repair when needed. See [Skill and plugin studio](#skill-and-plugin-studio).
 9. **Gemini account-backed enhancements** — preserve the official Google-account Web experience while adding Aistee-owned skill/tool affordances only through supported host capabilities and explicit user actions. See [Gemini account-backed enhancements](#gemini-account-backed-enhancements).
 
-Android platform candidates (AppFunctions, local Gemini Nano and system Computer Control) are not shipped. Their staged device/build/test gates live in [Android intelligence](android-intelligence.md) and [Android performance](android-performance.md); keep one backlog here.
+## Android development worklist
+
+Android-specific opportunities that can be delivered incrementally alongside the main product priorities above. Implementation rules and device gates remain in [Android intelligence](android-intelligence.md) and [Android performance](android-performance.md); this is the **one backlog** for these features.
+
+| Candidate | Next deliverable | Gate |
+| --- | --- | --- |
+| **AppFunctions / system assistant tools** | Start with a default-deny, user-initiated local `countTokens(text)` action backed by the existing Docbench policy; later expose a single Android 16+ service with an opt-in Privacy toggle. | Phase 1 has no exported service. Phase 2 needs a compatible OS/device, KSP-generated manifest metadata and opt-in/revocation instrumentation. |
+| **Gemini Nano on-device drafts** | Prototype an opt-in "Suggest description" / "Fix validation" action using the existing Markdown/skill editor; integrate with the planned Skill Studio only when available. | Device/AICore `FeatureStatus`, explicit download and measured model availability; deterministic editor remains fully usable offline. No silent cloud fallback. |
+| **Provider WebView compatibility** | Add per-provider, metadata-only navigation/identity/upload probes and origin-scoped feature tests before modifying injected scripts or sign-in flows. | Real WebView/identity-provider verification and no page text, URLs containing tokens or credentials collected. |
+| **Adaptive and accessible Android UI** | Extend existing Robolectric/Roborazzi and Android smoke coverage to compact, medium and expanded widths, large font scale, IME, state restore and back navigation. | Inspect screenshot artifacts; recorded PNGs are not yet automatic baseline comparisons. |
+| **Long-chat performance / ANR** | Measure streaming updates, Compose recomposition and WebView memory lifecycle using existing Macrobenchmarks and bounded JVM fakes. | Compare cold/warm runs and real-device metrics; regenerate Baseline Profiles for touched journeys. |
+| **System Computer Control privacy** | Evaluate App lock, Screen privacy and external UI automation behavior around signed-in providers. | Supported OEM/device required; `FLAG_SECURE` is not assumed to block automation. |
+
+**Scope now:** implement only the AppFunctions-independent token-count preflight and JVM tests. System-assistant discovery, Gemini Nano downloads, provider sign-in experiments and device-specific behavior stay pending until their verification gates pass.
 
 Ongoing work remains: verify Qwen, Copilot, Z.ai, Grok, Character.AI, Venice and Meta AI Web sign-in/uploads/activity; maintain long-chat performance and privacy/security release gates; keep processing modes and Jobs unobtrusive. Sign in with ChatGPT is already shipped for eligible account-plan inference, not a new backlog feature. Keep Grok Web, xAI developer API, SuperGrok and Grok Bot separate, with independent authorization and capability checks.
 
