@@ -126,7 +126,6 @@ These are Docbench-style capabilities to bring into Aistee, not changes to Docbe
 - Validate the construction/structure of prompt and Markdown formats.
 - Offer safe repair/normalization when the structure is malformed.
 - Detect and normalize EOL conventions instead of letting mixed line endings quietly accumulate.
-- Port the proven Docbench token counter into the editing/prompt workflow: use a real bundled tokenizer locally (currently `js-tiktoken` with `o200k_base`), not a character-count estimate; keep lazy loading, encoder reuse and debounced recounting.
 - Keep those tools useful for manually edited prompts, imported `.md`, skills and chat exports.
 
 ## Built-in Bench tools / plugins
@@ -319,7 +318,6 @@ Observed in the October 2026 batch of major AI Android apps; these are platform 
 
 Treat account/subscription access as another explicit runtime/funding source beside API keys, gateways, local runtimes and browser handoff.
 
-- Start with OpenAI Sign in with ChatGPT using the documented OSS dynamic registration and protected local credential storage.
 - Keep account-plan, API-key and WebView sessions separate; never turn consumer cookies into an API.
 - Discover account-scoped models from the authorized runtime rather than reusing an unrelated static/API-key catalog.
 - Resolve presets, tools and launchers against the selected runtime's capability matrix before send.
@@ -343,7 +341,7 @@ Existing local-data deletion, screen/App/Quick privacy, Keystore storage and sen
 - Treat security as a release requirement for every feature that touches accounts, prompts, messages, files, tools, widgets or notifications; do threat modeling before wiring new cross-boundary data flows.
 - Minimize sensitive state. Keep data local when practical, collect only what a feature needs, and make provider-owned login/session material stay provider-owned rather than copying cookies, OAuth tokens or passwords into Aistee storage.
 - Keep native API secrets behind the existing Android Keystore-backed AES-GCM store. Never write raw keys, credentials, auth headers, prompts or message bodies to logs, analytics, crash breadcrumbs, exports or diagnostics.
-- Define explicit backup/transfer rules before durable chat storage ships. The current manifest allows backup; secrets, WebView/session state, private conversations and sensitive attachments must be excluded by default, with only deliberately safe settings opted into backup or device transfer.
+- Audit the existing durable chat archive and Android backup/data-transfer rules: secrets, WebView sessions, private conversations and sensitive attachments must stay excluded by default; only deliberately safe settings may opt in.
 - Classify local data by sensitivity and use separate stores for public preferences, private conversation content, imported files and secrets so retention, backup and deletion rules can be enforced independently.
 - Keep WebViews least-privileged: HTTPS-only provider boundaries, no mixed content, file/content access disabled unless a scoped user action requires it, no arbitrary remote userscripts, and no JavaScript-to-native interface for untrusted provider pages. Preserve the existing provider/document guards around injected static scripts.
 - Treat every imported `SKILL.md`, document, generated artifact and decoded QR/barcode as untrusted data. Parsing or previewing it must never execute scripts or silently grant file/network/secret access.

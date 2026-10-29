@@ -6,6 +6,7 @@ Delivered feature index, reviewed **29 October 2026** against the documented mai
 
 - Provider-owned WebView chat sessions with favorites, last-selected provider, static provider tweaks, bounded renderer pool, selective activity tracking, safe renderer restart and LRU eviction.
 - Direct Gemini, OpenAI and Claude streaming with provider-scoped history; compatible gateway catalogs and cancellable requests.
+- Explicit **Sign in with ChatGPT** plan route on Android: Custom Tab authorization with callback, protected credentials, refresh/sign-out, account-specific model inventory, and chat/account binding. It never silently falls back to metered API keys.
 - Shared provider capability/tool contract, bounded direct-provider tool loops, Gemini thought signatures, OpenAI `store=false` encrypted reasoning, Claude model-aware effort/thinking and resolved metadata, routed OpenRouter model and provider usage reporting.
 - Provider-aware Prompt Studio effective instruction/state preview. Claude Code official-app handoff is an **external** route, not an Android execution runtime.
 

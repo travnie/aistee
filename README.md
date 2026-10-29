@@ -37,7 +37,7 @@ Kotlin Multiplatform · Android first · Local-first tools
 | | Already implemented |
 | --- | --- |
 | 🌐 **Web chats** | Provider-owned WebView sessions, uploads, favorites and selected activity tracking |
-| 💬 **Native + API** | Gemini, OpenAI, Claude and compatible gateways; compare, streaming and provider-scoped history |
+| 💬 **Native + API** | Gemini, OpenAI, Claude, compatible gateways and eligible ChatGPT-plan sign-in; compare, streaming and provider-scoped history |
 | 🗂️ **Local workspace** | Projects, editable Library assets, Markdown/Docbench previews, imports and exports |
 | 🧰 **Tools & skills** | Token counting, Bench actions, QR generation, explicit skill trust and sandbox execution |
 | 📲 **Android** | Adaptive Material 3 UI, conversation widgets, notifications and native Direct Reply |
@@ -93,7 +93,7 @@ Provider-specific verification and API research live in [docs/provider-capabilit
 
 ## Runtime boundaries
 
-- Provider account sessions stay provider-owned. Aistee does not copy passwords, cookies, OAuth tokens or browser sessions.
+- Web provider account sessions stay provider-owned. Aistee does not copy passwords, cookies or provider WebView tokens; its separate, user-authorized **Sign in with ChatGPT** grant is stored encrypted for the supported account-plan API route.
 - WebViews are pooled and evicted under memory pressure; provider tweaks are static, host-scoped and bundled with the app.
 - Failed Web page loads offer explicit GET retry or provider home navigation. Subresource errors and provider HTTP responses keep the provider page visible; the recovery action never replays POSTs.
 - Diagnostics exclude page text, full URLs, form values, file names and credentials.
