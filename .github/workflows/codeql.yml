@@ -54,9 +54,11 @@ jobs:
 
       # Kotlin requires a real build. Default setup's autobuild selected JDK 17;
       # Aistee targets JDK 21. Reuse the Android CI toolchain, not a second setup.
-      - name: Build Android and shared Kotlin
+      - name: Build Android, tests and benchmark Kotlin
         if: matrix.language == 'java-kotlin'
-        run: ./gradlew :app:assembleDebug :shared:desktopTest --no-daemon --stacktrace
+        run: |
+          ./gradlew :app:assembleDebug :app:testDebugUnitTest :benchmark:assemble :shared:desktopTest \
+            --no-daemon --stacktrace
 
       - name: Analyze
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
