@@ -20,7 +20,7 @@ Prioritize the next feature wave in this order. Items 1 and 2 come first because
 9. **Gemini account-backed enhancements** — preserve the official Google-account Web experience while adding Aistee-owned skill/tool affordances only through supported host capabilities and explicit user actions. See [Gemini account-backed enhancements](#gemini-account-backed-enhancements).
 
 Android platform candidates (AppFunctions, local Gemini Nano and system Computer Control) are not shipped. Their staged device/build/test gates live in [Android intelligence](android-intelligence.md) and [Android performance](android-performance.md); keep one backlog here.
-+
+
 Ongoing work remains: verify Qwen, Copilot, Z.ai, Grok, Character.AI, Venice and Meta AI Web sign-in/uploads/activity; maintain long-chat performance and privacy/security release gates; keep processing modes and Jobs unobtrusive. Sign in with ChatGPT is already shipped for eligible account-plan inference, not a new backlog feature. Keep Grok Web, xAI developer API, SuperGrok and Grok Bot separate, with independent authorization and capability checks.
 
 ## Markdown workspace / prompt vault
