@@ -188,7 +188,7 @@ Copilot SDK's agent loop and hooks, and OpenAI's separate plan-backed route each
 inform the existing KMP design. Unsupported Claude/Gemini consumer OAuth bridges
 remain out of scope until an official third-party contract is available.
 
-## Web/account-chat TODO
+## Web/account-chat status (checked = implemented; unchecked = open)
 
 - [x] Never invent a fallback Studio prompt when no rendered instructions are active.
 - [x] Keep WebView memory/LRU behavior responsive as the provider list grows without clearing provider-owned sessions; use a fresh non-consuming in-page generation probe before destructive LRU eviction so a response that started between native polls stays live when possible.
@@ -207,7 +207,7 @@ remain out of scope until an official third-party contract is available.
 - [ ] Verify embedded sign-in and file upload for Qwen, Copilot, Z.ai, Grok, Character.AI, Venice and Meta AI.
 - [ ] Add generation/unread tracking for newer web providers only after stable provider-scoped controls are verified.
 
-## API/runtime TODO
+## API/runtime implemented
 
 - [x] Make gateway model-catalog refresh cancellable through the same OkHttp coroutine bridge used by generation.
 - [x] Add a provider capability model for transport, instruction placement, response metadata and state strategy; extend it as reasoning controls land.

@@ -1,4 +1,6 @@
-# Product ideas
+# Product ideas · open backlog
+
+**Open work and future ideas only.** Previously shipped behavior is indexed in [Implemented](implemented.md); detailed contracts stay in their runtime, design and security docs.
 
 This is a durable backlog of product directions worth exploring in Aistee.
 The ideas are inspired by observed workflows in other AI/document apps and by tools already maintained in `travnie/twojstar`; they are not implementation copies.
@@ -53,7 +55,7 @@ Ongoing work remains: verify Qwen, Copilot, Z.ai, Grok, Character.AI, Venice and
 
 ## Skills
 
-Portable `SKILL.md` files are local, editable and trust-gated. Active skill bundles are implemented behind a disabled-by-default switch with digest-bound trust, sandboxed execution and per-call consent; network skills remain out of scope.
+Active skill bundle execution already exists behind an opt-in switch. See [Implemented](implemented.md) and [skills runtime](skills-runtime.md); network execution remains out of scope.
 
 Keep skill source directly inspectable and editable. Importing Markdown must never execute code or grant file, network, secret or provider-session access. See [skills-runtime.md](skills-runtime.md) for the execution boundary.
 
@@ -92,8 +94,6 @@ References: [OpenAI portable plugin packaging](https://developers.openai.com/plu
 
 ## Projects and libraries
 
-- **Shipped foundation:** group native chats and reusable local assets into projects; chats default to Inbox and can move between projects.
-- **Shipped foundation:** Project Library stores bounded local Markdown/text/SVG assets separately from provider sessions; chat exports and generated QR SVGs can be reused.
 - Allow adding either a local file or pasted text as reusable project context.
 - Make generated/imported artifacts easy to pin, reopen, edit, export or move into a project.
 - Keep the simple chat flow intact; projects/library features should be additive rather than mandatory ceremony.
@@ -102,7 +102,6 @@ References: [OpenAI portable plugin packaging](https://developers.openai.com/plu
 
 Treat Project Library as Aistee's canonical workspace/file layer rather than creating a second Docbench-specific store.
 
-- **Shipped local foundation:** Project Library schema v2 keeps stable asset IDs while adding editable revisions, updated time, SHA-256 content identity, asset kind/origin and optimistic revision checks. The v1 index migrates in place without moving the existing local asset directory; remote storage references and ETags remain future sync concerns.
 - Keep local storage authoritative for normal use. Local projects, files, prompts, instructions, skills and generated artifacts remain usable without an Aistee account, network access or cloud sync.
 - Model prompts, system instructions, reusable context, skill sources and generated artifacts as typed workspace assets over the same storage contract instead of separate silos. Keep `trvny/.ai` canonical for portable profiles/instructions/skills; Aistee may link, import or synchronize through an explicit adapter without becoming a competing upstream.
 - Give the shared layer one narrow asset-store contract for list/read/write/search/delete/version operations. The current Android Project Library store becomes the local adapter; platform/cloud adapters must preserve the same ownership and provenance rules.
@@ -115,11 +114,10 @@ Treat Project Library as Aistee's canonical workspace/file layer rather than cre
 
 Suggested implementation order:
 
-1. **Shipped local foundation:** Project Library v2 editing/revision/hash/origin metadata with stable asset identity, safe v1 migration, conflict-aware Markdown save-back and existing chat source provenance.
-2. Docbench typed transforms plus preview/save-back into Project Library. **Shipped local slices:** Markdown Workspace previews Docbench fence repairs and explicit JSON/JSON5/YAML formatting using shared typed transform results (kind, content, warnings, source IDs); applying requires an unchanged draft revision, and bound Project Library files still use conflict-aware Save source. Broader document transforms and unified external Docbench adapters remain open.
-3. Docbench MCP App and file-entrypoint integration, using host resource reads/writes where supported.
-4. Optional Cloudflare R2 + D1 synchronization behind explicit enablement and conflict handling.
-5. Add richer search/indexing or collaborative coordination only after the simple revision model proves insufficient.
+1. Expand the existing Docbench transforms and Project Library preview/save-back to additional document types; preserve typed results and conflict-aware source edits.
+2. Docbench MCP App and file-entrypoint integration, using host resource reads/writes where supported.
+3. Optional Cloudflare R2 + D1 synchronization behind explicit enablement and conflict handling.
+4. Add richer search/indexing or collaborative coordination only after the simple revision model proves insufficient.
 
 ## Prompt/file tooling borrowed from Docbench
 
@@ -139,7 +137,7 @@ These are Docbench-style capabilities to bring into Aistee, not changes to Docbe
 - Keep one source of truth for Bench logic. Prefer extracting/reusing portable cores or a narrow typed bridge over copying implementations into Aistee and letting them diverge.
 - **Docbench tool:** document/Markdown/JSON/YAML/XML validation, repair and formatting; EOL/BOM handling; the real local tokenizer; safe previews; and selected PDF operations where they fit a chat workflow.
 - **Docbench Text Inspector:** reuse the existing inspector as the pre-flight view for imported/selected text before it is trusted by a model or tool. Surface exact line/column, severity and safely escaped/decoded payloads for zero-width and bidi controls, Unicode tags, variation-selector carriers, mixed-script confusables, prompt-injection-like instructions, Base64-encoded instructions and oversized encoded carriers. Detection warns and reveals; it does not silently execute, rewrite or discard the source.
-- **Partly shipped:** Codebench native chat tool can generate QR from inline chat text and save SVG to Project Library. Camera/import decode stays explicit-user only for now.
+- Extend the existing QR-generation action with explicit-user camera/import decoding when needed; never auto-submit decoded text.
 - **Streambench companion:** a persistent compact radio/media player that can keep playing while chatting, with station search/favorites/recents and now-playing metadata. Treat playback primarily as app UI, not as a fake model tool; optional chat actions can be layered on later.
 - Let users enable/disable built-in tools globally and, where useful, per chat/provider, with clear capability/permission indicators.
 
@@ -185,7 +183,7 @@ Treat Aistee's next layer as an LLM and agent workbench rather than another pile
 - **Lazy tool discovery:** use compact, searchable descriptors and load full schemas only when selected; compare context-token overhead and tool success against the eager baseline. On compatible API-key OpenAI Responses models, evaluate native `tool_search` plus `defer_loading` for function namespaces/MCP servers, with hosted vs client-executed discovery chosen per trust/source needs. Respect provider/model/tool support and the narrower ChatGPT-plan route, which does not imply access to hosted MCP or tool search. Other runtimes use the same portable catalog but only documented provider-native mechanisms. Reference: [OpenAI Tool search](https://developers.openai.com/api/docs/guides/tools-tool-search).
 - **Dynamic capability matrix:** maintain one source of truth for model/provider/runtime support for web search, URL context, file search, code execution, computer use, functions, MCP, image/audio and related capabilities. Disable impossible combinations before a request fails remotely.
 - **Unified trace explorer:** normalize model requests, streamed output, tool calls, approvals, results, retries, compaction, model switches, subagents and failures into one inspectable timeline. Provider/runtime-specific details can remain expandable metadata.
-- **Conversation forks:** **shipped for native chats:** branch from a finished reply into a new local chat that keeps the earlier turns plus that reply (compare-mode siblings dropped), continues with the reply's provider and records its source. The original is untouched. History replay stays provider-scoped: each provider replays only inherited turns it answered, so branching discloses nothing new; an explicit cross-provider handoff is future work. The Messages widget shows each inherited turn once, including after the source chat is deleted. Runtime/Agent Lab forks remain open.
+- **Agent Lab forks and cross-provider handoff:** native forks already ship. Add runtime-specific forks and explicit cross-provider handoff only with a reviewed replay/consent contract.
 - **Permission profiles:** layer reusable profiles such as read-only, workspace-write, network-off, no-shell and ask-everything over the existing ALLOW/ASK/DENY registry. The same policy surface should govern active skills, MCP and external agent runtimes instead of growing separate permission systems.
 - **Subagents / teams playground:** where a runtime supports it, expose researcher/coder/reviewer-style isolated agents with separate traces and a final synthesis. Keep this an advanced Lab feature rather than adding team ceremony to ordinary chat.
 - **Context Lab and source-linked answers (later track):** build from the existing bounded, provider-scoped history and Project Library source chips. Show a pre-send inspection of the actual assembled provider request (including instructions, selected Library excerpts and tool declarations), measured/estimated token counts, and why turns/excerpts were dropped or compacted. Map local source IDs to bounded line/section ranges and provider-returned citations where documented; distinguish provider citations from Aistee's local insertion provenance. Never display, export or persist opaque thinking/replay state, secrets or data from unrelated provider sessions. Host-managed retrieval remains a separate opt-in storage/retention choice.
@@ -211,18 +209,18 @@ Recent browser-extension projects around Gemini, Claude, ChatGPT and DeepSeek re
 
 **First delivery slice:** ship a current-page conversation timeline with reliable jump targets on one verified provider; expand to local starred moments, folders/references and Prompt Vault insertion only after navigation/restore tests pass. Add provider-by-provider opt-outs and test reloads, long conversations, session persistence, IME/focus, uploads and WebView eviction. Unsupported pages fall back to their unmodified provider UI. Do not scrape inactive conversations or claim local bookmarks are provider-side features.
 
-- **Conversation timeline:** add a compact rail for long conversations with markers for user turns, one-tap jump, optional preview and locally stored starred/key moments. For locally owned native chats, derive it from the archive. For account-backed Web chats, operate only on the currently loaded page through a small provider adapter; never background-scrape history. **Shipped for native chats:** chats with at least four user turns show a thin rail of jump targets, one per user turn plus starred replies (stars highlighted), thinned on very long chats to what fits the rail at full 48dp tap targets, keeping both ends and stars first. Long-pressing (or hovering) a marker previews the turn's first 80 characters without jumping. Web-chat timelines remain open.
+- **Web conversation timeline:** extend the implemented native timeline to current-page Web turn anchors only after provider-specific on-device verification; never scrape inactive Web conversations.
 - **Branch-aware navigation:** when a provider exposes visible response branches in the loaded conversation, represent branch points in the same timeline without pretending Aistee owns remote branch history.
 - **Local folders for Web chats:** allow users to organize provider conversation references into local folders/subfolders without moving or rewriting the provider's data. Store only the minimum stable reference/title metadata needed for navigation and degrade cleanly if a provider URL changes.
 - **Prompt Vault insertion everywhere:** reuse Aistee's canonical local prompt library across native chats and supported Web composers. Keep import/export format versioned and portable; compatibility adapters for common external prompt-vault JSON formats may be added without making those formats canonical.
-- **Starred messages / bookmarks:** local bookmarks should survive app restarts and can optionally carry a short user note. Do not copy whole remote conversations merely to implement a star. **Shipped for native chats:** star any turn from its header; stars persist locally with the chat, follow copied turns into branches, clear with the chat, and a Starred messages list in the chat menu jumps to each one and adds or edits a one-line local note (140 characters) per star; notes follow stars into branches and clear with them. Web-chat stars remain open.
-- **Quote reply:** selecting text in a supported loaded chat can stage a quoted excerpt in the composer with an explicit user action. Do not auto-send. **Shipped for native chats:** a reply's "Select text or quote" action opens its Markdown source for precise selection; Quote appends the selection (or the whole reply) to the draft as a blockquote and never sends. Web chats remain open: page JavaScript and DOM copy handlers can substitute clipboard text, and native Copy menus alone do not distinguish read-only credential fields. A Web quote design must establish a trustworthy excerpt source or require explicit review of user-supplied text before formatting.
+- **Web starred moments:** build on native stars and notes, but require stable provider-specific turn IDs; never copy remote message bodies just to bookmark them.
+- **Web quote reply:** stage user-reviewed excerpts only after a trustworthy provider-page text source exists. Native quote selection is implemented.
 - **Reading controls:** per-provider comfortable-width setting, optional collapsible composer for long reading sessions and a prevent-auto-scroll toggle where a provider's page repeatedly yanks the viewport.
 - **Default model helper:** where a provider exposes a stable, user-visible model selector, remember the user's preferred choice and offer a provider-scoped helper. Avoid brittle hidden endpoint calls or silent model switching.
 - **Chat export:** for locally owned chats, keep Markdown as the readable source-of-truth export and optionally add JSON/PDF packaging. For Web chats, only export content explicitly available in the loaded page and label the export as a captured snapshot rather than a complete provider archive.
-- **Rich-content copy tools:** one-tap copy for source forms such as TeX/MathML and, later, tables/code blocks where extraction is reliable. Prefer preserving semantic source over screenshot-style copying. **Shipped for native chats:** fenced code blocks in rendered replies show their language and a one-tap copy of the block's source (sensitive clip); display math blocks copy their TeX source; tables already copy as CSV. Tapping inline math copies its TeX source. MathML copy remains open.
+- **Additional copy formats:** native code, TeX and CSV actions already ship; add MathML copy only where reliable source extraction exists.
 - **Mermaid and Markdown repair:** optionally render supported Mermaid blocks and repair clearly broken presentation artifacts in Aistee-owned previews without rewriting the provider page's underlying conversation.
-- **Long-text helpers:** turn oversized text into a local file/library asset, attach a text asset to a prompt and collapse long instruction blocks in Aistee UI so large prompts remain manageable. **Shipped (collapse) for native chats:** long user prompts show an 8-line preview with Show more/Show less; the full text stays in the archive, copy and export. **Shipped (Library save) for native chats:** a long prompt can be saved as a plain-text asset in the chat's project with one tap (not in incognito chats). **Shipped (insert) for native chats:** text assets in the Project Library can be appended to the composer draft (unquoted, never auto-sent).
+- **Larger document context:** native long-prompt collapsing and Library save/insert already ship; extend safe file-based context workflows as needed.
 - **Backup and recovery for Aistee-owned metadata:** use versioned local export/import for folders, bookmarks, prompt mappings and Web-chat references; validate before overwrite and preserve recoverable previous data on failed migrations.
 - **Privacy-aware diagnostics:** add an opt-in bounded structured diagnostic log for provider adapter lifecycle, page detection and fallback paths. Keep it off by default and exclude chat bodies, credentials, cookies, full URLs and other sensitive content.
 - **Provider Health Center (after Web chat + MCP):** reuse the provider registry and existing diagnostics UI for an opt-in, provider-by-provider compatibility checklist: embedded sign-in vs browser handoff, upload picker, active-generation/unread probes, WebView package/capability and last verified result. Separate automated metadata-only checks from manual device checks; show supported, limited and unverified honestly, with a safe browser/manual fallback and a disable switch for each brittle enhancement. Evaluate AndroidX WebKit document-start scripts only behind feature detection and exact allowed origins; keep scripts static, minimal and isolated without a broad JavaScript-to-native bridge. Reference: [WebViewCompat](https://developer.android.com/reference/androidx/webkit/WebViewCompat).
@@ -248,12 +246,13 @@ Interaction references inspected in September 2026:
 - Locally owned conversations use Material 3 Adaptive list-detail navigation: conversation history stays beside the active chat on wide windows, while compact layouts navigate between list and detail panes with normal back behavior.
 
 ### Next
+
+Adaptive navigation, native list-detail panes and existing Macrobenchmark journeys already ship; see [Implemented](implemented.md).
 - **Adaptive Workspace (later track):** extend the current Material 3 Adaptive/navigation scaffolds into an optional list-detail layout for large screens: conversation/project list beside chat, with a supporting Library/tools pane when space allows. Preserve the focused single-pane phone chat, keyboard/IME state, predictive back and provider WebView lifecycle; test compact, expanded and foldable/window-resize journeys before broad rollout. Reuse existing navigation/state rather than a second UI shell. Reference: [Android adaptive list-detail](https://developer.android.com/develop/adaptive-apps/guides/list-detail).
 - Use Material 3 Expressive selectively for discovery, prominent actions and transitions. Keep repeated chat/message interactions calmer and faster with standard motion instead of animating every surface.
 - Prefer Material typography over hard-coded tiny essential labels; keep touch targets and Android font-scaling/accessibility behavior intact.
 - Keep edge-to-edge, IME handling and predictive back coherent across chats, sheets, drawers and list-detail panes.
-- Add Macrobenchmark journeys and Baseline Profiles for cold/warm start, opening a chat, provider switching, long-message-list scrolling, returning from a detail pane and active streaming. Judge smoothness from release builds and frame timing, not debug feel.
-- **Shipped:** Macrobenchmark journeys for cold/warm start, provider switching, opening a new or long existing native chat, returning to the list and long-conversation scrolling, with the native chat journeys also feeding the Baseline Profile. Active streaming remains open because it needs a deterministic local stream source instead of a provider call.
+- Add a deterministic API-free **active streaming** benchmark. Existing startup, provider-switch and native-chat journeys plus Baseline Profiles are covered in [Android performance](android-performance.md).
 - Re-check the current Android guidance at implementation time: Material 3, Material 3 Adaptive, Compose lazy-list performance and Baseline Profile/Macrobenchmark docs are the source of truth rather than version numbers frozen in this backlog.
 - **Native code highlighting:** fenced code in native replies is currently unstyled. Prefer grammars as data plus a small portable interpreter in `shared` (one bounded pass per block, off the main thread, cached per message revision) over a WebView or a per-language Kotlin highlighter. Grammars converted offline from an established permissive grammar set keep coverage broad; record their source/licence in `THIRD_PARTY_NOTICES.md`. Unknown languages and oversized blocks stay plain.
 - **Typeset display math:** keep the Unicode approximation for inline math, but render `$$` display blocks with a real TeX layout engine (bundled math font) when the expression is supported; fall back to the current TeX-source view. Copy keeps returning TeX source.
@@ -272,17 +271,11 @@ Interaction references inspected in September 2026:
 
 ## Android widgets and conversation notifications
 
-- Build first-party home-screen widgets with Jetpack Glance and responsive layouts; update them from local state changes rather than aggressive polling.
-- Native/API conversations now persist locally with stable conversation IDs. Reuse that durable archive as the source for message widgets and conversation notifications instead of introducing a second history store.
-- **Shipped:** three configurable widget modes: **Chats** (recent local conversations with independently opt-in titles and latest-message previews), **Messages** (latest locally known messages across chats), and **Pinned chat** (latest messages for one chosen conversation with a direct deep-link back into it).
-- **Shipped:** collection widgets use `LazyColumn` with stable item IDs plus Glance `SizeMode.Exact` / `LocalSize`; vertical resize now exposes 1–8 rows as space grows instead of hard-capping every widget at three or scaling text into mush.
+The three conversation widgets, native Direct Reply, and preview privacy settings are already shipped. This section tracks additions only. See [Implemented](implemented.md).
+
+- Expand the existing Glance widgets from local state changes; avoid aggressive polling.
 - Treat WebView account providers honestly: if Aistee does not own their conversation history, the widget may expose provider/chat shortcuts and locally tracked status, but must not periodically scrape remote pages just to manufacture a message list.
 - Make widget rows deep-link directly to the corresponding local conversation/provider. Do not use background activity-launch trampolines.
-- **Shipped:** privacy controls for widget/notification previews. Conversation titles and message bodies are separate opt-in toggles per widget and for notifications (both off by default), Quick privacy redacts all of them at once without touching saved choices, and neither surface shows model or provider details.
-- **Shipped:** locally owned native/API chats publish `MessagingStyle` notifications with `Person` metadata and privacy-safe long-lived conversation shortcuts, so Android can associate notifications with the exact local conversation without exposing the chat title through shortcut metadata.
-- **Shipped:** `RemoteInput` Direct Reply for locally owned native/API conversations, using an explicit mutable reply `PendingIntent`, WorkManager-backed network execution, the shared native send runtime, and same-notification sending/failure/completion updates.
-- **Shipped:** for account-backed WebView providers, background Direct Reply remains disabled; notification-style reply input can be staged locally, deep-linked to the exact provider and explicitly inserted into an empty focused composer for the user to review and send. Aistee does not automate a hidden WebView send.
-- **Shipped foundation:** keep the shared provider capability matrix for notifications/widgets (`messageHistory`, `completionNotification`, `directReply`, `draftReply`, `deepLink`) as the source of truth so UI only promises actions that actually work.
 - Free-form typing does not belong inside a Glance/RemoteViews widget. A pinned-chat widget should open the composer; true inline text entry belongs to notification Direct Reply where Android provides `RemoteInput`.
 - **Configurable quick-action slots:** let the Quick actions widget configuration pick which actions fill each slot (new chat per provider, Compare, camera/photo ask, dictation, Library, Studio, Agent Lab, Streambench). Only offer actions the capability matrix says work on this device/account.
 - **Usage widget:** a small widget for local, Aistee-recorded token/cost receipts (Token Arena/Jobs data) per provider or funding route. Label estimates as estimates; never imply provider-side quota numbers Aistee does not receive.
@@ -345,21 +338,19 @@ Current provider research lives in [provider-capability-research.md](provider-ca
 
 ## Security and privacy architecture
 
+Existing local-data deletion, screen/App/Quick privacy, Keystore storage and sensitive clipboard handling are in [Implemented](implemented.md). Below: remaining hardening requirements.
+
 - Treat security as a release requirement for every feature that touches accounts, prompts, messages, files, tools, widgets or notifications; do threat modeling before wiring new cross-boundary data flows.
 - Minimize sensitive state. Keep data local when practical, collect only what a feature needs, and make provider-owned login/session material stay provider-owned rather than copying cookies, OAuth tokens or passwords into Aistee storage.
 - Keep native API secrets behind the existing Android Keystore-backed AES-GCM store. Never write raw keys, credentials, auth headers, prompts or message bodies to logs, analytics, crash breadcrumbs, exports or diagnostics.
 - Define explicit backup/transfer rules before durable chat storage ships. The current manifest allows backup; secrets, WebView/session state, private conversations and sensitive attachments must be excluded by default, with only deliberately safe settings opted into backup or device transfer.
 - Classify local data by sensitivity and use separate stores for public preferences, private conversation content, imported files and secrets so retention, backup and deletion rules can be enforced independently.
-- **Shipped:** Privacy includes a confirmed **Delete all local data** action backed by Android's platform clear-storage path. It removes Aistee-owned local state, including chats, projects/library, skills, API keys, drafts, embedded provider session data and settings, without pretending to revoke provider-side data or browser-owned sessions; files already exported outside Aistee remain user-owned.
 - Keep WebViews least-privileged: HTTPS-only provider boundaries, no mixed content, file/content access disabled unless a scoped user action requires it, no arbitrary remote userscripts, and no JavaScript-to-native interface for untrusted provider pages. Preserve the existing provider/document guards around injected static scripts.
 - Treat every imported `SKILL.md`, document, generated artifact and decoded QR/barcode as untrusted data. Parsing or previewing it must never execute scripts or silently grant file/network/secret access.
 - Run the Docbench Text Inspector as a reusable security pre-flight wherever untrusted text can cross into model context, skill instructions, tool input or a share/import flow. Make hidden carriers visible to the user before trust decisions instead of relying only on prompt-injection heuristics.
 - Built-in Bench tools need explicit capability declarations and least privilege. Tool output is untrusted input to the model/app; network/file capabilities, destructive actions and secret access require narrow scopes and user-visible consent where appropriate.
 - Direct Reply and background work must carry only the minimum conversation identifier and reply payload required for that action. Use immutable, unique `PendingIntent`s and reject stale/mismatched provider or conversation targets.
 - Notifications and widgets default to privacy-safe previews, with configurable redaction. Never surface hidden/system instructions, API keys, auth state or file contents on the lock screen simply because the foreground chat can see them.
-- **Shipped:** route clipboard writes through one Android helper; private chat/draft/share, Studio/system/profile and skill content uses Android's sensitive clipboard hint, while ordinary URLs and explicitly privacy-safe diagnostics stay unmarked. API keys are never copied automatically.
-- **Shipped:** optional local privacy controls include device-local Screen privacy, App lock and Quick privacy. Quick privacy temporarily redacts conversation titles and message previews in Aistee home-screen widgets and native-chat notifications without overwriting each surface's saved preview choices.
-- **Shipped:** Studio tools > Privacy holds all three controls. Screen privacy applies `FLAG_SECURE` to every Aistee activity through application-level lifecycle callbacks. App lock covers every activity with a biometric/device-credential check on a fresh process or after a minute away; short trips such as file pickers keep the unlock, and it stays inactive without a secure lock screen. Quick privacy is a reversible redaction override for widgets and native-chat notifications.
 - Exports are explicit data-release boundaries: preview what will leave the app, exclude secrets/internal diagnostics by construction, avoid hidden metadata, and never silently include unrelated conversation/project context.
 - Keep TLS validation strict and never add trust-all certificate handling for provider compatibility. Release logging must not include request/response bodies or authorization headers.
 - **Screen-share sensitivity:** on Android 15+, mark API-key fields, chat content and previews with `View.setContentSensitivity` so they are hidden during screen sharing/projection even when global Screen privacy (`FLAG_SECURE`) is off. Consider `DETECT_SCREEN_CAPTURE` callbacks to warn when a sensitive screen was captured.
