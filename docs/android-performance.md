@@ -38,8 +38,8 @@ CI regenerates the profiles and compares canonical Aistee-owned (Lais/tee/) rule
 Use the existing Robolectric/Roborazzi screenshots, Compose tests and device smoke journeys. Do not install a second screenshot framework or replace the current adaptive navigation shell.
 
 - Cover the affected compact, medium and expanded layouts, including chat list/detail, WebView chrome, composer + IME, system back, and local Library previews. For larger navigation changes, representative test widths are **400 / 610 / 900 dp**; add tall/short and **1.5× font scale** cases where content can clip.
-- Prefer semantic actions/assertions and stable test tags only when accessible semantics are insufficient; inspect generated image diffs rather than blindly replacing baselines.
-- Keep external provider pages and network services mocked or blocked for deterministic tests. The existing CI compact/wide tests and Roborazzi baselines are the starting point, not new parallel coverage.
+- Prefer semantic actions/assertions and stable test tags only when accessible semantics are insufficient. For visual changes, **manually compare** generated screenshots with a known-good CI artifact across the affected layouts; no automated image-diff gate exists yet. Add committed baselines and an explicit verification task only as a separate tested change.
+- Keep external provider pages and network services mocked or blocked. CI's compact/wide screenshots and Roborazzi **record-only** artifacts are the starting point, not a second test stack. CI currently runs with `roborazzi.test.record=true`: it records PNGs but does **not** verify them against committed baselines.
 - New Web activity selectors, account flows and permission dialogs need a real WebView/device check before claiming provider support. Metadata-only selectors must not collect provider message text, page bodies or credentials.
 
 These are **future test cases**, not a claim that every width/font-scale combination is already covered.
