@@ -1,19 +1,19 @@
 # Android intelligence system - research and plan
 
-Status: **research, nothing implemented.** Checked against developer.android.com/ai in September 2026. All three surfaces below are alpha or preview; re-check the docs before starting and update this file when something ships.
+Status: **proposal, not implemented**. Reviewed against current Android developer guidance on 29 October 2026. Aistee already uses compileSdk 37 / targetSdk 36, but AppFunctions and ML Kit Prompt API are not yet dependencies.
 
 ## AppFunctions (Android MCP)
 
-AppFunctions let an app act as an on-device MCP server: it declares functions that agents and assistants can discover and call. The Gemini integration was in a private preview with trusted testers as of May 2026.
+AppFunctions expose typed app operations to supported Android system agents. It is not a general-purpose network MCP server and should not be advertised as one.
 
 Platform facts:
 
 - `compileSdk` 36 or higher (Aistee is on 37). The service entry point is `@RequiresApi(36)`.
-- `androidx.appfunctions:appfunctions` 1.0.0-alpha10 plus `appfunctions-compiler` through KSP. alpha10 replaced `AppFunctionConfiguration.Provider` with `@AppFunctionServiceEntryPoint`; older snippets are outdated.
+- The latest reviewed official migration path uses `androidx.appfunctions:appfunctions` **1.0.0-beta01** and the KSP compiler. Use an abstract `AppFunctionService` annotated `@AppFunctionServiceEntryPoint`; KSP generates the concrete service and metadata. Do not use the removed `AppFunctionConfiguration.Provider` or standalone service dependency.
 - The generated service is declared with `android:permission="android.permission.BIND_APP_FUNCTION_SERVICE"` and the `android.app.appfunctions.*` properties. `AppFunctionManager.getInstance()` returns null where the feature is unsupported.
-- Functions run on the main thread by default, so they are `suspend` and switch dispatchers for I/O. `isDescribedByKDoc = true` turns KDoc into the metadata agents read.
-- `@AppFunction(isEnabled = false)` plus `AppFunctionManager.setAppFunctionEnabled(...)` gates functions at runtime.
-- Verification: `adb shell cmd app_function list-app-functions` and `execute-app-function`, or the AppFunctions testing agent from `github.com/android/appfunctions`. The official `appfunctions` Android skill (`android skills add appfunctions`) covers setup and migrations.
+- Use `@AppFunctionDeclaration` (replacing `@AppFunction`), explicit `isDescribedByKDoc` flags and `appfn:instructions` metadata. Suspend functions still need an I/O dispatcher for blocking work. Keep KDoc accurate for each function and public serializable property.
+- Ship functions **disabled by default** with explicit user opt-in; check the beta01 enablement and declaration signatures against the actual resolved library before coding.
+- Verify generated service/manifest/metadata, discovery, opt-in state, cancellation and side-effect permissions on a compatible emulator or device. Discover supported `adb shell cmd app_function` arguments from device help. Official docs: [AppFunctions release notes](https://developer.android.com/jetpack/androidx/releases/appfunctions) and [beta01 migration guide](https://developer.android.com/agents/skills/device-ai/appfunctions/references/migrate-to-service-entry-point).
 
 Google's guidance: system agents may process the user's request on a server; expose narrow, non-sensitive capabilities and confirm destructive actions in the app.
 
@@ -37,15 +37,17 @@ Platform facts:
 
 - `checkStatus()` reports unavailable, downloadable, downloading or available; AICore downloads the model on demand. Right after device setup or an AICore reset the feature can be temporarily unavailable.
 - Supported only on specific recent devices (Pixel 9/10 series and a list of Samsung, Xiaomi, OnePlus, Honor, vivo, Motorola and other models). Best quality on Pixel 10 (nano-v3).
-- Alpha/beta, no backward-compatibility guarantee. Prefix caching reduces latency for repeated long prompts.
+- Current documented Prompt API dependency is `com.google.mlkit:genai-prompt:1.0.0-beta4`. Support is device/model-dependent. Check structured-output availability, close clients on teardown, and measure prefix caching rather than assuming it helps.
 
 Plan for Aistee:
 
 - A native provider "On-device (Gemini Nano)" that is only listed when `checkStatus()` is not unavailable. Downloadable shows a download action with progress instead of failing a send.
 - Keep it behind the provider capability matrix so an API break disables this provider only.
-- Use prefix caching for long system prompts and enabled skills.
+- Evaluate prefix caching only for long repeated stable instructions when benchmarks justify it; never warm a model automatically just to edit a skill.
 - Token Arena and the context warning label `o200k_base` counts for this provider as estimates.
-- No background jobs, no Direct Reply generation on-device in the first slice.
+- No background jobs, Direct Reply generation or silent cloud fallback in the first slice. Unsupported devices keep the deterministic offline editor.
+
+Reference: [ML Kit GenAI Prompt API](https://developers.google.com/ml-kit/genai/prompt/android/get-started).
 
 ## Computer Control
 
