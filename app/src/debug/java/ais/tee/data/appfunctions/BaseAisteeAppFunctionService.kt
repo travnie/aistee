@@ -25,7 +25,7 @@ import kotlinx.coroutines.withContext
 abstract class BaseAisteeAppFunctionService : AppFunctionService() {
     /**
      * Counts tokens locally in caller-supplied inline text using the o200k tokenizer.
-     * Requires separate Aistee Privacy consent and an enabled Docbench tool. Never reads
+     * Requires separate Aistee Privacy consent, an enabled Docbench tool and App lock off. Never reads
      * conversations, files, provider accounts or credentials. No network or text retention.
      *
      * @param text Nonblank, explicitly selected text, at most 20,000 UTF-16 characters.

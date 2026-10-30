@@ -49,7 +49,7 @@ class SystemAssistantServiceTest {
     }
 
     @Test
-    fun explicitRequestCountsLocallyAndRevocationBlocksNextCall() = runBlocking {
+    fun explicitRequestCountsLocallyAndRevocationBlocksNextCall(): Unit = runBlocking {
         allow()
         val text = "Hello from Aistee 👋"
         assertEquals(
@@ -75,7 +75,7 @@ class SystemAssistantServiceTest {
     }
 
     @Test
-    fun disablingDocbenchRevokesPreviouslyAllowedAccess() = runBlocking {
+    fun disablingDocbenchRevokesPreviouslyAllowedAccess(): Unit = runBlocking {
         allow()
         service.countTokens("hello", userRequested = true)
         BuiltInBenchPreferencesStore(context).saveEnabledTools(emptySet())
