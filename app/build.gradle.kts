@@ -78,6 +78,10 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            // Robolectric API 36 FileDescriptor interceptor; JDK 21 module access.
+            all { test ->
+                test.jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
+            }
         }
     }
 }
