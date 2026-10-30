@@ -66,7 +66,7 @@ class SystemAssistantInvocationTest {
         BuiltInBenchPreferencesStore(context).saveEnabledTools(emptySet())
         manager = requireNotNull(AppFunctionManager.getInstance(context))
         val spec = AppFunctionSearchSpec(
-            functionNames = setOf(AppFunctionName(context.packageName, SystemAssistantAccess.FUNCTION_ID)),
+            functionNames = setOf(AppFunctionName(context.packageName, SystemAssistantAccess.functionId)),
         )
         metadata = withTimeout(30_000) {
             var functions = manager.searchAppFunctions(spec)
@@ -80,11 +80,11 @@ class SystemAssistantInvocationTest {
         assertTrue(metadata.isCompatEnforcementEnabled)
         originalFunctionEnabled = withTimeout(10_000) {
             manager.getAppFunctionStates(
-                listOf(AppFunctionName(context.packageName, SystemAssistantAccess.FUNCTION_ID)),
+                listOf(AppFunctionName(context.packageName, SystemAssistantAccess.functionId)),
             ).single().isEnabled
         }
         // Enable self dispatch only; each test still exercises Aistee's separate consent gates.
-        manager.setAppFunctionEnabled(SystemAssistantAccess.FUNCTION_ID, AppFunctionManager.APP_FUNCTION_STATE_ENABLED)
+        manager.setAppFunctionEnabled(SystemAssistantAccess.functionId, AppFunctionManager.APP_FUNCTION_STATE_ENABLED)
     }
 
     @After
@@ -95,7 +95,7 @@ class SystemAssistantInvocationTest {
             originalFunctionEnabled?.let { enabled ->
                 withTimeout(10_000) {
                     manager.setAppFunctionEnabled(
-                        SystemAssistantAccess.FUNCTION_ID,
+                        SystemAssistantAccess.functionId,
                         if (enabled) AppFunctionManager.APP_FUNCTION_STATE_ENABLED
                         else AppFunctionManager.APP_FUNCTION_STATE_DISABLED,
                     )
@@ -174,7 +174,7 @@ class SystemAssistantInvocationTest {
         if (userRequested != null) parameters.setBoolean("userRequested", userRequested)
         return withTimeout(10_000) {
             manager.executeAppFunction(
-                ExecuteAppFunctionRequest(context.packageName, SystemAssistantAccess.FUNCTION_ID, parameters.build())
+                ExecuteAppFunctionRequest(context.packageName, SystemAssistantAccess.functionId, parameters.build())
             )
         }
     }

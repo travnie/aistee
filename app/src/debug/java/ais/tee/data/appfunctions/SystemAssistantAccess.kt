@@ -2,6 +2,7 @@ package ais.tee.data.appfunctions
 
 import android.content.Context
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.appfunctions.AppFunctionManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -28,7 +29,7 @@ internal object SystemAssistantAccess {
             val manager = AppFunctionManager.getInstance(context) ?: return@withLock false
             try {
                 manager.setAppFunctionEnabled(
-                    FUNCTION_ID,
+                    functionId,
                     if (enabled) AppFunctionManager.APP_FUNCTION_STATE_ENABLED
                     else AppFunctionManager.APP_FUNCTION_STATE_DISABLED,
                 )
@@ -42,5 +43,7 @@ internal object SystemAssistantAccess {
         }
     }
 
-    internal const val FUNCTION_ID = AisteeAppFunctionService.FUNCTION_ID_COUNT_TOKENS
+    @get:RequiresApi(36)
+    internal val functionId: String
+        get() = AisteeAppFunctionService.FUNCTION_ID_COUNT_TOKENS
 }

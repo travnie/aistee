@@ -47,18 +47,18 @@ class SystemAssistantRegistrationTest {
                     "id" -> {
                         val id = parser.nextText()
                         if ('#' in id) generatedFunctionIds += id
-                        functionIdFound = id == SystemAssistantAccess.FUNCTION_ID || functionIdFound
+                        functionIdFound = id == SystemAssistantAccess.functionId || functionIdFound
                     }
                     "enabledByDefault" -> defaultDenied = parser.nextText().trim() == "false" || defaultDenied
                 }
             }
         }
-        assertTrue("Expected ${SystemAssistantAccess.FUNCTION_ID}; generated IDs: $generatedFunctionIds", functionIdFound)
+        assertTrue("Expected ${SystemAssistantAccess.functionId}; generated IDs: $generatedFunctionIds", functionIdFound)
         assertTrue("Generated metadata must disable the function by default", defaultDenied)
 
         val manager = AppFunctionManager.getInstance(context)
         assertNotNull("Android 16 smoke device must support AppFunctions", manager)
-        val name = AppFunctionName(context.packageName, SystemAssistantAccess.FUNCTION_ID)
+        val name = AppFunctionName(context.packageName, SystemAssistantAccess.functionId)
         // Fresh installs may need time for the OS indexer; no assumed shell syntax.
         val states = withTimeout(30_000) {
             var current = manager!!.getAppFunctionStates(listOf(name))
