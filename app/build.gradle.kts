@@ -1,3 +1,5 @@
+import java.time.Duration
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.androidx.baselineprofile)
@@ -78,10 +80,9 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
-            // Robolectric API 36 FileDescriptor interceptor; JDK 21 module access.
+            // Bound JVM execution; detailed failures for CI diagnostics.
             all { test ->
-                test.jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
-                test.timeout.set(java.time.Duration.ofMinutes(10))
+                test.timeout.set(Duration.ofMinutes(10))
                 test.testLogging {
                     exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
                     events("started", "failed", "skipped")

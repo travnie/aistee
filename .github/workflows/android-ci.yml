@@ -28,7 +28,7 @@ jobs:
       - name: Build Android, test shared & lint
         # roborazzi.test.record: the unit-test run also writes JVM screenshots (ScreenshotTest).
         run: |
-          ./gradlew :app:assembleDebug :app:assembleRelease :app:testDebugUnitTest :app:lintDebug \
+          ./gradlew :app:assembleDebug :app:assembleRelease :app:compileDebugAndroidTestKotlin :app:testDebugUnitTest :app:lintDebug \
             :shared:desktopTest -Proborazzi.test.record=true --stacktrace
 
       - name: Upload JVM screenshots
