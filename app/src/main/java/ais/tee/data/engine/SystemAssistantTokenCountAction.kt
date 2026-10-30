@@ -11,7 +11,7 @@ import ais.tee.data.tokenizer.LocalTokenCounter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Local result only. No Android AppFunctions service is registered at this stage. */
+/** Local result shared by consent-gated adapters. */
 internal sealed interface SystemAssistantTokenCountResult {
     data class Count(val tokens: Int, val encoding: String) : SystemAssistantTokenCountResult
     data object Blocked : SystemAssistantTokenCountResult

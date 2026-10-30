@@ -1,6 +1,6 @@
 # Android intelligence system - research and plan
 
-Status: **Android platform integration remains proposed**. A device-independent, default-deny local token-count action is available as AppFunctions preparation; no system assistant can invoke it yet. Reviewed against Android guidance on 29 October 2026. Aistee uses compileSdk 37 / targetSdk 36; AppFunctions and ML Kit Prompt API are not yet dependencies.
+Status: **debug-only AppFunctions prototype; release integration remains proposed**. Debug builds include a generated, permission-protected token-count service and default-off Privacy consent. Release builds contain no AppFunctions service, metadata, control or runtime dependency. Reviewed on 30 October 2026; compileSdk 37 / targetSdk 36.
 
 ## AppFunctions (Android MCP)
 
@@ -32,9 +32,9 @@ Plan for Aistee:
 
 ### Safe local first slice
 
-`SystemAssistantTokenCountAction` is the first device-independent implementation slice. It accepts **inline text provided in a specific user request** only after the separate future system-assistant opt-in, explicit user initiation, first-party Docbench enablement and `READ_USER_SELECTED_CONTENT` grant are all present. It re-evaluates the existing `BuiltInBenchTool.DOCBENCH_DOCUMENT.availability` decision for a network-free explicit action, and calls the existing `LocalTokenCounter` off the caller thread. It has no network, storage, UI, cookies, conversation reads or exported Android component.
+`SystemAssistantTokenCountAction` is the first device-independent implementation slice. It accepts **inline text provided in a specific user request** only after the separate system-assistant opt-in, explicit user initiation, first-party Docbench enablement and `READ_USER_SELECTED_CONTENT` grant are all present. It re-evaluates the existing `BuiltInBenchTool.DOCBENCH_DOCUMENT.availability` decision for a network-free explicit action, and calls the existing `LocalTokenCounter` off the caller thread. It has no network, storage, UI, cookies, conversation reads or exported Android component.
 
-The first JVM tests are in `SystemAssistantTokenCountActionTest`. An Android system-agent adapter **must not** wire this to discovery until the platform service, Android 16+ checks, Privacy opt-in, per-request consent, cancellation and enabled/disabled instrumentation tests in phase 2 are implemented. Do not advertise AppFunctions support in the README or the shipped-features index before then.
+The first JVM tests are in `SystemAssistantTokenCountActionTest`. A release Android system-agent adapter **must not** wire this to discovery until the platform service, Android 16+ checks, Privacy opt-in, per-request consent, cancellation and enabled/disabled instrumentation tests in phase 2 are implemented. Do not advertise AppFunctions support in the README or the shipped-features index before then.
 
 ## On-device model provider (Gemini Nano)
 
@@ -71,15 +71,26 @@ The [open product backlog](product-ideas.md) owns feature priority. This file ow
 | Phase | Smallest deliverable | Acceptance / blocker |
 | --- | --- | --- |
 | 0 · Done | Fix CodeQL Kotlin build on JDK 21 in the existing shared Android CI toolchain. | Advanced CodeQL and central setup policy shipped in [Aistee PR #438](https://github.com/travnie/aistee/pull/438), [central PR #66](https://github.com/trvny/.github/pull/66), with compile-only extraction follow-up in [Aistee PR #440](https://github.com/travnie/aistee/pull/440). |
-| 1 · In progress, device-free | Add a **non-exported** local `countTokens(text)` action using the existing Docbench capability decision, first-party enablement and o200k tokenizer. No new tool registry. | JVM tests cover default-deny, user initiation, explicit content grant, revoked opt-in, invalid input and tokenizer parity. This is a preparation boundary only: **no AppFunctions service, OS exposure, manifest entry or Privacy toggle ships yet**. |
-| 2 · Device-gated | AppFunctions service adapter behind an explicit, default-off Privacy toggle. Reuse existing app dependency wiring; generated service and XML match the merged manifest. | JDK/KSP/AGP-compatible build; OS discovery and invocation on a supported Android 16+ device; opt-out, cancellation, background thread, error paths and Delete all local data tested. Never expose chat reads, account state, network or arbitrary filesystem. |
+| 1 · Done, device-free | Add a **non-exported** local `countTokens(text)` action using the existing Docbench capability decision, first-party enablement and o200k tokenizer. No new tool registry. | JVM tests cover default-deny, user initiation, explicit content grant, revoked opt-in, invalid input and tokenizer parity. This is a preparation boundary only: **release has no AppFunctions service, OS exposure, manifest entry or Privacy toggle**. |
+| 2 · Debug prototype; release device-gated | AppFunctions service adapter behind an explicit, default-off Privacy toggle. Reuse existing app dependency wiring; generated service and XML match the merged manifest. | JDK/KSP/AGP-compatible build; OS discovery and invocation on a supported Android 16+ device; opt-out, cancellation, background thread, error paths and Delete all local data tested. Never expose chat reads, account state, network or arbitrary filesystem. |
 | 3 · Device-gated, after Skill Studio | Optional Gemini Nano drafting **once the planned Skill and plugin studio has shipped**. Until then, prototype only through the existing Markdown Workspace/skill editor with explicit preview and approval. | FeatureStatus checks, user-approved download, measured memory/latency, cancellation, client `close()`, unsupported-device fallback, structured-output feature detection and a reviewed diff before saving. No silent cloud/API fallback. |
 | 4 · Device-gated | Test Android Computer Control with App lock and Screen privacy while a provider WebView is signed in. | Document real OEM/platform behavior and any available opt-out. No assumption that `FLAG_SECURE` blocks every form of UI automation. |
 
 **Implementation notes from the Android development skill:**
 
-- AppFunctions beta APIs require fresh verification before compiling: `@AppFunctionDeclaration`, explicit `isDescribedByKDoc`, `appfn:instructions`, `AppFunctionName` from `androidx.appfunctions`, and a KSP-generated service, with `BIND_APP_FUNCTION_SERVICE` manifest protection. Aistee currently has **no AppFunctions/KSP integration**. Do not add Hilt, Koin or a second DI layer just for this.
+- AppFunctions beta APIs require fresh verification before compiling: `@AppFunctionDeclaration`, explicit `isDescribedByKDoc`, `appfn:instructions`, `AppFunctionName` from `androidx.appfunctions`, and a KSP-generated service, with `BIND_APP_FUNCTION_SERVICE` manifest protection. Aistee's debug build uses AppFunctions beta01 with KSP 2.3.13; release has no AppFunctions integration. Do not add Hilt, Koin or a second DI layer just for this.
 - Unsupported Android devices still use all existing local tools. Handle missing/omitted typed arguments and explicit nulls deliberately, preserve coroutine cancellation, and check actual `adb shell cmd app_function help` before writing invocation scripts.
 - For Gemini Nano, separate library minSdk from device/AICore availability; only infer when `FeatureStatus.AVAILABLE`, close the client on teardown, reject untrusted output as tool instructions, and guard structured output behind `isStructuredOutputFeatureAvailable()`.
 - Favor JVM fakes for pure decisions and Robolectric for Android host glue. Only the generated service, manifest integration, OS discovery and user authentication boundaries require instrumented/device tests. See [Android performance](android-performance.md) for the existing test stack and Baseline Profile rules.
+
+
+## Debug AppFunctions verification
+
+- Debug only: `BaseAisteeAppFunctionService.countTokens`, generated service and XML; `BIND_APP_FUNCTION_SERVICE` protection. `isEnabled = false` in schema.
+- Privacy opt-in grants only caller-supplied inline text processing. Docbench remains independently required. App lock blocks this prototype entirely. Caller `userRequested` is an intent assertion, never authorization or proof of user presence.
+- Consent stays outside backup/transfer allowlists. Local denial is written before OS enablement changes; failed indexing/cancellation cannot grant access. Service rechecks consent before returning a count. Delete all local data clears consent with app storage.
+- JVM coverage: consent/tool denial, omitted request, App lock, revocation, typed input errors, tokenizer parity, and unsupported Android. Existing action tests remain canonical policy coverage.
+- Android 16 smoke coverage: generated manifest protection, schema ID/default denial and bounded polling for OS discovery. Full assistant-to-service invocation, cancellation, opt-out and clear-data behavior still require a supported-device check before release promotion.
+- No startup hook, release/R8 changes or profiled journey changes. Baseline Profile regeneration is not applicable; existing performance CI still validates release coverage.
+- Promotion gate: move dependencies/service/control into production only after real invocation and user-consent semantics are verified. No claim of production assistant support yet.
 
