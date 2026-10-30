@@ -145,7 +145,7 @@ class SystemAssistantInvocationTest {
     }
 
     private suspend fun invoke(text: String, userRequested: Boolean?): ExecuteAppFunctionResponse {
-        val parameters = AppFunctionData.Builder(metadata.parameters, metadata.components)
+        val parameters = AppFunctionData.Builder(metadata.parameters, metadata.packageMetadata.components)
             .setString("text", text)
         if (userRequested != null) parameters.setBoolean("userRequested", userRequested)
         return withTimeout(10_000) {
