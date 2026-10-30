@@ -42,5 +42,5 @@ internal object SystemAssistantAccess {
         }
     }
 
-    internal const val FUNCTION_ID = "ais.tee.data.appfunctions.BaseAisteeAppFunctionService#countTokens"
+    internal const val FUNCTION_ID = AisteeAppFunctionService.FUNCTION_ID_COUNT_TOKENS
 }

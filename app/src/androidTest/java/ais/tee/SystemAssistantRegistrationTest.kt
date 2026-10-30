@@ -37,18 +37,23 @@ class SystemAssistantRegistrationTest {
         assertFalse(SystemAssistantConsentStore.isEnabled())
 
         var functionIdFound = false
+        val generatedFunctionIds = linkedSetOf<String>()
         var defaultDenied = false
         context.assets.open("aistee_app_functions.xml").use { input ->
             val parser = Xml.newPullParser().apply { setInput(input, "UTF-8") }
             while (parser.next() != XmlPullParser.END_DOCUMENT) {
                 if (parser.eventType != XmlPullParser.START_TAG) continue
                 when (parser.name) {
-                    "id" -> functionIdFound = parser.nextText() == SystemAssistantAccess.FUNCTION_ID || functionIdFound
+                    "id" -> {
+                        val id = parser.nextText()
+                        if ('#' in id) generatedFunctionIds += id
+                        functionIdFound = id == SystemAssistantAccess.FUNCTION_ID || functionIdFound
+                    }
                     "enabledByDefault" -> defaultDenied = parser.nextText().trim() == "false" || defaultDenied
                 }
             }
         }
-        assertTrue("Generated metadata must contain the canonical function ID", functionIdFound)
+        assertTrue("Expected ${SystemAssistantAccess.FUNCTION_ID}; generated IDs: $generatedFunctionIds", functionIdFound)
         assertTrue("Generated metadata must disable the function by default", defaultDenied)
 
         val manager = AppFunctionManager.getInstance(context)

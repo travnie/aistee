@@ -43,11 +43,24 @@ class SystemAssistantInvocationTest {
     private lateinit var manager: AppFunctionManager
     private lateinit var metadata: AppFunctionMetadata
     private lateinit var consent: SystemAssistantConsentStore
+    private var originalLocalState: LocalState? = null
+    private var originalFunctionEnabled: Boolean? = null
+
+    private data class LocalState(
+        val consentEnabled: Boolean,
+        val appLockEnabled: Boolean,
+        val enabledTools: Set<BuiltInBenchTool>,
+    )
 
     @Before
     fun prepare(): Unit = runBlocking {
         context = ApplicationProvider.getApplicationContext<AisteeApplication>()
         consent = SystemAssistantConsentStore
+        originalLocalState = LocalState(
+            consent.isEnabled(),
+            AppLockStore.get(context).enabled.value,
+            BuiltInBenchPreferencesStore(context).loadEnabledTools(),
+        )
         consent.setEnabled(false)
         AppLockStore.get(context).setEnabled(false)
         BuiltInBenchPreferencesStore(context).saveEnabledTools(emptySet())
@@ -65,22 +78,33 @@ class SystemAssistantInvocationTest {
         }
         assertEquals(AppFunctionMetadata.ACCESS_LEVEL_SELF, metadata.accessLevel)
         assertTrue(metadata.isCompatEnforcementEnabled)
+        originalFunctionEnabled = withTimeout(10_000) {
+            manager.getAppFunctionStates(
+                listOf(AppFunctionName(context.packageName, SystemAssistantAccess.FUNCTION_ID)),
+            ).single().isEnabled
+        }
         // Enable self dispatch only; each test still exercises Aistee's separate consent gates.
         manager.setAppFunctionEnabled(SystemAssistantAccess.FUNCTION_ID, AppFunctionManager.APP_FUNCTION_STATE_ENABLED)
     }
 
     @After
     fun restore(): Unit = runBlocking {
-        if (!::context.isInitialized) return@runBlocking
-        consent.setEnabled(false)
-        AppLockStore.get(context).setEnabled(false)
-        BuiltInBenchPreferencesStore(context).saveEnabledTools(emptySet())
-        if (::metadata.isInitialized) {
-            withTimeout(10_000) {
-                manager.setAppFunctionEnabled(
-                    SystemAssistantAccess.FUNCTION_ID, AppFunctionManager.APP_FUNCTION_STATE_DISABLED,
-                )
+        val original = originalLocalState ?: return@runBlocking
+        consent.beginUpdate()
+        try {
+            originalFunctionEnabled?.let { enabled ->
+                withTimeout(10_000) {
+                    manager.setAppFunctionEnabled(
+                        SystemAssistantAccess.FUNCTION_ID,
+                        if (enabled) AppFunctionManager.APP_FUNCTION_STATE_ENABLED
+                        else AppFunctionManager.APP_FUNCTION_STATE_DISABLED,
+                    )
+                }
             }
+        } finally {
+            BuiltInBenchPreferencesStore(context).saveEnabledTools(original.enabledTools)
+            AppLockStore.get(context).setEnabled(original.appLockEnabled)
+            consent.setEnabled(original.consentEnabled)
         }
     }
 
