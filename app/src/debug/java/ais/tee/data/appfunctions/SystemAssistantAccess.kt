@@ -16,11 +16,14 @@ internal object SystemAssistantAccess {
     fun isSupported(context: Context): Boolean =
         Build.VERSION.SDK_INT >= 36 && AppFunctionManager.getInstance(context) != null
 
-    suspend fun setEnabled(context: Context, enabled: Boolean): Boolean = withContext(Dispatchers.IO) {
+    suspend fun setEnabled(
+        context: Context,
+        enabled: Boolean,
+        expectedGeneration: Long = SystemAssistantConsentStore.beginUpdate(),
+    ): Boolean = withContext(Dispatchers.IO) {
         updates.withLock {
-            val consent = SystemAssistantConsentStore(context)
-            // Deny locally before changing OS state; stale indexing never restores consent.
-            consent.setEnabled(false)
+            val consent = SystemAssistantConsentStore
+            if (!consent.isCurrent(expectedGeneration)) return@withLock false
             if (Build.VERSION.SDK_INT < 36) return@withLock false
             val manager = AppFunctionManager.getInstance(context) ?: return@withLock false
             try {
@@ -29,8 +32,7 @@ internal object SystemAssistantAccess {
                     if (enabled) AppFunctionManager.APP_FUNCTION_STATE_ENABLED
                     else AppFunctionManager.APP_FUNCTION_STATE_DISABLED,
                 )
-                consent.setEnabled(enabled)
-                true
+                consent.completeUpdate(expectedGeneration, enabled)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {

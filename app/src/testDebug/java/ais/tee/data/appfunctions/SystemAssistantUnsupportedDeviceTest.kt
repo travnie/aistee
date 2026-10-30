@@ -15,7 +15,7 @@ class SystemAssistantUnsupportedDeviceTest {
     @Test
     fun olderAndroidCannotEnableAccess() = runBlocking {
         val context: Context = RuntimeEnvironment.getApplication()
-        val consent = SystemAssistantConsentStore(context)
+        val consent = SystemAssistantConsentStore
         assertFalse(SystemAssistantAccess.isSupported(context))
         consent.setEnabled(true)
         assertFalse(SystemAssistantAccess.setEnabled(context, true))

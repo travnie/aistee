@@ -30,7 +30,7 @@ import kotlinx.coroutines.withContext
 internal fun SystemAssistantPrivacySettings() {
     val context = LocalContext.current.applicationContext
     val supported = remember(context) { SystemAssistantAccess.isSupported(context) }
-    val store = remember(context) { SystemAssistantConsentStore(context) }
+    val store = remember(context) { SystemAssistantConsentStore }
     val scope = rememberCoroutineScope()
     var enabled by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(true) }
@@ -41,14 +41,14 @@ internal fun SystemAssistantPrivacySettings() {
     }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text("System assistant token counting (preview)", style = MaterialTheme.typography.titleMedium)
+            Text("AppFunctions token counting (local preview)", style = MaterialTheme.typography.titleMedium)
             Text(
                 when {
                     !supported -> "Requires a supported Android 16+ device."
                     failed -> "Access is off. Could not update Android; try again."
-                    else -> "Allow system assistants to count text you explicitly provide. " +
-                        "Counts stay local. Docbench must also be enabled and App lock off. " +
-                        "Does not grant access to chats, files or accounts."
+                    else -> "Enable Aistee-only token-counting calls for this app session. " +
+                        "Docbench must also be enabled and App lock off. " +
+                        "External assistants, chats, files and accounts remain inaccessible."
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -58,10 +58,12 @@ internal fun SystemAssistantPrivacySettings() {
             checked = enabled,
             enabled = !busy && (supported || enabled),
             onCheckedChange = { value ->
+                val generation = store.beginUpdate()
+                enabled = false
                 busy = true
                 scope.launch {
                     try {
-                        failed = !SystemAssistantAccess.setEnabled(context, value)
+                        failed = !SystemAssistantAccess.setEnabled(context, value, generation)
                     } finally {
                         enabled = store.isEnabled()
                         busy = false
@@ -70,7 +72,7 @@ internal fun SystemAssistantPrivacySettings() {
             },
             modifier = Modifier
                 .testTag("switch_system_assistant_token_count")
-                .semantics { contentDescription = "System assistant token counting" },
+                .semantics { contentDescription = "AppFunctions local token counting preview" },
         )
     }
 }

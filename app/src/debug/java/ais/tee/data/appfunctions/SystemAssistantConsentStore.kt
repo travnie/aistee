@@ -1,16 +1,40 @@
 package ais.tee.data.appfunctions
 
-import android.content.Context
+/** Process-session consent only. No disk, backup, transfer or restored authorization. */
+internal object SystemAssistantConsentStore {
+    data class Snapshot(val enabled: Boolean, val generation: Long)
 
-/** Local consent only; absent from backup/transfer and explicit export allowlists. */
-internal class SystemAssistantConsentStore(context: Context) {
-    private val preferences = context.applicationContext.getSharedPreferences(
-        "system_assistant_consent", Context.MODE_PRIVATE,
-    )
+    private var enabled = false
+    private var generation = 0L
 
-    fun isEnabled(): Boolean = preferences.getBoolean("inline_token_count", false)
+    @Synchronized
+    fun snapshot(): Snapshot = Snapshot(enabled, generation)
 
-    fun setEnabled(enabled: Boolean) {
-        preferences.edit().putBoolean("inline_token_count", enabled).apply()
+    @Synchronized
+    fun isEnabled(): Boolean = enabled
+
+    @Synchronized
+    fun setEnabled(value: Boolean) {
+        enabled = value
+        generation++
+    }
+
+    /** Immediate denial before any cancellable platform work. */
+    @Synchronized
+    fun beginUpdate(): Long {
+        enabled = false
+        return ++generation
+    }
+
+    @Synchronized
+    fun isCurrent(expected: Long): Boolean = generation == expected
+
+    /** An older enable operation cannot undo a newer opt-out. */
+    @Synchronized
+    fun completeUpdate(expected: Long, value: Boolean): Boolean {
+        if (generation != expected) return false
+        enabled = value
+        generation++
+        return true
     }
 }

@@ -11,6 +11,7 @@ import androidx.appfunctions.AppFunctionName
 import androidx.appfunctions.AppFunctionSearchSpec
 import androidx.appfunctions.ExecuteAppFunctionRequest
 import androidx.appfunctions.ExecuteAppFunctionResponse
+import androidx.appfunctions.ExperimentalAppFunctionsApi
 import androidx.appfunctions.metadata.AppFunctionMetadata
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -36,6 +37,7 @@ import org.junit.runner.RunWith
 /** Real OS dispatch; no framework service emulation or test-only service hooks. */
 @RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = 36)
+@OptIn(ExperimentalAppFunctionsApi::class)
 class SystemAssistantInvocationTest {
     private lateinit var context: Context
     private lateinit var manager: AppFunctionManager
@@ -45,7 +47,7 @@ class SystemAssistantInvocationTest {
     @Before
     fun prepare(): Unit = runBlocking {
         context = ApplicationProvider.getApplicationContext<AisteeApplication>()
-        consent = SystemAssistantConsentStore(context)
+        consent = SystemAssistantConsentStore
         consent.setEnabled(false)
         AppLockStore.get(context).setEnabled(false)
         BuiltInBenchPreferencesStore(context).saveEnabledTools(emptySet())
@@ -61,7 +63,9 @@ class SystemAssistantInvocationTest {
             }
             functions.single()
         }
-        // Enable OS dispatch only; each test still exercises Aistee's separate consent gates.
+        assertEquals(AppFunctionMetadata.ACCESS_LEVEL_SELF, metadata.accessLevel)
+        assertTrue(metadata.isCompatEnforcementEnabled)
+        // Enable self dispatch only; each test still exercises Aistee's separate consent gates.
         manager.setAppFunctionEnabled(SystemAssistantAccess.FUNCTION_ID, AppFunctionManager.APP_FUNCTION_STATE_ENABLED)
     }
 

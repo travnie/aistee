@@ -1,6 +1,9 @@
 package ais.tee.data.appfunctions
 
 import androidx.annotation.RequiresApi
+import androidx.appfunctions.AppFunctionAccessLevel
+import androidx.appfunctions.ExperimentalAppFunctionsApi
+import androidx.appfunctions.metadata.AppFunctionMetadata
 import androidx.appfunctions.AppFunctionDeclaration
 import androidx.appfunctions.AppFunctionDeniedException
 import androidx.appfunctions.AppFunctionInvalidArgumentException
@@ -17,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** Debug-only service. Release registration awaits supported-device verification. */
+@OptIn(ExperimentalAppFunctionsApi::class)
 @RequiresApi(36)
 @AppFunctionServiceEntryPoint(
     serviceName = "AisteeAppFunctionService",
@@ -30,29 +34,33 @@ abstract class BaseAisteeAppFunctionService : AppFunctionService() {
      *
      * @param text Nonblank, explicitly selected text, at most 20,000 UTF-16 characters.
      * @param userRequested True only for a fresh, explicit user request. This caller assertion
-     * does not grant permission or override Aistee's persisted consent, tool or App lock policy.
+     * does not grant permission or override Aistee's session consent, tool or App lock policy.
      * @return Token count and encoding label only; never includes the supplied text.
      */
     @AppFunctionDeclaration(isEnabled = false, isDescribedByKDoc = true)
+    @AppFunctionAccessLevel(
+        level = AppFunctionMetadata.ACCESS_LEVEL_SELF,
+        isCompatEnforcementEnabled = true,
+    )
     suspend fun countTokens(text: String, userRequested: Boolean = false): AssistantTokenCount {
         return withContext(Dispatchers.IO) {
-            val consent = SystemAssistantConsentStore(applicationContext)
-            if (!consent.isEnabled() || AppLockStore.get(applicationContext).enabled.value) {
-                throw AppFunctionDeniedException("Enable system assistant access in Privacy; App lock must be off.")
+            val consent = SystemAssistantConsentStore.snapshot()
+            if (!consent.enabled || AppLockStore.get(applicationContext).enabled.value) {
+                throw AppFunctionDeniedException("Enable the local AppFunctions preview in Privacy; App lock must be off.")
             }
             val result = SystemAssistantTokenCountAction.execute(
                 text = text,
-                systemAssistantEnabled = consent.isEnabled(),
+                systemAssistantEnabled = consent.enabled,
                 userInitiated = userRequested,
                 enabledBenchTools = BuiltInBenchPreferencesStore(applicationContext).loadEnabledTools(),
                 grantedPermissions = setOf(BenchToolPermission.READ_USER_SELECTED_CONTENT),
             )
-            // Consent/tool revocation during tokenization discards the result.
-            if (!consent.isEnabled() || AppLockStore.get(applicationContext).enabled.value ||
+            // Discard changed session consent or currently revoked access.
+            if (consent != SystemAssistantConsentStore.snapshot() || AppLockStore.get(applicationContext).enabled.value ||
                 BuiltInBenchTool.DOCBENCH_DOCUMENT !in
                 BuiltInBenchPreferencesStore(applicationContext).loadEnabledTools()
             ) {
-                throw AppFunctionDeniedException("System assistant access is disabled.")
+                throw AppFunctionDeniedException("Local AppFunctions access changed or is disabled.")
             }
             when (result) {
                 is SystemAssistantTokenCountResult.Count -> AssistantTokenCount(result.tokens, result.encoding)

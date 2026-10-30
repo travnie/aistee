@@ -1,6 +1,6 @@
 # Android intelligence system - research and plan
 
-Status: **debug-only AppFunctions prototype; release integration remains proposed**. Debug builds include a generated, permission-protected token-count service and default-off Privacy consent. Release builds contain no AppFunctions service, metadata, control or runtime dependency. Reviewed on 30 October 2026; compileSdk 37 / targetSdk 36.
+Status: **debug-only AppFunctions prototype; release integration remains proposed**. Debug builds include a generated, same-UID-only token-count service and default-off process-session consent. External assistants cannot invoke this preview. Release builds contain no AppFunctions service, metadata, control or runtime dependency. Reviewed on 30 October 2026; compileSdk 37 / targetSdk 36.
 
 ## AppFunctions (Android MCP)
 
@@ -86,10 +86,10 @@ The [open product backlog](product-ideas.md) owns feature priority. This file ow
 
 ## Debug AppFunctions verification
 
-- Debug only: `BaseAisteeAppFunctionService.countTokens`, generated service and XML; `BIND_APP_FUNCTION_SERVICE` protection. `isEnabled = false` in schema.
-- Privacy opt-in grants only caller-supplied inline text processing. Docbench remains independently required. App lock blocks this prototype entirely. Caller `userRequested` is an intent assertion, never authorization or proof of user presence.
-- Consent stays outside backup/transfer allowlists. Local denial is written before OS enablement changes; failed indexing/cancellation cannot grant access. Service rechecks consent before returning a count. Delete all local data clears consent with app storage.
-- JVM coverage: canonical action consent/tool policy, input bounds and tokenizer parity; unsupported Android access remains a Robolectric API 28 test. Framework-service cases run on Android 16 through OS dispatch, avoiding an emulated service host.
+- Debug only: `BaseAisteeAppFunctionService.countTokens`, generated service and XML; `BIND_APP_FUNCTION_SERVICE` protection plus `ACCESS_LEVEL_SELF` compatibility enforcement. `isEnabled = false` in schema.
+- `ACCESS_LEVEL_SELF` with compatibility enforcement restricts the preview to Aistee's own UID, including Android 16. External assistants cannot use a caller-provided flag to cross this boundary. External invocation remains blocked until trusted per-request user confirmation exists. Session opt-in grants caller-supplied inline text processing; Docbench and App lock checks remain independent.
+- Consent exists only in process memory; restart, crash, restore and clear-data cannot revive it. Opt-out revokes synchronously before launching cancellable OS work. Generation checks discard stale enables and counts spanning a revoke/re-enable cycle. The result path also re-reads Docbench and App lock policy.
+- JVM coverage: canonical action consent/tool policy, input bounds and tokenizer parity; session generation and synchronous opt-out; unsupported Android access remains a Robolectric API 28 test. Framework-service cases run on Android 16 through OS dispatch, avoiding an emulated service host.
 - Android 16 smoke coverage: generated manifest protection, schema ID/default denial, bounded OS discovery and real same-app execution. Invocation tests cover consent/tool denial, omitted request, App lock, revocation, typed errors, tokenizer parity and Privacy enable/disable. External-assistant invocation, cancellation and clear-data behavior remain release-promotion gates.
 - No startup hook, release/R8 changes or profiled journey changes. Baseline Profile regeneration is not applicable; existing performance CI still validates release coverage.
 - Promotion gate: move dependencies/service/control into production only after real invocation and user-consent semantics are verified. No claim of production assistant support yet.

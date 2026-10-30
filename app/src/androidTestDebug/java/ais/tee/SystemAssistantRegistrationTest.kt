@@ -34,7 +34,7 @@ class SystemAssistantRegistrationTest {
         )
         assertTrue(info.exported)
         assertEquals("android.permission.BIND_APP_FUNCTION_SERVICE", info.permission)
-        assertFalse(SystemAssistantConsentStore(context).isEnabled())
+        assertFalse(SystemAssistantConsentStore.isEnabled())
 
         var functionIdFound = false
         var defaultDenied = false
