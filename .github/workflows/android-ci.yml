@@ -94,7 +94,6 @@ jobs:
           retention-days: 7
 
   appfunctions-smoke:
-    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -106,15 +105,23 @@ jobs:
       - name: Set up Android build
         uses: ./.github/actions/setup-android-build
 
+      - name: Update SDK command-line tools for minor-version package IDs
+        run: |
+          sdkmanager --install 'cmdline-tools;latest' > /dev/null
+          if [ -d "$ANDROID_HOME/cmdline-tools/latest-2" ]; then
+            mv "$ANDROID_HOME/cmdline-tools/latest" "$RUNNER_TEMP/android-command-line-tools-original"
+            mv "$ANDROID_HOME/cmdline-tools/latest-2" "$ANDROID_HOME/cmdline-tools/latest"
+          fi
+          sdkmanager --version
+
       - name: Run full-schema AppFunctions tests on Android 17
         uses: ./.github/actions/run-android-emulator
         with:
-          api-level: "37"
+          api-level: "37.0"
           script: |
             mkdir -p out/appfunctions
             adb shell cmd app_function help > out/appfunctions/commands.txt 2>&1 || true
-            trap 'adb logcat -d > out/appfunctions/logcat.txt' EXIT
-            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.SystemAssistantRegistrationTest,ais.tee.SystemAssistantInvocationTest --stacktrace
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.SystemAssistantRegistrationTest,ais.tee.SystemAssistantInvocationTest --stacktrace || { adb logcat -d > out/appfunctions/logcat.txt; exit 1; }
 
       - name: Upload AppFunctions test reports
         if: always()
