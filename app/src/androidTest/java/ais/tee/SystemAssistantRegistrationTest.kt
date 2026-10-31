@@ -26,7 +26,7 @@ import org.xmlpull.v1.XmlPullParser
 @SdkSuppress(minSdkVersion = 36)
 class SystemAssistantRegistrationTest {
     @Test
-    fun generatedServiceIsProtectedAndIndexedWithDefaultDenial() = runBlocking {
+    fun generatedServiceIsProtectedWithDefaultDenial() {
         val context = ApplicationProvider.getApplicationContext<AisteeApplication>()
         val info = context.packageManager.getServiceInfo(
             ComponentName(context, AisteeAppFunctionService::class.java),
@@ -55,9 +55,23 @@ class SystemAssistantRegistrationTest {
         }
         assertTrue("Expected ${SystemAssistantAccess.functionId}; generated IDs: $generatedFunctionIds", functionIdFound)
         assertTrue("Generated metadata must disable the function by default", defaultDenied)
+    }
 
+    @Test
+    @SdkSuppress(minSdkVersion = 36, maxSdkVersion = 36)
+    fun android16CannotEnableTheFullSchemaPreview(): Unit = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<AisteeApplication>()
+        assertFalse(SystemAssistantAccess.isSupported(context))
+        assertFalse(SystemAssistantAccess.setEnabled(context, true))
+        assertFalse(SystemAssistantConsentStore.isEnabled())
+    }
+
+    @Test
+    @SdkSuppress(minSdkVersion = 37)
+    fun fullSchemaIsIndexedWithDefaultDenial(): Unit = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<AisteeApplication>()
         val manager = AppFunctionManager.getInstance(context)
-        assertNotNull("Android 16 smoke device must support AppFunctions", manager)
+        assertNotNull("Android 17 smoke device must support AppFunctions", manager)
         val name = AppFunctionName(context.packageName, SystemAssistantAccess.functionId)
         // Fresh installs may need time for the OS indexer; no assumed shell syntax.
         val states = withTimeout(30_000) {

@@ -36,7 +36,7 @@ import org.junit.runner.RunWith
 
 /** Real OS dispatch; no framework service emulation or test-only service hooks. */
 @RunWith(AndroidJUnit4::class)
-@SdkSuppress(minSdkVersion = 36)
+@SdkSuppress(minSdkVersion = 37)
 @OptIn(ExperimentalAppFunctionsApi::class)
 class SystemAssistantInvocationTest {
     private lateinit var context: Context

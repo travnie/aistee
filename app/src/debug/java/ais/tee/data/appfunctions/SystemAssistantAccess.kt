@@ -10,12 +10,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-/** No platform references loaded below Android 16. No startup hook. */
+/** This preview requires Android 17's full-schema indexer. No startup hook. */
 internal object SystemAssistantAccess {
     private val updates = Mutex()
 
     fun isSupported(context: Context): Boolean =
-        Build.VERSION.SDK_INT >= 36 && AppFunctionManager.getInstance(context) != null
+        Build.VERSION.SDK_INT >= 37 && AppFunctionManager.getInstance(context) != null
 
     suspend fun setEnabled(
         context: Context,
@@ -25,7 +25,7 @@ internal object SystemAssistantAccess {
         updates.withLock {
             val consent = SystemAssistantConsentStore
             if (!consent.isCurrent(expectedGeneration)) return@withLock false
-            if (Build.VERSION.SDK_INT < 36) return@withLock false
+            if (Build.VERSION.SDK_INT < 37) return@withLock false
             val manager = AppFunctionManager.getInstance(context) ?: return@withLock false
             try {
                 manager.setAppFunctionEnabled(

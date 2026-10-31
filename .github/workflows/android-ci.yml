@@ -92,3 +92,37 @@ jobs:
             app/build/outputs/androidTest-results/
             out/
           retention-days: 7
+
+  appfunctions-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Android build
+        uses: ./.github/actions/setup-android-build
+
+      - name: Run full-schema AppFunctions tests on Android 17
+        uses: ./.github/actions/run-android-emulator
+        with:
+          api-level: "37"
+          script: |
+            mkdir -p out/appfunctions
+            adb shell cmd app_function help > out/appfunctions/commands.txt 2>&1 || true
+            trap 'adb logcat -d > out/appfunctions/logcat.txt' EXIT
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.SystemAssistantRegistrationTest,ais.tee.SystemAssistantInvocationTest --stacktrace
+
+      - name: Upload AppFunctions test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: appfunctions-test-reports
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+            out/appfunctions/
+          retention-days: 7

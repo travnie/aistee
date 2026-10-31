@@ -44,7 +44,7 @@ internal fun SystemAssistantPrivacySettings() {
             Text("AppFunctions token counting (local preview)", style = MaterialTheme.typography.titleMedium)
             Text(
                 when {
-                    !supported -> "Requires a supported Android 16+ device."
+                    !supported -> "Requires a supported Android 17+ device."
                     failed -> "Access is off. Could not update Android; try again."
                     else -> "Enable Aistee-only token-counting calls for this app session. " +
                         "Docbench must also be enabled and App lock off. " +
