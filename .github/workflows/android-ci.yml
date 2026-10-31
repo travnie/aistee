@@ -28,7 +28,7 @@ jobs:
       - name: Build Android, test shared & lint
         # roborazzi.test.record: the unit-test run also writes JVM screenshots (ScreenshotTest).
         run: |
-          ./gradlew :app:assembleDebug :app:assembleRelease :app:testDebugUnitTest :app:lintDebug \
+          ./gradlew :app:assembleDebug :app:assembleRelease :app:compileDebugAndroidTestKotlin :app:testDebugUnitTest :app:lintDebug \
             :shared:desktopTest -Proborazzi.test.record=true --stacktrace
 
       - name: Upload JVM screenshots
@@ -91,4 +91,53 @@ jobs:
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
             out/
+          retention-days: 7
+
+  appfunctions-smoke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Android build
+        uses: ./.github/actions/setup-android-build
+
+      - name: Update SDK command-line tools for minor-version package IDs
+        # sdkmanager not on PATH in current runner image; resolve from the SDK.
+        run: |
+          sdk="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          sdkmanager="$sdk/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$sdkmanager" ]; then
+            sdkmanager="$(ls -d "$sdk"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -n 1)"
+          fi
+          [ -x "$sdkmanager" ] || { echo "::error::sdkmanager not found under $sdk"; exit 1; }
+          "$sdkmanager" --install 'cmdline-tools;latest' > /dev/null
+          if [ -d "$sdk/cmdline-tools/latest-2" ]; then
+            mv "$sdk/cmdline-tools/latest" "$RUNNER_TEMP/android-command-line-tools-original"
+            mv "$sdk/cmdline-tools/latest-2" "$sdk/cmdline-tools/latest"
+          fi
+          "$sdk/cmdline-tools/latest/bin/sdkmanager" --version
+          echo "$sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+      - name: Run full-schema AppFunctions tests on Android 17
+        uses: ./.github/actions/run-android-emulator
+        with:
+          api-level: "37.0"
+          script: |
+            mkdir -p out/appfunctions
+            adb shell cmd app_function help > out/appfunctions/commands.txt 2>&1 || true
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.SystemAssistantRegistrationTest,ais.tee.SystemAssistantInvocationTest --stacktrace || { adb logcat -d > out/appfunctions/logcat.txt; exit 1; }
+
+      - name: Upload AppFunctions test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: appfunctions-test-reports
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+            out/appfunctions/
           retention-days: 7

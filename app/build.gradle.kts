@@ -1,9 +1,12 @@
+import java.time.Duration
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.androidx.baselineprofile)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.roborazzi)
+    alias(libs.plugins.ksp)
 }
 
 // Release signing is opt-in. GitHub Actions injects these values from repository
@@ -77,6 +80,14 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            // Bound JVM execution; detailed failures for CI diagnostics.
+            all { test ->
+                test.timeout.set(Duration.ofMinutes(10))
+                test.testLogging {
+                    exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+                    events("started", "failed", "skipped")
+                }
+            }
         }
     }
 }
@@ -135,5 +146,8 @@ dependencies {
     androidTestImplementation(libs.androidx.work.testing)
 
     debugImplementation(libs.androidx.ui.tooling)
+    // Debug-only platform prototype; release has no AppFunctions service or dependency.
+    debugImplementation(libs.androidx.appfunctions)
+    add("kspDebug", libs.androidx.appfunctions.compiler)
     debugImplementation(libs.androidx.ui.test.manifest)
 }
