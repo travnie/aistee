@@ -10,6 +10,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 internal const val WEB_TIMELINE_MAX_TURNS = 200
+private const val WEB_TIMELINE_MAX_CONTAINERS = 2_048
 
 internal data class WebUserTurnTimeline(val count: Int, val limited: Boolean)
 
@@ -68,6 +69,20 @@ internal fun webUserTurnTimelineReadScript(service: WebAiService, token: String)
                     snapshot.observer.observe(turns[i], {
                         subtree: true, childList: true, characterData: true, attributes: true
                     });
+                }
+                var containers = [];
+                for (var j = 0; j < turns.length; j++) {
+                    var parent = turns[j].parentElement;
+                    while (parent && parent.nodeType === 1) {
+                        if (containers.indexOf(parent) !== -1) break;
+                        if (containers.length >= $WEB_TIMELINE_MAX_CONTAINERS) {
+                            snapshot.observer.disconnect();
+                            return null;
+                        }
+                        containers.push(parent);
+                        if (turns.indexOf(parent) === -1) snapshot.observer.observe(parent, { childList: true });
+                        parent = parent.parentElement;
+                    }
                 }
                 window.__aisteeTurnTimeline = snapshot;
                 return { count: turns.length, limited: limited };

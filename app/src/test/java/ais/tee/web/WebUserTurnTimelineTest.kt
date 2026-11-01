@@ -110,6 +110,7 @@ class WebUserTurnTimelineTest {
         val previous = requireNotNull(webUserTurnJumpScript(WebAiService.CHATGPT, WebUserTurnDirection.PREVIOUS))
         assertEquals("boundary", evaluate(cx, scope, previous))
         assertEquals(TRUE, evaluate(cx, scope, "window.__aisteeUserTurnCursor.node === undefined"))
+        assertEquals(TRUE, evaluate(cx, scope, "window.__aisteeUserTurnCursor.nodeRef.deref() === nodes[0]"))
     }
 
     private fun snapshot(cx: Context, scope: org.mozilla.javascript.Scriptable): String =
