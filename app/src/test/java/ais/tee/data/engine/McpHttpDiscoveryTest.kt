@@ -79,6 +79,13 @@ class McpHttpDiscoveryTest {
     }
 
     @Test
+    fun synchronousFactoryExceptionsAreSanitized() = runBlocking {
+        val transport = McpHttpDiscovery(okhttp3.Call.Factory { error("private transport diagnostics") })
+        assertEquals(McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_RESPONSE),
+            transport.discoverChecked(url, "demo"))
+    }
+
+    @Test
     fun oversizedEndpointIsRejectedBeforeAnyRequest() = runBlocking {
         var requests = 0
         val transport = discovery { req -> requests++; ok(req, result(1)) }
@@ -145,24 +152,23 @@ class McpHttpDiscoveryTest {
             assertEquals("2026-07-28", request.header("MCP-Protocol-Version"))
             assertEquals("tools/list", request.header("Mcp-Method"))
             assertEquals("application/json, text/event-stream", request.header("Accept"))
-            val body = request.body!!.let { b ->
+            val body = requireNotNull(request.body).let { b ->
                 val sink = okio.Buffer()
                 b.writeTo(sink)
                 Json.parseToJsonElement(sink.readUtf8()).jsonObject
             }
-            val params = body["params"]!!.jsonObject
-            assertEquals("2026-07-28", params["_meta"]!!.jsonObject[
+            val params = requireNotNull(body["params"]).jsonObject
+            assertEquals("2026-07-28", requireNotNull(requireNotNull(params["_meta"]).jsonObject[
                 "io.modelcontextprotocol/protocolVersion"
-            ]!!.jsonPrimitive.content)
+            ]).jsonPrimitive.content)
             val cursor = params["cursor"]?.jsonPrimitive?.content
             seen += cursor
             if (cursor == null) ok(request, result(1, "page-two"))
             else ok(request, result(2, toolJson = """{"name":"sample.save","inputSchema":{"type":"object"}}"""))
         }
-        val catalog = client.discover(url, "demo")
-        assertNotNull(catalog)
+        val catalog = requireNotNull(client.discover(url, "demo"))
         assertEquals(listOf(null, "page-two"), seen)
-        assertEquals(2, catalog!!.count)
+        assertEquals(2, catalog.count)
         val summary = catalog.browse("save").single()
         assertEquals("sample.save", summary.remoteName)
         assertNotNull(catalog.loadDefinition(summary.nativeName))
@@ -174,7 +180,7 @@ class McpHttpDiscoveryTest {
             val events = ": heartbeat\n\n" +
                 "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\n" +
                 "event: message\ndata: " + result(1) + "\n\n"
-            ok(req, events, "text/event-stream")
+            ok(req, events, SSE_CONTENT_TYPE)
         }
         assertEquals(1, transport.discover(url, "demo")?.count)
     }
@@ -183,7 +189,7 @@ class McpHttpDiscoveryTest {
     fun acceptsBomCrOnlyAndUnknownSseFields() = runBlocking {
         val transport = discovery { req ->
             ok(req, "\uFEFF: comment\rextension: value\rdata: " + result(1) + "\r\r",
-                "text/event-stream")
+                SSE_CONTENT_TYPE)
         }
         assertEquals(1, transport.discover(url, "demo")?.count)
     }
@@ -199,7 +205,7 @@ class McpHttpDiscoveryTest {
             McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_RESPONSE),
             http.discoverChecked(url, "demo")
         )
-        val sse = discovery { req -> ok(req, "data: " + deep + "\n\n", "text/event-stream") }
+        val sse = discovery { req -> ok(req, "data: " + deep + "\n\n", SSE_CONTENT_TYPE) }
         assertEquals(
             McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_RESPONSE),
             sse.discoverChecked(url, "demo")
@@ -217,7 +223,7 @@ class McpHttpDiscoveryTest {
         val serverRequest = discovery { req ->
             val events = "data: {\"jsonrpc\":\"2.0\",\"id\":88,\"method\":\"sampling/createMessage\"}\n\n" +
                 "data: " + result(1) + "\n\n"
-            ok(req, events, "text/event-stream")
+            ok(req, events, SSE_CONTENT_TYPE)
         }
         assertNull(serverRequest.discover(url, "demo"))
     }
@@ -248,8 +254,8 @@ class McpHttpDiscoveryTest {
         var repeatedRequests = 0
         val repeat = discovery { req ->
             repeatedRequests++
-            val body = okio.Buffer().also { req.body!!.writeTo(it) }.readUtf8()
-            val cursor = Json.parseToJsonElement(body).jsonObject["params"]!!.jsonObject[
+            val body = okio.Buffer().also { requireNotNull(req.body).writeTo(it) }.readUtf8()
+            val cursor = Json.parseToJsonElement(body).jsonObject.getValue("params").jsonObject[
                 "cursor"
             ]?.jsonPrimitive?.content
             if (cursor == null) ok(req, result(1, "repeat"))
@@ -263,3 +269,5 @@ class McpHttpDiscoveryTest {
         assertNull(inputRequired.discover(url, "demo"))
     }
 }
+
+private const val SSE_CONTENT_TYPE = "text/event-stream"
