@@ -45,31 +45,31 @@ class McpToolInvocationTest {
     @Test fun resultsAreBoundedUntrustedTextWithoutResourceFetchingOrOpaqueState() {
         val call = NativeToolCall("call", name, JsonObject(emptyMap()))
         val result = buildJsonObject {
-            put(RESULT_TYPE_FIELD, "complete")
+            put(RESULT_TYPE_FIELD, COMPLETE_RESULT)
             put("isError", true)
             putJsonArray("content") {
                 add(buildJsonObject { put("type", "resource_link"); put("uri", "file:///private") })
                 add(buildJsonObject { put("type", "text"); put("text", "x".repeat(60_000)) })
             }
-            put("requestState", "opaque-secret")
+            put("requestState", OPAQUE_STATE)
         }
         val parsed = requireNotNull(parseMcpToolResult(call, result))
         assertEquals(MAX_NATIVE_TOOL_RESULT_CHARS, parsed.output.length)
         assertTrue(parsed.isError)
         assertEquals(call.callId, parsed.callId)
         assertFalse(parsed.output.contains("file:///private"))
-        assertFalse(parsed.output.contains("opaque-secret"))
-        assertFalse(parsed.toString().contains("opaque-secret"))
+        assertFalse(parsed.output.contains(OPAQUE_STATE))
+        assertFalse(parsed.toString().contains(OPAQUE_STATE))
         assertNull(parseMcpToolResult(call, buildJsonObject { put(RESULT_TYPE_FIELD, "input_required") }))
         assertNull(parseMcpToolResult(call, buildJsonObject { put(RESULT_TYPE_FIELD, "claimed") }))
-        assertNull(parseMcpToolResult(call, buildJsonObject { put(RESULT_TYPE_FIELD, "complete"); putJsonArray("content") {}; put("isError", "false") }))
+        assertNull(parseMcpToolResult(call, buildJsonObject { put(RESULT_TYPE_FIELD, COMPLETE_RESULT); putJsonArray("content") {}; put("isError", "false") }))
     }
 
     @Test fun structuredResultsAcceptEveryJsonValueIncludingNull() {
         val call = NativeToolCall("call", name, JsonObject(emptyMap()))
         for (raw in listOf("{}", "[1,2]", "\"value\"", "42", "true", "null")) {
             val result = buildJsonObject {
-                put(RESULT_TYPE_FIELD, "complete")
+                put(RESULT_TYPE_FIELD, COMPLETE_RESULT)
                 put("structuredContent", Json.parseToJsonElement(raw))
             }
             assertEquals(raw, requireNotNull(parseMcpToolResult(call, result)).output)
@@ -79,3 +79,6 @@ class McpToolInvocationTest {
 
 private const val EMPTY_ARGUMENTS = "{}"
 private const val RESULT_TYPE_FIELD = "resultType"
+
+private const val COMPLETE_RESULT = "complete"
+private const val OPAQUE_STATE = "opaque-secret"

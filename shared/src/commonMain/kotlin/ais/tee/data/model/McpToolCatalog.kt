@@ -233,8 +233,8 @@ private fun validateMcpSchema(schema: JsonObject) {
                     parts.forEach { walk(it, depth + 1) }
                 }
                 "required" -> {
-                    val fields = value as? JsonArray ?: error("Invalid required fields")
-                    val names = fields.map { it.stringValue() ?: error("Invalid field name") }
+                    val requiredFields = value as? JsonArray ?: error("Invalid required fields")
+                    val names = requiredFields.map { it.stringValue() ?: error("Invalid field name") }
                     require(names.distinct().size == names.size)
                 }
                 "enum" -> require(value is JsonArray && value.isNotEmpty())
