@@ -46,7 +46,7 @@ private fun hasParameterHeaders(value: JsonElement): Boolean {
                 (child as? JsonObject)?.values?.any(::hasParameterHeaders) == true
             "prefixItems", "allOf", "anyOf", "oneOf" ->
                 (child as? JsonArray)?.any(::hasParameterHeaders) == true
-            "items", "additionalProperties", "unevaluatedProperties", "unevaluatedItems", "contains",
+            "items", "additionalItems", "contentSchema", "additionalProperties", "unevaluatedProperties", "unevaluatedItems", "contains",
             "not", "if", "then", "else", "propertyNames" -> hasParameterHeaders(child)
             else -> false
         }
