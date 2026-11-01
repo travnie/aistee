@@ -176,7 +176,8 @@ class WebUserTurnTimelineTest {
                 webView.evaluateJavascript(
                     "document.querySelectorAll('[data-message-author-role=\"user\"]').length === 20 && location.href === '$FIXTURE_URL'"
                 ) { result ->
-                    loaded.set(result == "true" && webView.progress == 100)
+                    // DOM readiness can precede the native history-URL commit.
+                    loaded.set(result == "true" && webView.progress == 100 && webView.url == FIXTURE_URL)
                 }
             }
             loaded.get()
