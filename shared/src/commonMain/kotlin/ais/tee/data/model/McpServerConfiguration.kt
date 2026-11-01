@@ -23,7 +23,7 @@ object McpServerConfigurations {
     fun validArchive(servers: List<McpServerConfiguration>) = servers.size <= MAX_MCP_SERVERS &&
         servers.all { validId(it.id) && validLabel(it.label) && it.endpoint.length in 1..MAX_MCP_ENDPOINT_LENGTH } &&
         servers.map { it.id }.distinct().size == servers.size &&
-        servers.map { it.label.lowercase() }.distinct().size == servers.size &&
+        uniqueLabels(servers) &&
         servers.map { it.endpoint }.distinct().size == servers.size
 
     fun upsert(
@@ -51,6 +51,12 @@ object McpServerConfigurations {
         servers.any { it.id != id && it.endpoint == endpoint } -> McpServerSaveFailure.DUPLICATE_ENDPOINT
         servers.any { it.id != id && it.label.equals(name, ignoreCase = true) } -> McpServerSaveFailure.DUPLICATE_NAME
         else -> null
+    }
+
+    private fun uniqueLabels(servers: List<McpServerConfiguration>) = servers.indices.all { i ->
+        (i + 1 until servers.size).none { j ->
+            servers[i].label.equals(servers[j].label, ignoreCase = true)
+        }
     }
 
     fun replace(servers: List<McpServerConfiguration>, server: McpServerConfiguration) =

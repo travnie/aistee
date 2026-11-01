@@ -86,18 +86,36 @@ internal fun commitEncryptedRecord(
     preferences: SharedPreferences, ivKey: String, ciphertextKey: String,
     iv: String?, ciphertext: String?,
 ): Boolean = synchronized(encryptedRecordLock) {
-    val previousIv = preferences.getString(ivKey, null)
-    val previousCiphertext = preferences.getString(ciphertextKey, null)
-    fun commit(nextIv: String?, nextCiphertext: String?): Boolean {
+    // A malformed entry may have any supported preference type; reset must still remove it.
+    val previous = preferences.all
+    val previousIv = previous[ivKey]
+    val previousCiphertext = previous[ciphertextKey]
+    fun commit(nextIv: Any?, nextCiphertext: Any?): Boolean {
         val editor = preferences.edit()
-        editor.putString(ivKey, nextIv)
-        editor.putString(ciphertextKey, nextCiphertext)
+        putRecordValue(editor, ivKey, nextIv)
+        putRecordValue(editor, ciphertextKey, nextCiphertext)
         return editor.commit()
     }
     if (runCatching { commit(iv, ciphertext) }.getOrDefault(false)) true
     else {
         runCatching { commit(previousIv, previousCiphertext) }
         false
+    }
+}
+
+private fun putRecordValue(editor: SharedPreferences.Editor, key: String, value: Any?) {
+    when (value) {
+        null -> editor.remove(key)
+        is String -> editor.putString(key, value)
+        is Int -> editor.putInt(key, value)
+        is Long -> editor.putLong(key, value)
+        is Float -> editor.putFloat(key, value)
+        is Boolean -> editor.putBoolean(key, value)
+        is Set<*> -> {
+            require(value.all { it is String })
+            editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+        }
+        else -> error("Unsupported preference type")
     }
 }
 
