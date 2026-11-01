@@ -89,6 +89,7 @@ class WebUserTurnTimelineTest {
 
     @Test
     fun switchingProvidersDiscardsTimelineAndRespectsProviderOptOut() {
+        switchProvider("claude")
         loadConversationFixture()
         openTimeline()
         composeRule.runOnIdle {
@@ -195,7 +196,7 @@ class WebUserTurnTimelineTest {
     }
 
     private fun visibleWebView(view: View): WebView? {
-        if (view is WebView && view.width > 0 && view.height > 0) return view
+        if (view is WebView && view.isShown && view.width > 0 && view.height > 0) return view
         if (view is ViewGroup) {
             for (index in 0 until view.childCount) {
                 visibleWebView(view.getChildAt(index))?.let { return it }
