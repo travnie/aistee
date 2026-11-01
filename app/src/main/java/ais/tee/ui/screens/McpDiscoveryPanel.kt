@@ -34,6 +34,7 @@ internal class McpPreviewState {
     var discoveredEndpoint by mutableStateOf<String?>(null)
     var callReview by mutableStateOf<McpToolCallReview?>(null)
     var callOutcome by mutableStateOf<McpToolCallOutcome?>(null)
+    var callUncertain by mutableStateOf(false)
     var calling by mutableStateOf(false)
     var query by mutableStateOf("")
     var outcome by mutableStateOf<McpDiscoveryOutcome?>(null)
@@ -67,7 +68,10 @@ internal class McpPreviewState {
 
     fun cancelPending() {
         epoch++
-        if (calling) callOutcome = McpToolCallOutcome.Failure(McpToolCallFailure.CANCELLED)
+        if (calling) {
+            callUncertain = true
+            callOutcome = McpToolCallOutcome.Failure(McpToolCallFailure.CANCELLED)
+        }
         calling = false
         callReview = null
         job?.cancel()
@@ -110,93 +114,96 @@ internal fun McpDiscoveryPanel(
     val catalog = (state.outcome as? McpDiscoveryOutcome.Success)?.catalog
     val tools = catalog?.browse(state.query, limit = 128).orEmpty()
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize().testTag("mcp_discovery_panel"),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("MCP tools", style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold)
-                Text(
-                    "Test a public HTTPS MCP 2026-07-28 endpoint. This is one unauthenticated " +
-                        "tools/list discovery. Tapping Discover " +
-                        "contacts the server, which can see your network address.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
+    Column(modifier.fillMaxSize()) {
+        if (state.callUncertain) McpUncertainCallNotice { state.callUncertain = false }
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxSize().testTag("mcp_discovery_panel"),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("MCP tools", style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold)
+                    Text(
+                        "Test a public HTTPS MCP 2026-07-28 endpoint. This is one unauthenticated " +
+                            "tools/list discovery. Tapping Discover " +
+                            "contacts the server, which can see your network address.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
-        }
-        item { McpSavedServerControls(state, store) }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    onClick = click@{
-                        // State changes synchronously, before Compose recomposes the disabled button.
-                        if (state.busy) return@click
-                        state.reset()
-                        state.busy = true
-                        val requestEpoch = ++state.epoch
-                        val url = state.endpoint.trim()
-                        val serverId = state.serverId ?: "preview"
-                        state.outcome = null
-                        state.job = scope.launch {
-                            val response = discovery?.invoke(url, serverId)
-                                ?: transport.discoverChecked(url, serverId)
-                            if (requestEpoch == state.epoch) {
-                                state.outcome = response
-                                state.discoveredEndpoint = if (response is McpDiscoveryOutcome.Success)
-                                    ais.tee.data.engine.validatedMcpEndpoint(url)?.toString() else null
-                                state.busy = false
-                                state.job = null
+            item { McpSavedServerControls(state, store) }
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = click@{
+                            // State changes synchronously, before Compose recomposes the disabled button.
+                            if (state.busy) return@click
+                            state.reset()
+                            state.busy = true
+                            val requestEpoch = ++state.epoch
+                            val url = state.endpoint.trim()
+                            val serverId = state.serverId ?: "preview"
+                            state.outcome = null
+                            state.job = scope.launch {
+                                val response = discovery?.invoke(url, serverId)
+                                    ?: transport.discoverChecked(url, serverId)
+                                if (requestEpoch == state.epoch) {
+                                    state.outcome = response
+                                    state.discoveredEndpoint = if (response is McpDiscoveryOutcome.Success)
+                                        ais.tee.data.engine.validatedMcpEndpoint(url)?.toString() else null
+                                    state.busy = false
+                                    state.job = null
+                                }
                             }
-                        }
-                    },
-                    enabled = state.endpoint.isNotBlank() && !state.busy,
-                    modifier = Modifier.testTag("mcp_discover"),
-                ) { Text(if (state.busy) "Discovering…" else "Discover tools") }
-                Text(
-                    "No account cookies, API keys, chats or local files are attached. " +
-                        "Manual tool calls require a separate review and confirmation.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                        },
+                        enabled = state.endpoint.isNotBlank() && !state.busy,
+                        modifier = Modifier.testTag("mcp_discover"),
+                    ) { Text(if (state.busy) "Discovering…" else "Discover tools") }
+                    Text(
+                        "No account cookies, API keys, chats or local files are attached. " +
+                            "Manual tool calls require a separate review and confirmation.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-        }
-        when (val response = state.outcome) {
-            is McpDiscoveryOutcome.Success -> {
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(response.catalog.count.toString() + " discovered tools",
-                            style = MaterialTheme.typography.titleSmall)
-                        OutlinedTextField(
-                            value = state.query,
-                            onValueChange = {
-                                state.invalidateCall()
-                                state.query = it.take(256)
-                                state.selectedTool = null
-                                state.copiedCallDraft = null
-                                state.draftArguments = "{}"
-                            },
-                            label = { Text("Search tools") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().testTag("mcp_search"),
-                        )
-                        if (tools.isEmpty()) Text("No matching tools.")
+            when (val response = state.outcome) {
+                is McpDiscoveryOutcome.Success -> {
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(response.catalog.count.toString() + " discovered tools",
+                                style = MaterialTheme.typography.titleSmall)
+                            OutlinedTextField(
+                                value = state.query,
+                                onValueChange = {
+                                    state.invalidateCall()
+                                    state.query = it.take(256)
+                                    state.selectedTool = null
+                                    state.copiedCallDraft = null
+                                    state.draftArguments = "{}"
+                                },
+                                label = { Text("Search tools") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth().testTag("mcp_search"),
+                            )
+                            if (tools.isEmpty()) Text("No matching tools.")
+                        }
+                    }
+                    items(tools, key = { it.nativeName }) { summary ->
+                        McpToolCard(state, response.catalog, summary, onRun)
                     }
                 }
-                items(tools, key = { it.nativeName }) { summary ->
-                    McpToolCard(state, response.catalog, summary, onRun)
+                is McpDiscoveryOutcome.Failure -> item {
+                    Text(
+                        text = mcpDiscoveryFailureMessage(response.reason),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("mcp_discovery_error"),
+                    )
                 }
+                null -> Unit
             }
-            is McpDiscoveryOutcome.Failure -> item {
-                Text(
-                    text = mcpDiscoveryFailureMessage(response.reason),
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.testTag("mcp_discovery_error"),
-                )
-            }
-            null -> Unit
         }
     }
 }
@@ -270,6 +277,8 @@ private fun McpToolDetails(state: McpPreviewState, catalog: McpToolCatalog, nati
                 state.copiedCallDraft = null
             },
             label = { Text("tools/call arguments (JSON object)") },
+            isError = ais.tee.data.model.parseMcpArguments(state.draftArguments) == null,
+            supportingText = { Text("JSON object, up to 8192 characters. Nothing sent until Run once.") },
             minLines = 2,
             maxLines = 6,
             modifier = Modifier.fillMaxWidth().testTag("mcp_call_draft_args"),

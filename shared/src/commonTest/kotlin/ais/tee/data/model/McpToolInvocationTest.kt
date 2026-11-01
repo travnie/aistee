@@ -12,19 +12,19 @@ class McpToolInvocationTest {
         assertEquals(CapabilityDecision.ASK, decision(approved = false))
         assertEquals(CapabilityDecision.ALLOW, decision(approved = true))
         assertEquals(CapabilityDecision.REQUIRES_USER_INTERACTION,
-            catalog.callDecision(name, "{}", BenchToolInvocationMode.MODEL_TOOL_CALL, approved = true))
+            catalog.callDecision(name, EMPTY_ARGUMENTS, BenchToolInvocationMode.MODEL_TOOL_CALL, approved = true))
         assertEquals(CapabilityDecision.DENY,
-            catalog.callDecision("missing", "{}", BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = true))
+            catalog.callDecision("missing", EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = true))
         assertEquals(CapabilityDecision.DENY,
             catalog.callDecision(name, "[]", BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = true))
     }
 
-    private fun decision(approved: Boolean) = catalog.callDecision(name, "{}",
+    private fun decision(approved: Boolean) = catalog.callDecision(name, EMPTY_ARGUMENTS,
         BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved)
 
     @Test fun strictArgumentsRejectBareTokensOversizeAndDeepNestingWithoutTruncation() {
         for (raw in listOf("[]", "{\"value\":bare}", "{\"value\":NaN}", "{\"value\":01}",
-            " ".repeat(MAX_MCP_ARGUMENT_CHARS) + "{}", "{\"x\":" + "[".repeat(25) + "0" + "]".repeat(25) + "}")) {
+            " ".repeat(MAX_MCP_ARGUMENT_CHARS) + EMPTY_ARGUMENTS, "{\"x\":" + "[".repeat(25) + "0" + "]".repeat(25) + "}")) {
             assertNull(parseMcpArguments(raw))
             assertNull(catalog.exportToolCallDraft(name, raw))
         }
@@ -35,17 +35,21 @@ class McpToolInvocationTest {
         val annotated = requireNotNull(McpToolCatalog.fromToolsListResponse("demo", "2".repeat(32),
             """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"headers","inputSchema":{"type":"object","properties":{"region":{"type":"string","x-mcp-header":"Region"}}}}]}}"""))
         assertEquals(CapabilityDecision.DENY, annotated.callDecision(annotated.browse().single().nativeName,
-            "{}", BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = true))
+            EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = true))
+        val ordinary = requireNotNull(McpToolCatalog.fromToolsListResponse("demo", "3".repeat(32),
+            """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"ordinary","inputSchema":{"type":"object","properties":{"x-mcp-header":{"type":"string"}},"default":{"x-mcp-header":"literal"},"examples":[{"x-mcp-header":"data"}]}}]}}"""))
+        assertEquals(CapabilityDecision.ASK, ordinary.callDecision(ordinary.browse().single().nativeName,
+            EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = false))
     }
 
     @Test fun resultsAreBoundedUntrustedTextWithoutResourceFetchingOrOpaqueState() {
         val call = NativeToolCall("call", name, JsonObject(emptyMap()))
         val result = buildJsonObject {
-            put("resultType", "complete")
+            put(RESULT_TYPE_FIELD, "complete")
             put("isError", true)
             putJsonArray("content") {
-                add(buildJsonObject { put("type", "text"); put("text", "x".repeat(60_000)) })
                 add(buildJsonObject { put("type", "resource_link"); put("uri", "file:///private") })
+                add(buildJsonObject { put("type", "text"); put("text", "x".repeat(60_000)) })
             }
             put("requestState", "opaque-secret")
         }
@@ -53,9 +57,25 @@ class McpToolInvocationTest {
         assertEquals(MAX_NATIVE_TOOL_RESULT_CHARS, parsed.output.length)
         assertTrue(parsed.isError)
         assertEquals(call.callId, parsed.callId)
+        assertFalse(parsed.output.contains("file:///private"))
+        assertFalse(parsed.output.contains("opaque-secret"))
         assertFalse(parsed.toString().contains("opaque-secret"))
-        assertNull(parseMcpToolResult(call, buildJsonObject { put("resultType", "input_required") }))
-        assertNull(parseMcpToolResult(call, buildJsonObject { put("resultType", "claimed") }))
-        assertNull(parseMcpToolResult(call, buildJsonObject { put("resultType", "complete"); putJsonArray("content") {}; put("isError", "false") }))
+        assertNull(parseMcpToolResult(call, buildJsonObject { put(RESULT_TYPE_FIELD, "input_required") }))
+        assertNull(parseMcpToolResult(call, buildJsonObject { put(RESULT_TYPE_FIELD, "claimed") }))
+        assertNull(parseMcpToolResult(call, buildJsonObject { put(RESULT_TYPE_FIELD, "complete"); putJsonArray("content") {}; put("isError", "false") }))
+    }
+
+    @Test fun structuredResultsAcceptEveryJsonValueIncludingNull() {
+        val call = NativeToolCall("call", name, JsonObject(emptyMap()))
+        for (raw in listOf("{}", "[1,2]", "\"value\"", "42", "true", "null")) {
+            val result = buildJsonObject {
+                put(RESULT_TYPE_FIELD, "complete")
+                put("structuredContent", Json.parseToJsonElement(raw))
+            }
+            assertEquals(raw, requireNotNull(parseMcpToolResult(call, result)).output)
+        }
     }
 }
+
+private const val EMPTY_ARGUMENTS = "{}"
+private const val RESULT_TYPE_FIELD = "resultType"

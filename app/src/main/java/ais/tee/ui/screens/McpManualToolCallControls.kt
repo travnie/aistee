@@ -82,11 +82,23 @@ private fun McpManualCallResult(outcome: McpToolCallOutcome) {
             when (outcome.reason) {
                 McpToolCallFailure.DENIED -> "Call denied. Nothing sent."
                 McpToolCallFailure.BLOCKED -> "Review expired or request unsupported. Nothing sent."
-                McpToolCallFailure.CANCELLED -> "Stopped waiting locally. The server may already have acted. " +
-                    "Review before trying again."
+                McpToolCallFailure.CANCELLED -> "Request stopped locally."
                 else -> "Result unknown: no supported response. The server may have acted. " +
                     "Trying again can duplicate remote changes."
             }, modifier = Modifier.testTag("mcp_call_status"))
+    }
+}
+
+@Composable
+internal fun McpUncertainCallNotice(onDismiss: () -> Unit) {
+    ElevatedCard(Modifier.fillMaxWidth().padding(12.dp).testTag("mcp_uncertain_call_notice")) {
+        Column(Modifier.padding(12.dp)) {
+            Text("An earlier manual call may already have changed remote data. Stopping or editing " +
+                "cannot undo it. Check the server before running it again.")
+            TextButton(onClick = onDismiss, modifier = Modifier.testTag("mcp_dismiss_call_notice")) {
+                Text("Dismiss notice")
+            }
+        }
     }
 }
 
@@ -117,12 +129,23 @@ internal fun McpPreviewState.executeCall(
     job = scope.launch {
         try {
             val response = caller(review)
-            if (requestEpoch == epoch) callOutcome = response
+            if (requestEpoch == epoch) {
+                callOutcome = response
+                if (response is McpToolCallOutcome.Failure && response.reason != McpToolCallFailure.BLOCKED &&
+                    response.reason != McpToolCallFailure.DENIED) callUncertain = true
+            }
         } catch (cancelled: CancellationException) {
-            if (requestEpoch == epoch) callOutcome = McpToolCallOutcome.Failure(McpToolCallFailure.CANCELLED)
+            if (requestEpoch == epoch) {
+                callUncertain = true
+                callOutcome = McpToolCallOutcome.Failure(McpToolCallFailure.CANCELLED)
+            }
             throw cancelled
-        } catch (_: Exception) {
-            if (requestEpoch == epoch) callOutcome = McpToolCallOutcome.Failure(McpToolCallFailure.INVALID_RESPONSE)
+        } catch (_: Exception) { // skipcq: KT-W1064
+            // Injected suspend callers can throw; always release busy state.
+            if (requestEpoch == epoch) {
+                callUncertain = true
+                callOutcome = McpToolCallOutcome.Failure(McpToolCallFailure.INVALID_RESPONSE)
+            }
         } finally {
             if (requestEpoch == epoch) {
                 calling = false

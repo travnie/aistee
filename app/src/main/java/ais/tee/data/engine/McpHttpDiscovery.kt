@@ -44,11 +44,15 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
+import okio.BufferedSink
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 
 private const val JSON_RPC_FIELD = "jsonrpc"
 private const val JSON_RPC_ID_FIELD = "id"
+private const val JSON_RPC_RESULT_FIELD = "result"
+private const val JSON_RPC_METHOD_FIELD = "method"
 private const val MCP_VERSION = "2026-07-28"
 private const val MAX_RESPONSE_BYTES = 256_000
 private const val MAX_REMOTE_JSON_DEPTH = 64
@@ -132,7 +136,7 @@ internal class McpHttpDiscovery(
                             McpDiscoveryFailure.INVALID_RESPONSE
                         )
                     pages += responseJson
-                    val result = Json.parseToJsonElement(responseJson).jsonObject["result"]
+                    val result = Json.parseToJsonElement(responseJson).jsonObject[JSON_RPC_RESULT_FIELD]
                         as? JsonObject ?: return@withContext McpDiscoveryOutcome.Failure(
                             McpDiscoveryFailure.INVALID_RESPONSE
                         )
@@ -181,7 +185,7 @@ internal class McpHttpDiscovery(
                     val body = buildJsonObject {
                         put(JSON_RPC_FIELD, "2.0")
                         put(JSON_RPC_ID_FIELD, 1)
-                        put("method", "tools/call")
+                        put(JSON_RPC_METHOD_FIELD, "tools/call")
                         putJsonObject("params") {
                             put("name", review.target.remoteName)
                             put("arguments", review.call.arguments)
@@ -189,14 +193,14 @@ internal class McpHttpDiscovery(
                         }
                     }.toString()
                     val request = Request.Builder().url(url)
-                        .post(body.toRequestBody(JSON_CONTENT_TYPE))
+                        .post(oneShotMcpBody(body))
                         .header("Accept", "application/json, text/event-stream")
                         .header("MCP-Protocol-Version", MCP_VERSION)
                         .header("Mcp-Method", "tools/call")
                         .header("Mcp-Name", mcpNameHeader(review.target.remoteName))
                         .build()
                     val raw = requestPage(request, 1)
-                    val result = raw?.let { Json.parseToJsonElement(it).jsonObject["result"] as? JsonObject }
+                    val result = raw?.let { Json.parseToJsonElement(it).jsonObject[JSON_RPC_RESULT_FIELD] as? JsonObject }
                     val parsed = result?.let { parseMcpToolResult(review.call, it) }
                     if (parsed == null) McpToolCallOutcome.Failure(McpToolCallFailure.INVALID_RESPONSE)
                     else McpToolCallOutcome.Completed(parsed)
@@ -215,7 +219,7 @@ internal class McpHttpDiscovery(
     private fun toolsListRequest(id: Int, cursor: String?): String = buildJsonObject {
         put(JSON_RPC_FIELD, "2.0")
         put(JSON_RPC_ID_FIELD, id)
-        put("method", "tools/list")
+        put(JSON_RPC_METHOD_FIELD, "tools/list")
         putJsonObject("params") {
             if (cursor != null) put("cursor", cursor)
             put("_meta", requestMetadata())
@@ -287,7 +291,7 @@ internal class McpHttpDiscovery(
                     completed = response
                     return true
                 }
-                val method = (envelope["method"] as? JsonPrimitive)?.takeIf { it.isString }
+                val method = (envelope[JSON_RPC_METHOD_FIELD] as? JsonPrimitive)?.takeIf { it.isString }
                     ?.contentOrNull
                 return envelope[JSON_RPC_FIELD]?.toString() == "\"2.0\"" &&
                     method?.startsWith("notifications/") == true
@@ -339,7 +343,7 @@ internal class McpHttpDiscovery(
         if (obj[JSON_RPC_FIELD]?.toString() != "\"2.0\"" ||
             id == null || id.isString || id.intOrNull != expectedId ||
             obj["error"] != null) return null
-        val result = obj["result"] as? JsonObject ?: return null
+        val result = obj[JSON_RPC_RESULT_FIELD] as? JsonObject ?: return null
         val type = result["resultType"]
         if (type != null && (type as? JsonPrimitive)?.contentOrNull != "complete") return null
         return obj.toString()
@@ -405,3 +409,14 @@ internal fun mcpNameHeader(name: String): String =
     if (name.isNotEmpty() && name == name.trim() && name.all { it.code in 0x20..0x7e } &&
         !(name.startsWith("=?base64?") && name.endsWith("?="))) name
     else "=?base64?" + Base64.getEncoder().encodeToString(name.toByteArray(Charsets.UTF_8)) + "?="
+
+// isOneShot also blocks status-driven follow-ups (for example 503 + Retry-After: 0).
+internal fun oneShotMcpBody(json: String): RequestBody {
+    val delegate = json.toRequestBody(JSON_CONTENT_TYPE)
+    return object : RequestBody() {
+        override fun contentType() = delegate.contentType()
+        override fun contentLength() = delegate.contentLength()
+        override fun writeTo(sink: BufferedSink) = delegate.writeTo(sink)
+        override fun isOneShot() = true
+    }
+}
