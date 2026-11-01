@@ -92,7 +92,8 @@ class WebUserTurnTimelineTest {
     fun realMessageMutationsDiscardTargetsWithoutScrolling() {
         listOf(
             "document.querySelector('[data-message-author-role=\"user\"]').textContent='Recycled message';",
-            "document.querySelector('[data-message-author-role=\"user\"]').setAttribute('data-message-id','replacement');"
+            "document.querySelector('[data-message-author-role=\"user\"]').setAttribute('data-message-id','replacement');",
+            "document.body.appendChild(document.querySelector('[data-message-author-role=\"user\"]'));"
         ).forEach { mutation ->
             val webView = loadConversationFixture()
             openTimeline()
