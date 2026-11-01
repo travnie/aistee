@@ -29,6 +29,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class WebUserTurnTimelineTest {
     private companion object {
+        const val FIXTURE_URL = "https://chatgpt.com/c/aistee-timeline-fixture"
         const val MORE_MENU = "btn_web_more"
         const val NAVIGATION_TOGGLE = "toggle_web_turn_navigation"
     }
@@ -144,23 +145,26 @@ class WebUserTurnTimelineTest {
             val view = requireNotNull(visibleWebView(composeRule.activity.window.decorView))
             view.stopLoading()
             view.loadDataWithBaseURL(
-                "https://chatgpt.com/c/aistee-timeline-fixture",
+                FIXTURE_URL,
                 "<html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"></head><body>" + (1..20).joinToString("") {
                     "<div data-message-author-role=\"user\" style=\"height:180px;margin-bottom:80px\">Private message $it</div>"
                 } + "<textarea id=\"composer\">Keep this draft</textarea></body></html>",
-                "text/html", "UTF-8", null,
+                "text/html", "UTF-8", FIXTURE_URL,
             )
             view
         }
         val loaded = AtomicBoolean(false)
         composeRule.waitUntil(5_000) {
             composeRule.runOnIdle {
-                webView.evaluateJavascript("document.querySelectorAll('[data-message-author-role=\"user\"]').length") { result ->
-                    loaded.set(result == "20" && webView.progress == 100)
+                webView.evaluateJavascript(
+                    "document.querySelectorAll('[data-message-author-role=\"user\"]').length === 20 && location.href === '$FIXTURE_URL'"
+                ) { result ->
+                    loaded.set(result == "true" && webView.progress == 100)
                 }
             }
             loaded.get()
         }
+        composeRule.runOnIdle { assertEquals(FIXTURE_URL, webView.url) }
         return webView
     }
 
