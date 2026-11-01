@@ -141,9 +141,10 @@ internal class McpHttpDiscovery(
                                 McpDiscoveryFailure.INVALID_RESPONSE
                             )
                     }
-                    if (cursor != null && (cursor.isNullOrBlank() ||
-                            cursor!!.length > MAX_CURSOR_LENGTH ||
-                            !seenCursors.add(cursor!!))) {
+                    val nextCursor = cursor
+                    if (nextCursor != null && (nextCursor.isBlank() ||
+                            nextCursor.length > MAX_CURSOR_LENGTH ||
+                            !seenCursors.add(nextCursor))) {
                         return@withContext McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_RESPONSE)
                     }
                     if (cursor != null && pages.size >= MAX_CATALOG_PAGES) {
@@ -155,9 +156,11 @@ internal class McpHttpDiscovery(
                 else McpDiscoveryOutcome.Success(catalog)
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: IOException) {
+            } catch (_: IOException) { // skipcq: KT-W1064
+                // requestPage resumes asynchronous OkHttp IO failures through suspension.
                 McpDiscoveryOutcome.Failure(McpDiscoveryFailure.NETWORK_FAILURE)
-            } catch (_: Exception) {
+            } catch (_: Exception) { // skipcq: KT-W1064
+                // Injected Call.Factory implementations can also throw runtime exceptions.
                 // No provider-owned identifiers or response bodies enter diagnostics.
                 McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_RESPONSE)
             }
@@ -218,26 +221,10 @@ internal class McpHttpDiscovery(
 
     /** Reads SSE incrementally; an open stream may be closed after the final correlated event. */
     private fun readStreamedSse(input: InputStream, expectedId: Int): String? {
-        val bounded = object : FilterInputStream(input) {
-            var bytes = 0
-            override fun read(): Int {
-                val value = super.read()
-                if (value >= 0 && ++bytes > MAX_RESPONSE_BYTES) error("MCP SSE limit exceeded")
-                return value
-            }
-            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
-                val count = super.read(buffer, offset, length)
-                if (count > 0) {
-                    bytes += count
-                    if (bytes > MAX_RESPONSE_BYTES) error("MCP SSE limit exceeded")
-                }
-                return count
-            }
-        }
         val decoder = Charsets.UTF_8.newDecoder()
             .onMalformedInput(CodingErrorAction.REPORT)
             .onUnmappableCharacter(CodingErrorAction.REPORT)
-        return BufferedReader(InputStreamReader(bounded, decoder)).use { reader ->
+        return BufferedReader(InputStreamReader(boundedSseStream(input), decoder)).use { reader ->
             var completed: String? = null
             val event = StringBuilder()
             fun dispatch(): Boolean {
@@ -280,9 +267,26 @@ internal class McpHttpDiscovery(
         }
     }
 
+    private fun boundedSseStream(input: InputStream): InputStream = object : FilterInputStream(input) {
+        var bytes = 0
+        override fun read(): Int {
+            val value = super.read()
+            if (value >= 0 && ++bytes > MAX_RESPONSE_BYTES) error("MCP SSE limit exceeded")
+            return value
+        }
+        override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+            val count = super.read(buffer, offset, length)
+            if (count > 0) {
+                bytes += count
+                if (bytes > MAX_RESPONSE_BYTES) error("MCP SSE limit exceeded")
+            }
+            return count
+        }
+    }
+
     private fun verifiedResponse(raw: String, expectedId: Int): String? {
         if (!hasSafeMcpJsonDepth(raw)) return null
-        val obj = runCatching { Json.parseToJsonElement(raw) as? JsonObject }
+        val obj: JsonObject = runCatching { Json.parseToJsonElement(raw) as? JsonObject }
             .getOrNull() ?: return null
         val id = obj[JSON_RPC_ID_FIELD] as? JsonPrimitive
         if (obj[JSON_RPC_FIELD]?.toString() != "\"2.0\"" ||

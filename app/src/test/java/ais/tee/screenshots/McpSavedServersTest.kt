@@ -109,7 +109,7 @@ class McpSavedServersTest {
         assertTrue(persistence.present)
         compose.onNodeWithText("Reset saved servers").performScrollTo().performClick()
         compose.onNodeWithText("Delete saved servers").performClick()
-        compose.waitUntil(5_000) { !persistence.present }
+        compose.waitUntil(5_000) { !persistence.present && !state.savedServers.busy }
         compose.onNodeWithTag(UNREADABLE_TAG).assertDoesNotExist()
     }
 
