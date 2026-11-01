@@ -1779,9 +1779,19 @@ private fun WebChatToolbar(
     var disabledTurnNavigationServices by remember {
         mutableStateOf(turnPreferences.loadDisabledTurnNavigationServices())
     }
+    var showTimeline by remember(selectedService, activeWebView, currentUrl) { mutableStateOf(false) }
     val turnNavigationEnabled = webUserTurnNavigationEnabled(
         selectedService, disabledTurnNavigationServices
     )
+
+    if (showTimeline && turnNavigationEnabled && activeWebView != null) {
+        WebUserTurnTimelineDialog(
+            webView = activeWebView,
+            service = selectedService,
+            onDismiss = { showTimeline = false },
+            onShowSnackbar = onShowSnackbar
+        )
+    }
 
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -1901,6 +1911,16 @@ private fun WebChatToolbar(
                             )
                         }
                         if (turnNavigationEnabled) {
+                            DropdownMenuItem(
+                                text = { Text("Conversation timeline (beta)") },
+                                leadingIcon = { Icon(Icons.Default.List, contentDescription = null) },
+                                enabled = activeWebView != null,
+                                onClick = {
+                                    menuExpanded = false
+                                    showTimeline = true
+                                },
+                                modifier = Modifier.testTag("btn_web_timeline")
+                            )
                             DropdownMenuItem(
                                 text = { Text("Previous user turn (beta)") },
                                 leadingIcon = {

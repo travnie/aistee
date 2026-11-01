@@ -43,21 +43,7 @@ internal fun webUserTurnJumpScript(
             try {
                 var matches = document.querySelectorAll($selector);
                 var turns = [];
-                function isVisible(node) {
-                    var parent = node;
-                    while (parent && parent.nodeType === 1) {
-                        if (parent.matches &&
-                            parent.matches('[hidden], [inert], [aria-hidden="true"]')) {
-                            return false;
-                        }
-                        var style = window.getComputedStyle ? window.getComputedStyle(parent) : null;
-                        if (style && (style.display === 'none' ||
-                            style.visibility === 'hidden' || style.visibility === 'collapse' ||
-                            Number(style.opacity) === 0)) return false;
-                        parent = parent.parentElement;
-                    }
-                    return true;
-                }
+                ${webUserTurnVisibilityScript()}
                 for (var i = 0; i < matches.length; i++) {
                     var node = matches[i];
                     var rect = node.getBoundingClientRect();
@@ -88,10 +74,11 @@ internal fun webUserTurnJumpScript(
                 // The last jump may have been clamped by the provider's scroll container.
                 // Keep only an ephemeral DOM reference, never text, message IDs or history.
                 var last = window.__aisteeUserTurnCursor;
+                var lastNode = last && last.nodeRef ? last.nodeRef.deref() : last && last.node;
                 var anchor = -1;
                 if (last && last.url === String(location.href || '')) {
                     for (var a = 0; a < turns.length; a++) {
-                        if (turns[a].node === last.node) {
+                        if (turns[a].node === lastNode) {
                             var oldRect = turns[a].rect;
                             if (oldRect.bottom > 0 && oldRect.top < height) anchor = a;
                             break;
@@ -182,3 +169,21 @@ internal fun jumpToWebUserTurn(
         }
     }
 }
+
+internal fun webUserTurnVisibilityScript(): String = """
+    function isVisible(node) {
+        var parent = node;
+        while (parent && parent.nodeType === 1) {
+            if (parent.matches &&
+                parent.matches('[hidden], [inert], [aria-hidden="true"]')) {
+                return false;
+            }
+            var style = window.getComputedStyle ? window.getComputedStyle(parent) : null;
+            if (style && (style.display === 'none' ||
+                style.visibility === 'hidden' || style.visibility === 'collapse' ||
+                Number(style.opacity) === 0)) return false;
+            parent = parent.parentElement;
+        }
+        return true;
+    }
+""".trimIndent()

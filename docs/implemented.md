@@ -24,7 +24,7 @@ Delivered feature index, reviewed **29 October 2026** against the documented mai
 - Persistent native starred turns and editable one-line notes (140 characters), branch-preserving star/notes behavior.
 - Native quote selection and reviewed insertion, code-fence language/source copy, display and inline math TeX copy, and Markdown table CSV copy.
 - Long native prompts collapse to an eight-line preview; explicit save to project as text and Project Library insertion into composer.
-- Corresponding **Web** timeline, stars and quote extraction are **not shipped** and require per-provider testing.
+- Experimental **Web** previous/next navigation and numbered timeline picker for loaded user messages. At most 200 ephemeral renderer-local anchors; no message-text/ID extraction or persistence. Shared provider opt-out, stale-target checks and synthetic WebView smoke coverage. Candidate selectors still need signed-in provider verification; Web stars, rich previews and quote extraction remain unshipped.
 
 ## 📲 Android UI and system integration
 
