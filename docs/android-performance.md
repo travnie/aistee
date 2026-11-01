@@ -43,3 +43,5 @@ Use the existing Robolectric/Roborazzi screenshots, Compose tests and device smo
 - New Web activity selectors, account flows and permission dialogs need a real WebView/device check before claiming provider support. Metadata-only selectors must not collect provider message text, page bodies or credentials.
 
 The record-only `AdaptiveMarkdownTableScreenshotTest` now captures the existing Markdown table screen at **400 dp / 1.5× font**, **610 dp / landscape** and **900 dp / expanded**. These PNGs join the existing `aistee-screenshots-jvm` CI artifact for human comparison. They do **not** enforce visual baseline diffs, and other surfaces and width/font-scale combinations remain future test cases.
+
+`AdaptiveWebTimelineScreenshotTest` records the experimental loaded-message picker at the same **400 / 610 / 900 dp** widths, including **1.5× font** on compact. Semantic checks keep Close and the final bounded target reachable. `WebUserTurnTimelineTest` adds real-WebView synthetic route/draft/selection/opt-out checks; its screenshot joins the Android smoke reports. These fixtures do not verify signed-in provider markup.
