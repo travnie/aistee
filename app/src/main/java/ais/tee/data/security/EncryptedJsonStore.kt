@@ -1,6 +1,7 @@
 package ais.tee.data.security
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -42,20 +43,16 @@ internal class EncryptedJsonStore(
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val ciphertext = cipher.doFinal(plaintext.encodeToByteArray())
-        preferences.edit()
-            .putString(ivKey, Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            .putString(ciphertextKey, Base64.encodeToString(ciphertext, Base64.NO_WRAP))
-            .commit()
+        commitEncryptedRecord(preferences, ivKey, ciphertextKey,
+            Base64.encodeToString(cipher.iv, Base64.NO_WRAP),
+            Base64.encodeToString(ciphertext, Base64.NO_WRAP))
     }.getOrDefault(false)
 
     /** Distinguish unreadable ciphertext from an empty secret record. */
     fun hasStoredData(): Boolean = preferences.contains(ivKey) || preferences.contains(ciphertextKey)
 
     fun clear(): Boolean = runCatching {
-        preferences.edit()
-            .remove(ivKey)
-            .remove(ciphertextKey)
-            .commit()
+        commitEncryptedRecord(preferences, ivKey, ciphertextKey, null, null)
     }.getOrDefault(false)
 
     private fun getOrCreateKey(): SecretKey {
@@ -82,3 +79,26 @@ internal class EncryptedJsonStore(
         const val DEFAULT_CIPHERTEXT_KEY = "ciphertext"
     }
 }
+
+/** SharedPreferences applies memory changes even when its disk commit fails. Restore both fields
+ * before reporting failure; a second failed disk write still restores the in-process map. */
+internal fun commitEncryptedRecord(
+    preferences: SharedPreferences, ivKey: String, ciphertextKey: String,
+    iv: String?, ciphertext: String?,
+): Boolean = synchronized(encryptedRecordLock) {
+    val previousIv = preferences.getString(ivKey, null)
+    val previousCiphertext = preferences.getString(ciphertextKey, null)
+    fun commit(nextIv: String?, nextCiphertext: String?): Boolean {
+        val editor = preferences.edit()
+        editor.putString(ivKey, nextIv)
+        editor.putString(ciphertextKey, nextCiphertext)
+        return editor.commit()
+    }
+    if (runCatching { commit(iv, ciphertext) }.getOrDefault(false)) true
+    else {
+        runCatching { commit(previousIv, previousCiphertext) }
+        false
+    }
+}
+
+private val encryptedRecordLock = Any()

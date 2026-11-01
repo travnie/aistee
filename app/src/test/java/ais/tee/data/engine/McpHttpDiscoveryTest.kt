@@ -79,6 +79,15 @@ class McpHttpDiscoveryTest {
     }
 
     @Test
+    fun oversizedEndpointIsRejectedBeforeAnyRequest() = runBlocking {
+        var requests = 0
+        val transport = discovery { req -> requests++; ok(req, result(1)) }
+        assertEquals(McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_ENDPOINT),
+            transport.discoverChecked(url + "a".repeat(2_048), "demo"))
+        assertEquals(0, requests)
+    }
+
+    @Test
     fun actualHttpRedirectDoesNotReachSecondEndpoint() {
         // A test-only local server verifies OkHttp's redirect behavior. Production discovery
         // rejects loopback targets independently through endpoint and public-DNS validation.
