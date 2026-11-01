@@ -2,6 +2,7 @@ package ais.tee.data.model
 
 import kotlinx.serialization.json.*
 
+private const val STRUCTURED_CONTENT_FIELD = "structuredContent"
 const val MAX_MCP_ARGUMENT_CHARS = 8_192
 private val jsonLiteral = Regex("^(true|false|null|-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?)$")
 
@@ -35,11 +36,21 @@ private fun validJsonLiterals(value: JsonElement): Boolean = when (value) {
     is JsonPrimitive -> value.isString || jsonLiteral.matches(value.content)
 }
 
-// Parameter-header mappings need their own validation/consent surface. Block this preview route.
-private fun hasParameterHeaders(value: JsonElement): Boolean = when (value) {
-    is JsonObject -> "x-mcp-header" in value || value.values.any(::hasParameterHeaders)
-    is JsonArray -> value.any(::hasParameterHeaders)
-    else -> false
+// Parameter-header schemas blocked here; JSON examples/defaults are data, not schema nodes.
+private fun hasParameterHeaders(value: JsonElement): Boolean {
+    val schema = value as? JsonObject ?: return false
+    if ("x-mcp-header" in schema) return true
+    return schema.any { (key, child) ->
+        when (key) {
+            "properties", "patternProperties", "\$defs", "definitions", "dependentSchemas" ->
+                (child as? JsonObject)?.values?.any(::hasParameterHeaders) == true
+            "prefixItems", "allOf", "anyOf", "oneOf" ->
+                (child as? JsonArray)?.any(::hasParameterHeaders) == true
+            "items", "additionalProperties", "unevaluatedProperties", "unevaluatedItems", "contains",
+            "not", "if", "then", "else", "propertyNames" -> hasParameterHeaders(child)
+            else -> false
+        }
+    }
 }
 
 private fun hasBoundedMcpArgumentDepth(raw: String): Boolean {
@@ -65,8 +76,8 @@ private fun hasBoundedMcpArgumentDepth(raw: String): Boolean {
 /** Plain, bounded output only. No resource fetching, HTML, model instructions or opaque state. */
 fun parseMcpToolResult(call: NativeToolCall, result: JsonObject): NativeToolResult? = runCatching {
     require((result["resultType"] as? JsonPrimitive)?.takeIf { it.isString }?.content == "complete")
-    require(result["structuredContent"] == null || result["structuredContent"] is JsonObject)
-    val content = result["content"] as? JsonArray ?: error("Missing tool content")
+    val content = if ("content" in result) result["content"] as? JsonArray ?: error("Invalid tool content")
+        else if (STRUCTURED_CONTENT_FIELD in result) JsonArray(emptyList()) else error("Missing tool content")
     require(content.size <= 128)
     val error = result["isError"]?.let {
         (it as? JsonPrimitive)?.takeUnless { value -> value.isString }?.booleanOrNull
@@ -82,7 +93,7 @@ fun parseMcpToolResult(call: NativeToolCall, result: JsonObject): NativeToolResu
             } else append("[Non-text content omitted]".take(MAX_NATIVE_TOOL_RESULT_CHARS - length))
             if (length < MAX_NATIVE_TOOL_RESULT_CHARS) append('\n')
         }
-        (result["structuredContent"] as? JsonObject)?.let {
+        result[STRUCTURED_CONTENT_FIELD]?.let {
             append(it.toString().take(MAX_NATIVE_TOOL_RESULT_CHARS - length))
         }
     }.ifBlank { "[Empty tool result]" }

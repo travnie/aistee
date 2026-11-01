@@ -101,6 +101,7 @@ class McpManualCallTest {
         compose.waitUntil(5_000) { state.calling }
         compose.onNodeWithTag("mcp_stop_call").performScrollTo().performClick()
         compose.waitUntil(5_000) { cancelled && !state.busy }
+        compose.onNodeWithTag("mcp_uncertain_call_notice").assertIsDisplayed()
         compose.runOnIdle {
             assertEquals(1, requests)
             assertEquals(McpToolCallOutcome.Failure(McpToolCallFailure.CANCELLED), state.callOutcome)
@@ -109,6 +110,10 @@ class McpManualCallTest {
         compose.runOnIdle { state.draftArguments = "{}" }
         compose.onNodeWithTag(RUN_TAG).assertIsNotEnabled()
         compose.runOnIdle { assertEquals(1, requests) }
+        compose.runOnIdle { state.newServer() }
+        compose.onNodeWithTag("mcp_uncertain_call_notice").assertIsDisplayed()
+        compose.onNodeWithTag("mcp_dismiss_call_notice").performClick()
+        compose.onNodeWithTag("mcp_uncertain_call_notice").assertDoesNotExist()
     }
 }
 

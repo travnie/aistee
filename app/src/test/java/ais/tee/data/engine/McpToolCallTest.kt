@@ -2,6 +2,10 @@ package ais.tee.data.engine
 
 import ais.tee.data.model.*
 import java.util.Base64
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.SocketTimeoutException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import okhttp3.*
@@ -29,7 +33,7 @@ class McpToolCallTest {
             val request = chain.request()
             assertEquals(CALL_ENDPOINT, request.url.toString())
             assertEquals("tools/call", request.header("Mcp-Method"))
-            assertEquals("sample.echo", request.header("Mcp-Name"))
+            assertEquals(REMOTE_TOOL_NAME, request.header("Mcp-Name"))
             assertEquals("2026-07-28", request.header("MCP-Protocol-Version"))
             assertNull(request.header("Authorization"))
             assertNull(request.header("Cookie"))
@@ -38,7 +42,7 @@ class McpToolCallTest {
             requireNotNull(request.body).writeTo(buffer)
             val params = Json.parseToJsonElement(buffer.readUtf8()).jsonObject.getValue("params").jsonObject
             assertEquals(Json.parseToJsonElement(CALL_ARGUMENTS), params["arguments"])
-            assertEquals("sample.echo", params.getValue("name").jsonPrimitive.content)
+            assertEquals(REMOTE_TOOL_NAME, params.getValue("name").jsonPrimitive.content)
             val meta = params.getValue("_meta").jsonObject
             assertEquals(JsonObject(emptyMap()), meta["io.modelcontextprotocol/clientCapabilities"])
             Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("OK")
@@ -73,7 +77,7 @@ class McpToolCallTest {
     }
 
     @Test fun namesUseTheRequiredSentinelEncodingWithoutHeaderInjection() {
-        assertEquals("sample.echo", mcpNameHeader("sample.echo"))
+        assertEquals(REMOTE_TOOL_NAME, mcpNameHeader("sample.echo"))
         for (name in listOf("世界", " x ", "x\r\nCookie: secret", "=?base64?literal?=")) {
             val header = mcpNameHeader(name)
             assertTrue(header.startsWith("=?base64?") && header.endsWith("?="))
@@ -81,4 +85,45 @@ class McpToolCallTest {
             assertEquals(name, String(Base64.getDecoder().decode(header.removePrefix("=?base64?").removeSuffix("?=")), Charsets.UTF_8))
         }
     }
+
+    @Test fun realHttp503RetryAfterZeroCannotReplayTheOneShotBody() = runBlocking {
+        val requests = AtomicInteger()
+        ServerSocket(0, 2, InetAddress.getByName("127.0.0.1")).use { server ->
+            server.soTimeout = 1_500
+            val worker = Thread {
+                repeat(2) {
+                    val socket = try { server.accept() } catch (_: SocketTimeoutException) { return@Thread }
+                    socket.use {
+                        requests.incrementAndGet()
+                        val reader = it.getInputStream().bufferedReader()
+                        var length = 0
+                        while (true) {
+                            val line = reader.readLine() ?: break
+                            if (line.isEmpty()) break
+                            if (line.startsWith("Content-Length:", ignoreCase = true)) {
+                                length = line.substringAfter(':').trim().toInt()
+                            }
+                        }
+                        repeat(length) { reader.read() }
+                        it.getOutputStream().write(("HTTP/1.1 503 Unavailable\r\n" +
+                            "Retry-After: 0\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").toByteArray())
+                    }
+                }
+            }.apply { start() }
+            // Test-only loopback rewrite. Real OkHttp follow-up chain, original production body.
+            val client = secureMcpHttpClient().newBuilder().dns(Dns.SYSTEM).build()
+            val factory = Call.Factory { request ->
+                assertTrue(requireNotNull(request.body).isOneShot())
+                client.newCall(request.newBuilder().url("http://127.0.0.1:${server.localPort}/mcp").build())
+            }
+            val review = review().also { it.approveOnce() }
+            assertEquals(McpToolCallOutcome.Failure(McpToolCallFailure.INVALID_RESPONSE),
+                McpHttpDiscovery(factory).callToolChecked(review))
+            worker.join(3_000)
+            assertFalse(worker.isAlive)
+            assertEquals(1, requests.get())
+        }
+    }
 }
+
+private const val REMOTE_TOOL_NAME = "sample.echo"
