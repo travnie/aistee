@@ -1,6 +1,8 @@
 package ais.tee.data.engine
 
 import ais.tee.data.model.McpToolCatalog
+import ais.tee.data.model.parseMcpToolResult
+import java.util.Base64
 import ais.tee.data.model.MAX_MCP_ENDPOINT_LENGTH
 import ais.tee.data.streambench.StreambenchPublicDns
 import java.io.ByteArrayOutputStream
@@ -167,22 +169,67 @@ internal class McpHttpDiscovery(
             }
         } ?: McpDiscoveryOutcome.Failure(McpDiscoveryFailure.TIMEOUT)
 
+    /** Approved manual call only. Single POST; failure/cancellation never retries a side effect. */
+    suspend fun callToolChecked(review: McpToolCallReview): McpToolCallOutcome =
+        withTimeoutOrNull(TOTAL_DISCOVERY_MILLIS) {
+            withContext(Dispatchers.IO) {
+                currentCoroutineContext().ensureActive()
+                if (!review.takeForExecution()) return@withContext McpToolCallOutcome.Failure(McpToolCallFailure.BLOCKED)
+                val url = validatedMcpEndpoint(review.endpoint)
+                    ?: return@withContext McpToolCallOutcome.Failure(McpToolCallFailure.BLOCKED)
+                try {
+                    val body = buildJsonObject {
+                        put(JSON_RPC_FIELD, "2.0")
+                        put(JSON_RPC_ID_FIELD, 1)
+                        put("method", "tools/call")
+                        putJsonObject("params") {
+                            put("name", review.target.remoteName)
+                            put("arguments", review.call.arguments)
+                            put("_meta", requestMetadata())
+                        }
+                    }.toString()
+                    val request = Request.Builder().url(url)
+                        .post(body.toRequestBody(JSON_CONTENT_TYPE))
+                        .header("Accept", "application/json, text/event-stream")
+                        .header("MCP-Protocol-Version", MCP_VERSION)
+                        .header("Mcp-Method", "tools/call")
+                        .header("Mcp-Name", mcpNameHeader(review.target.remoteName))
+                        .build()
+                    val raw = requestPage(request, 1)
+                    val result = raw?.let { Json.parseToJsonElement(it).jsonObject["result"] as? JsonObject }
+                    val parsed = result?.let { parseMcpToolResult(review.call, it) }
+                    if (parsed == null) McpToolCallOutcome.Failure(McpToolCallFailure.INVALID_RESPONSE)
+                    else McpToolCallOutcome.Completed(parsed)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: IOException) { // skipcq: KT-W1064
+                    // Async Call.Factory failures resume through requestPage.
+                    McpToolCallOutcome.Failure(McpToolCallFailure.NETWORK_FAILURE)
+                } catch (_: Exception) { // skipcq: KT-W1064
+                    // Runtime factory failures; no remote diagnostics exposed.
+                    McpToolCallOutcome.Failure(McpToolCallFailure.INVALID_RESPONSE)
+                }
+            }
+        } ?: McpToolCallOutcome.Failure(McpToolCallFailure.TIMEOUT)
+
     private fun toolsListRequest(id: Int, cursor: String?): String = buildJsonObject {
         put(JSON_RPC_FIELD, "2.0")
         put(JSON_RPC_ID_FIELD, id)
         put("method", "tools/list")
         putJsonObject("params") {
             if (cursor != null) put("cursor", cursor)
-            putJsonObject("_meta") {
-                put("io.modelcontextprotocol/protocolVersion", MCP_VERSION)
-                putJsonObject("io.modelcontextprotocol/clientInfo") {
-                    put("name", "aistee")
-                    put("version", "1.0")
-                }
-                put("io.modelcontextprotocol/clientCapabilities", buildJsonObject {})
-            }
+            put("_meta", requestMetadata())
         }
     }.toString()
+
+    private fun requestMetadata(): JsonObject = buildJsonObject {
+        put("io.modelcontextprotocol/protocolVersion", MCP_VERSION)
+        putJsonObject("io.modelcontextprotocol/clientInfo") {
+            put("name", "aistee")
+            put("version", "1.0")
+        }
+        put("io.modelcontextprotocol/clientCapabilities", buildJsonObject {})
+    }
 
     /** Asynchronous OkHttp call: coroutine cancellation immediately closes the active request. */
     private suspend fun requestPage(request: Request, expectedId: Int): String? =
@@ -352,3 +399,9 @@ internal fun validatedMcpEndpoint(raw: String): HttpUrl? {
         !url.host.contains('.') || url.host.endsWith(".local")) return null
     return url.takeIf { it.toString().length <= MAX_MCP_ENDPOINT_LENGTH }
 }
+
+// MCP 2026-07-28 sentinel encoding, including literal sentinel-shaped names.
+internal fun mcpNameHeader(name: String): String =
+    if (name.isNotEmpty() && name == name.trim() && name.all { it.code in 0x20..0x7e } &&
+        !(name.startsWith("=?base64?") && name.endsWith("?="))) name
+    else "=?base64?" + Base64.getEncoder().encodeToString(name.toByteArray(Charsets.UTF_8)) + "?="

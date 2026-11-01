@@ -18,6 +18,9 @@ import ais.tee.data.model.McpToolCatalog
 import ais.tee.data.model.McpToolSummary
 import ais.tee.data.engine.McpServerStore
 import ais.tee.data.engine.McpHttpDiscovery
+import ais.tee.data.engine.McpToolCallReview
+import ais.tee.data.engine.McpToolCallOutcome
+import ais.tee.data.engine.McpToolCallFailure
 import ais.tee.share.copyPlainTextToClipboard
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -28,6 +31,10 @@ internal class McpPreviewState {
     var serverId by mutableStateOf<String?>(null)
     var serverLabel by mutableStateOf("")
     var endpoint by mutableStateOf("")
+    var discoveredEndpoint by mutableStateOf<String?>(null)
+    var callReview by mutableStateOf<McpToolCallReview?>(null)
+    var callOutcome by mutableStateOf<McpToolCallOutcome?>(null)
+    var calling by mutableStateOf(false)
     var query by mutableStateOf("")
     var outcome by mutableStateOf<McpDiscoveryOutcome?>(null)
     var selectedTool by mutableStateOf<String?>(null)
@@ -52,8 +59,17 @@ internal class McpPreviewState {
         endpoint = ""
     }
 
+    fun invalidateCall() {
+        if (calling) cancelPending()
+        callReview = null
+        callOutcome = null
+    }
+
     fun cancelPending() {
         epoch++
+        if (calling) callOutcome = McpToolCallOutcome.Failure(McpToolCallFailure.CANCELLED)
+        calling = false
+        callReview = null
         job?.cancel()
         job = null
         busy = false
@@ -62,6 +78,8 @@ internal class McpPreviewState {
     fun reset() {
         cancelPending()
         outcome = null
+        discoveredEndpoint = null
+        callOutcome = null
         selectedTool = null
         copiedTool = null
         copiedCallDraft = null
@@ -70,16 +88,20 @@ internal class McpPreviewState {
     }
 }
 
-/** Saved configurations with manual, ephemeral discovery; no background connection or tool execution. */
+/** Saved configurations, ephemeral discovery and user-reviewed manual tool calls. */
 @Composable
 internal fun McpDiscoveryPanel(
     state: McpPreviewState,
     modifier: Modifier = Modifier,
     serverStore: McpServerStore? = null,
     discovery: (suspend (String, String) -> McpDiscoveryOutcome)? = null,
+    toolCaller: (suspend (McpToolCallReview) -> McpToolCallOutcome)? = null,
 ) {
     val transport = remember { McpHttpDiscovery() }
     val scope = rememberCoroutineScope()
+    val onRun: (McpToolCallReview) -> Unit = { review ->
+        state.executeCall(review, scope, toolCaller ?: transport::callToolChecked)
+    }
     val context = LocalContext.current
     val store = remember(context, serverStore) { serverStore ?: McpServerStore(context) }
     DisposableEffect(state) {
@@ -95,7 +117,7 @@ internal fun McpDiscoveryPanel(
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("MCP discovery", style = MaterialTheme.typography.titleMedium,
+                Text("MCP tools", style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold)
                 Text(
                     "Test a public HTTPS MCP 2026-07-28 endpoint. This is one unauthenticated " +
@@ -112,6 +134,7 @@ internal fun McpDiscoveryPanel(
                     onClick = click@{
                         // State changes synchronously, before Compose recomposes the disabled button.
                         if (state.busy) return@click
+                        state.reset()
                         state.busy = true
                         val requestEpoch = ++state.epoch
                         val url = state.endpoint.trim()
@@ -122,6 +145,8 @@ internal fun McpDiscoveryPanel(
                                 ?: transport.discoverChecked(url, serverId)
                             if (requestEpoch == state.epoch) {
                                 state.outcome = response
+                                state.discoveredEndpoint = if (response is McpDiscoveryOutcome.Success)
+                                    ais.tee.data.engine.validatedMcpEndpoint(url)?.toString() else null
                                 state.busy = false
                                 state.job = null
                             }
@@ -132,7 +157,7 @@ internal fun McpDiscoveryPanel(
                 ) { Text(if (state.busy) "Discovering…" else "Discover tools") }
                 Text(
                     "No account cookies, API keys, chats or local files are attached. " +
-                        "This preview cannot execute tools.",
+                        "Manual tool calls require a separate review and confirmation.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -147,6 +172,7 @@ internal fun McpDiscoveryPanel(
                         OutlinedTextField(
                             value = state.query,
                             onValueChange = {
+                                state.invalidateCall()
                                 state.query = it.take(256)
                                 state.selectedTool = null
                                 state.copiedCallDraft = null
@@ -160,7 +186,7 @@ internal fun McpDiscoveryPanel(
                     }
                 }
                 items(tools, key = { it.nativeName }) { summary ->
-                    McpToolCard(state, response.catalog, summary)
+                    McpToolCard(state, response.catalog, summary, onRun)
                 }
             }
             is McpDiscoveryOutcome.Failure -> item {
@@ -176,7 +202,8 @@ internal fun McpDiscoveryPanel(
 }
 
 @Composable
-private fun McpToolCard(state: McpPreviewState, catalog: McpToolCatalog, summary: McpToolSummary) {
+private fun McpToolCard(state: McpPreviewState, catalog: McpToolCatalog, summary: McpToolSummary,
+                        onRun: (McpToolCallReview) -> Unit) {
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -193,6 +220,7 @@ private fun McpToolCard(state: McpPreviewState, catalog: McpToolCatalog, summary
             }
             OutlinedButton(
                 onClick = {
+                    state.invalidateCall()
                     state.selectedTool = if (state.selectedTool == summary.nativeName) null
                     else summary.nativeName
                     state.copiedTool = null
@@ -204,14 +232,15 @@ private fun McpToolCard(state: McpPreviewState, catalog: McpToolCatalog, summary
                     else "Inspect schema")
             }
             if (state.selectedTool == summary.nativeName) {
-                McpToolDetails(state, catalog, summary.nativeName)
+                McpToolDetails(state, catalog, summary.nativeName, onRun)
             }
         }
     }
 }
 
 @Composable
-private fun McpToolDetails(state: McpPreviewState, catalog: McpToolCatalog, nativeName: String) {
+private fun McpToolDetails(state: McpPreviewState, catalog: McpToolCatalog, nativeName: String,
+                           onRun: (McpToolCallReview) -> Unit) {
     val context = LocalContext.current
     val schema = catalog.loadDefinition(nativeName)
         ?.inputSchema?.toString()
@@ -236,7 +265,8 @@ private fun McpToolDetails(state: McpPreviewState, catalog: McpToolCatalog, nati
         OutlinedTextField(
             value = state.draftArguments,
             onValueChange = {
-                state.draftArguments = it.take(8_192)
+                state.invalidateCall()
+                state.draftArguments = it
                 state.copiedCallDraft = null
             },
             label = { Text("tools/call arguments (JSON object)") },
@@ -260,10 +290,11 @@ private fun McpToolDetails(state: McpPreviewState, catalog: McpToolCatalog, nati
         }
         Text(
             "Local draft only. JSON syntax is checked, not the " +
-                "server schema. No tool runs and nothing is sent.",
+                "server schema. Copying does not run a tool.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        McpManualToolCallControls(state, catalog, nativeName, onRun)
     }
 }
 

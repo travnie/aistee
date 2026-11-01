@@ -87,10 +87,7 @@ class McpToolCatalog private constructor(
     /** Offline request draft only. The runtime must enforce consent before any tools/call. */
     fun exportToolCallDraft(nativeName: String, argumentsJson: String): String? {
         val entry = entries.firstOrNull { it.summary.nativeName == nativeName } ?: return null
-        if (argumentsJson.isBlank() || argumentsJson.length > 8_192 ||
-            !hasBoundedDraftJsonDepth(argumentsJson)) return null
-        val args = runCatching { Json.parseToJsonElement(argumentsJson) as? JsonObject }
-            .getOrNull() ?: return null
+        val args = parseMcpArguments(argumentsJson) ?: return null
         return buildJsonObject {
             put("jsonrpc", "2.0")
             put("id", 1)
@@ -264,24 +261,3 @@ private fun validateMcpSchema(schema: JsonObject) {
 }
 
 /** Shallow bounded parsing guard for pasted request drafts, not a JSON validator. */
-private fun hasBoundedDraftJsonDepth(raw: String): Boolean {
-    var depth = 0
-    var inString = false
-    var escaped = false
-    for (char in raw) {
-        if (inString) {
-            when {
-                escaped -> escaped = false
-                char == '\\' -> escaped = true
-                char == '"' -> inString = false
-            }
-        } else {
-            when (char) {
-                '"' -> inString = true
-                '{', '[' -> if (++depth > 24) return false
-                '}', ']' -> if (--depth < 0) return false
-            }
-        }
-    }
-    return !inString && depth == 0
-}
