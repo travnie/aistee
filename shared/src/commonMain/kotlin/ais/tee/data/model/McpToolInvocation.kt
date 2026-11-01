@@ -42,7 +42,7 @@ private fun hasParameterHeaders(value: JsonElement): Boolean {
     if ("x-mcp-header" in schema) return true
     return schema.any { (key, child) ->
         when (key) {
-            "properties", "patternProperties", "\$defs", "definitions", "dependentSchemas" ->
+            "properties", "patternProperties", "\$defs", "definitions", "dependentSchemas", "dependencies" ->
                 (child as? JsonObject)?.values?.any(::hasParameterHeaders) == true
             "prefixItems", "allOf", "anyOf", "oneOf" ->
                 (child as? JsonArray)?.any(::hasParameterHeaders) == true
