@@ -16,6 +16,8 @@ import ais.tee.data.engine.McpDiscoveryOutcome
 import ais.tee.data.model.McpServerConfiguration
 import ais.tee.data.model.McpToolCatalog
 import ais.tee.data.model.McpToolSummary
+import ais.tee.data.model.MAX_MCP_ARGUMENT_CHARS
+import ais.tee.data.model.parseMcpArguments
 import ais.tee.data.engine.McpServerStore
 import ais.tee.data.engine.McpHttpDiscovery
 import ais.tee.data.engine.McpToolCallReview
@@ -277,8 +279,8 @@ private fun McpToolDetails(state: McpPreviewState, catalog: McpToolCatalog, nati
                 state.copiedCallDraft = null
             },
             label = { Text("tools/call arguments (JSON object)") },
-            isError = ais.tee.data.model.parseMcpArguments(state.draftArguments) == null,
-            supportingText = { Text("JSON object, up to 8192 characters. Nothing sent until Run once.") },
+            isError = parseMcpArguments(state.draftArguments) == null,
+            supportingText = { Text("JSON object, up to $MAX_MCP_ARGUMENT_CHARS characters. Nothing sent until Run once.") },
             minLines = 2,
             maxLines = 6,
             modifier = Modifier.fillMaxWidth().testTag("mcp_call_draft_args"),

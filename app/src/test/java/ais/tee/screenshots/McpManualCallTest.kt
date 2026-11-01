@@ -106,7 +106,7 @@ class McpManualCallTest {
         compose.waitUntil(5_000) { state.calling }
         compose.onNodeWithTag("mcp_stop_call").performScrollTo().performClick()
         compose.waitUntil(5_000) { cancelled && !state.busy }
-        compose.onNodeWithTag("mcp_uncertain_call_notice").assertIsDisplayed()
+        compose.onNodeWithTag(UNCERTAIN_NOTICE_TAG).assertIsDisplayed()
         compose.runOnIdle {
             assertEquals(1, requests)
             assertEquals(McpToolCallOutcome.Failure(McpToolCallFailure.CANCELLED), state.callOutcome)
@@ -116,11 +116,13 @@ class McpManualCallTest {
         compose.onNodeWithTag(RUN_TAG).assertIsNotEnabled()
         compose.runOnIdle { assertEquals(1, requests) }
         compose.runOnIdle { state.newServer() }
-        compose.onNodeWithTag("mcp_uncertain_call_notice").assertIsDisplayed()
+        compose.onNodeWithTag(UNCERTAIN_NOTICE_TAG).assertIsDisplayed()
         compose.onNodeWithTag("mcp_dismiss_call_notice").performClick()
-        compose.onNodeWithTag("mcp_uncertain_call_notice").assertDoesNotExist()
+        compose.onNodeWithTag(UNCERTAIN_NOTICE_TAG).assertDoesNotExist()
     }
 }
 
 private const val REVIEW_TAG = "mcp_review_call"
 private const val RUN_TAG = "mcp_run_once"
+
+private const val UNCERTAIN_NOTICE_TAG = "mcp_uncertain_call_notice"
