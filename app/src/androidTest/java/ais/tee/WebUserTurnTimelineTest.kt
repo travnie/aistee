@@ -9,7 +9,7 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -30,6 +30,7 @@ import org.junit.runner.RunWith
 class WebUserTurnTimelineTest {
     private companion object {
         const val FIXTURE_URL = "https://chatgpt.com/c/aistee-timeline-fixture"
+        const val RELOADED_FIXTURE_URL = "https://chatgpt.com/c/reloaded-timeline-fixture"
         const val MORE_MENU = "btn_web_more"
         const val NAVIGATION_TOGGLE = "toggle_web_turn_navigation"
     }
@@ -40,7 +41,7 @@ class WebUserTurnTimelineTest {
     fun choosingLoadedTurnScrollsExistingRendererWithoutChangingDraft() {
         val webView = loadConversationFixture()
         openTimeline()
-        composeRule.onNodeWithTag("web_timeline_count").assertTextContains("20 loaded user messages")
+        composeRule.onNodeWithTag("web_timeline_count").assertTextEquals("20 loaded user messages.")
         saveTimelineScreenshot()
         composeRule.onNodeWithTag("web_timeline_turn_3").performClick()
         awaitClosed()
@@ -66,6 +67,22 @@ class WebUserTurnTimelineTest {
             webView.evaluateJavascript("history.pushState({}, '', '/c/new-chat'); document.body.innerHTML = '<p>New chat</p>';", null)
         }
         awaitClosed()
+        // loadDataWithBaseURL keeps a synthetic history entry; replace it explicitly for reload.
+        composeRule.runOnIdle {
+            webView.loadDataWithBaseURL(
+                RELOADED_FIXTURE_URL, "<html><body><p>New chat</p></body></html>",
+                "text/html", "UTF-8", RELOADED_FIXTURE_URL
+            )
+        }
+        val reloaded = AtomicBoolean(false)
+        composeRule.waitUntil(5_000) {
+            composeRule.runOnIdle {
+                webView.evaluateJavascript(
+                    "location.href === '$RELOADED_FIXTURE_URL' && typeof window.__aisteeTurnTimeline === 'undefined'"
+                ) { reloaded.set(it == "true" && webView.progress == 100 && webView.url == RELOADED_FIXTURE_URL) }
+            }
+            reloaded.get()
+        }
         openTimeline()
         composeRule.onNodeWithText("No user messages detected on this page.").assertIsDisplayed()
     }
