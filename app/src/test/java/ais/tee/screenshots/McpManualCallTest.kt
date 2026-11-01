@@ -64,21 +64,26 @@ class McpManualCallTest {
                 }
             }
         }
-        compose.onNodeWithTag(REVIEW_TAG).performScrollTo().performClick()
+        openReview()
         compose.onNodeWithTag("mcp_review_endpoint").assertTextEquals(CALL_ENDPOINT)
         compose.onNodeWithTag("mcp_review_arguments").assertTextEquals(CALL_ARGUMENTS)
         assertEquals(0, calls)
         compose.onNodeWithTag("mcp_call_review").captureRoboImage("build/outputs/roborazzi/$screenshot.png")
         compose.onNodeWithTag("mcp_deny_call").performClick()
         compose.runOnIdle { assertEquals(0, calls) }
-        compose.onNodeWithTag(REVIEW_TAG).performScrollTo().performClick()
+        openReview()
         compose.onNodeWithTag(RUN_TAG).performClick()
         compose.waitUntil(5_000) { calls == 1 && !state.busy }
         compose.onNodeWithTag("mcp_call_output").performScrollTo().assertTextEquals("Manual result")
-        compose.onNodeWithTag(REVIEW_TAG).performScrollTo().performClick()
+        openReview()
         compose.runOnIdle { state.newServer() }
         compose.onNodeWithTag("mcp_call_review").assertDoesNotExist()
         compose.runOnIdle { assertEquals(1, calls) }
+    }
+
+    private fun openReview() {
+        compose.onNodeWithTag("mcp_discovery_panel").performScrollToNode(hasTestTag(REVIEW_TAG))
+        compose.onNodeWithTag(REVIEW_TAG).performScrollTo().performClick()
     }
 
     @Test fun stoppingWaitCancelsTheRequestWithoutAutomaticallyRetrying() {
@@ -96,7 +101,7 @@ class McpManualCallTest {
                 }
             }
         }
-        compose.onNodeWithTag(REVIEW_TAG).performScrollTo().performClick()
+        openReview()
         compose.onNodeWithTag(RUN_TAG).performClick()
         compose.waitUntil(5_000) { state.calling }
         compose.onNodeWithTag("mcp_stop_call").performScrollTo().performClick()
@@ -106,7 +111,7 @@ class McpManualCallTest {
             assertEquals(1, requests)
             assertEquals(McpToolCallOutcome.Failure(McpToolCallFailure.CANCELLED), state.callOutcome)
         }
-        compose.onNodeWithTag(REVIEW_TAG).performScrollTo().performClick()
+        openReview()
         compose.runOnIdle { state.draftArguments = "{}" }
         compose.onNodeWithTag(RUN_TAG).assertIsNotEnabled()
         compose.runOnIdle { assertEquals(1, requests) }
