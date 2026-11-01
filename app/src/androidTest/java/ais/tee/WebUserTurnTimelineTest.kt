@@ -7,6 +7,14 @@ import android.provider.MediaStore
 import androidx.test.platform.app.InstrumentationRegistry
 import android.view.ViewGroup
 import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebResourceError
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.SslErrorHandler
+import android.net.http.SslError
+import android.graphics.Bitmap
 import java.util.concurrent.atomic.AtomicBoolean
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -36,6 +44,7 @@ class WebUserTurnTimelineTest {
     }
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+    private var fixtureView: WebView? = null
 
     @Test
     fun choosingLoadedTurnScrollsExistingRendererWithoutChangingDraft() {
@@ -67,13 +76,7 @@ class WebUserTurnTimelineTest {
             webView.evaluateJavascript("history.pushState({}, '', '/c/new-chat'); document.body.innerHTML = '<p>New chat</p>';", null)
         }
         awaitClosed()
-        // loadDataWithBaseURL keeps a synthetic history entry; replace it explicitly for reload.
-        composeRule.runOnIdle {
-            webView.loadDataWithBaseURL(
-                RELOADED_FIXTURE_URL, "<html><body><p>New chat</p></body></html>",
-                "text/html", "UTF-8", RELOADED_FIXTURE_URL
-            )
-        }
+        composeRule.runOnIdle { webView.loadUrl(RELOADED_FIXTURE_URL) }
         val reloaded = AtomicBoolean(false)
         composeRule.waitUntil(5_000) {
             composeRule.runOnIdle {
@@ -161,14 +164,9 @@ class WebUserTurnTimelineTest {
         switchProvider("chatgpt")
         val webView = composeRule.runOnIdle {
             val view = requireNotNull(visibleWebView(composeRule.activity.window.decorView))
+            installFixtureClient(view)
             view.stopLoading()
-            view.loadDataWithBaseURL(
-                FIXTURE_URL,
-                "<html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"></head><body>" + (1..20).joinToString("") {
-                    "<div data-message-author-role=\"user\" style=\"height:180px;margin-bottom:80px\">Private message $it</div>"
-                } + "<textarea id=\"composer\">Keep this draft</textarea></body></html>",
-                "text/html", "UTF-8", FIXTURE_URL,
-            )
+            view.loadUrl(FIXTURE_URL)
             view
         }
         val loaded = AtomicBoolean(false)
@@ -177,7 +175,6 @@ class WebUserTurnTimelineTest {
                 webView.evaluateJavascript(
                     "document.querySelectorAll('[data-message-author-role=\"user\"]').length === 20 && location.href === '$FIXTURE_URL'"
                 ) { result ->
-                    // DOM readiness can precede the native history-URL commit.
                     loaded.set(result == "true" && webView.progress == 100 && webView.url == FIXTURE_URL)
                 }
             }
@@ -185,6 +182,41 @@ class WebUserTurnTimelineTest {
         }
         composeRule.runOnIdle { assertEquals(FIXTURE_URL, webView.url) }
         return webView
+    }
+
+    // Normal navigation + local responses. App lifecycle/navigation callbacks remain active.
+    private fun installFixtureClient(view: WebView) {
+        if (fixtureView === view) return
+        fixtureView = view
+        val delegate = view.webViewClient
+        view.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                val html = when (request?.url?.toString()) {
+                    FIXTURE_URL -> "<html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"></head><body>" +
+                        (1..20).joinToString("") {
+                            "<div data-message-author-role=\"user\" style=\"height:180px;margin-bottom:80px\">Private message $it</div>"
+                        } + "<textarea id=\"composer\">Keep this draft</textarea></body></html>"
+                    RELOADED_FIXTURE_URL -> "<html><body><p>New chat</p></body></html>"
+                    else -> return delegate.shouldInterceptRequest(view, request)
+                }
+                return WebResourceResponse("text/html", "UTF-8", html.byteInputStream())
+            }
+
+            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) =
+                delegate.onPageStarted(view, url, favicon)
+            override fun onPageFinished(view: WebView?, url: String?) = delegate.onPageFinished(view, url)
+            override fun onPageCommitVisible(view: WebView?, url: String?) = delegate.onPageCommitVisible(view, url)
+            override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) =
+                delegate.doUpdateVisitedHistory(view, url, isReload)
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean =
+                delegate.shouldOverrideUrlLoading(view, request)
+            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) =
+                delegate.onReceivedError(view, request, error)
+            override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) =
+                delegate.onReceivedSslError(view, handler, error)
+            override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean =
+                delegate.onRenderProcessGone(view, detail)
+        }
     }
 
     private fun switchProvider(id: String) {
