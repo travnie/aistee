@@ -5,6 +5,16 @@ import kotlin.test.*
 class McpServerConfigurationsTest {
     private val first = McpServerConfiguration(FIRST_ID, "Work", "https://tools.example.org/mcp")
 
+    @Test fun unicodeNameComparisonIsIdenticalDuringSaveAndReload() {
+        val dottedCapital = first.copy(label = "\u0130")
+        val result = McpServerConfigurations.upsert(listOf(dottedCapital), null,
+            "i\u0307", OTHER_ENDPOINT) { SECOND_ID } as McpServerSaveResult.Saved
+        assertTrue(McpServerConfigurations.validArchive(listOf(dottedCapital, result.server)))
+        assertEquals(McpServerSaveResult.Failure(McpServerSaveFailure.DUPLICATE_NAME),
+            McpServerConfigurations.upsert(listOf(dottedCapital), null,
+                "i", OTHER_ENDPOINT) { SECOND_ID })
+    }
+
     @Test fun generatedIdentityRetriesCollisionsAndFailsWithoutChangingTheList() {
         val existing = listOf(first)
         var calls = 0
