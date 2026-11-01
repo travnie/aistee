@@ -40,6 +40,14 @@ class McpToolInvocationTest {
             """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"ordinary","inputSchema":{"type":"object","properties":{"x-mcp-header":{"type":"string"}},"default":{"x-mcp-header":"literal"},"examples":[{"x-mcp-header":"data"}]}}]}}"""))
         assertEquals(CapabilityDecision.ASK, ordinary.callDecision(ordinary.browse().single().nativeName,
             EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = false))
+        val dependency = requireNotNull(McpToolCatalog.fromToolsListResponse("demo", "4".repeat(32),
+            """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"dependency","inputSchema":{"type":"object","dependencies":{"value":{"properties":{"region":{"type":"string","x-mcp-header":"Region"}}}}}}]}}"""))
+        assertEquals(CapabilityDecision.DENY, dependency.callDecision(dependency.browse().single().nativeName,
+            EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = false))
+        val propertyDependency = requireNotNull(McpToolCatalog.fromToolsListResponse("demo", "5".repeat(32),
+            """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"propertyDependency","inputSchema":{"type":"object","dependencies":{"value":["x-mcp-header"]}}}]}}"""))
+        assertEquals(CapabilityDecision.ASK, propertyDependency.callDecision(propertyDependency.browse().single().nativeName,
+            EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = false))
     }
 
     @Test fun resultsAreBoundedUntrustedTextWithoutResourceFetchingOrOpaqueState() {
