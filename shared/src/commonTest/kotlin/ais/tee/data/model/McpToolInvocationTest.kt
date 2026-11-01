@@ -50,6 +50,19 @@ class McpToolInvocationTest {
             EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = false))
     }
 
+    @Test fun annotationsInOtherSchemaValuedKeywordsCannotEnableManualCalls() {
+        for (keyword in listOf("additionalItems", "contentSchema")) {
+            val schema = buildJsonObject {
+                put("type", "object")
+                put(keyword, buildJsonObject { put("type", "string"); put("x-mcp-header", "Value") })
+            }
+            val raw = """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"extension","inputSchema":$schema}]}}"""
+            val other = requireNotNull(McpToolCatalog.fromToolsListResponse("demo", "6".repeat(32), raw))
+            assertEquals(CapabilityDecision.DENY, other.callDecision(other.browse().single().nativeName,
+                EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = false))
+        }
+    }
+
     @Test fun resultsAreBoundedUntrustedTextWithoutResourceFetchingOrOpaqueState() {
         val call = NativeToolCall("call", name, JsonObject(emptyMap()))
         val result = buildJsonObject {
