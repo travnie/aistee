@@ -13,6 +13,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import ais.tee.data.engine.McpDiscoveryFailure
 import ais.tee.data.engine.McpDiscoveryOutcome
+import ais.tee.data.model.McpServerConfiguration
+import ais.tee.data.model.McpToolCatalog
+import ais.tee.data.model.McpToolSummary
+import ais.tee.data.engine.McpServerStore
 import ais.tee.data.engine.McpHttpDiscovery
 import ais.tee.share.copyPlainTextToClipboard
 import kotlinx.coroutines.Job
@@ -20,6 +24,9 @@ import kotlinx.coroutines.launch
 
 /** In-memory state survives Studio tab switches but never leaves the Studio destination. */
 internal class McpPreviewState {
+    val savedServers = McpSavedServersState()
+    var serverId by mutableStateOf<String?>(null)
+    var serverLabel by mutableStateOf("")
     var endpoint by mutableStateOf("")
     var query by mutableStateOf("")
     var outcome by mutableStateOf<McpDiscoveryOutcome?>(null)
@@ -30,6 +37,20 @@ internal class McpPreviewState {
     var busy by mutableStateOf(false)
     var epoch = 0
     var job: Job? = null
+
+    fun selectServer(server: McpServerConfiguration) {
+        reset()
+        serverId = server.id
+        serverLabel = server.label
+        endpoint = server.endpoint
+    }
+
+    fun newServer() {
+        reset()
+        serverId = null
+        serverLabel = ""
+        endpoint = ""
+    }
 
     fun cancelPending() {
         epoch++
@@ -49,12 +70,18 @@ internal class McpPreviewState {
     }
 }
 
-/** Manual, ephemeral preview: no saved endpoints, background activity or tool execution. */
+/** Saved configurations with manual, ephemeral discovery; no background connection or tool execution. */
 @Composable
-internal fun McpDiscoveryPanel(state: McpPreviewState, modifier: Modifier = Modifier) {
+internal fun McpDiscoveryPanel(
+    state: McpPreviewState,
+    modifier: Modifier = Modifier,
+    serverStore: McpServerStore? = null,
+    discovery: (suspend (String, String) -> McpDiscoveryOutcome)? = null,
+) {
     val transport = remember { McpHttpDiscovery() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val store = remember(context, serverStore) { serverStore ?: McpServerStore(context) }
     DisposableEffect(state) {
         onDispose { state.cancelPending() }
     }
@@ -72,18 +99,15 @@ internal fun McpDiscoveryPanel(state: McpPreviewState, modifier: Modifier = Modi
                     fontWeight = FontWeight.Bold)
                 Text(
                     "Test a public HTTPS MCP 2026-07-28 endpoint. This is one unauthenticated " +
-                        "tools/list discovery, not a saved server connection. Tapping Discover " +
+                        "tools/list discovery. Tapping Discover " +
                         "contacts the server, which can see your network address.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                OutlinedTextField(
-                    value = state.endpoint,
-                    onValueChange = { state.endpoint = it.take(2048); state.reset() },
-                    label = { Text("MCP endpoint (HTTPS)") },
-                    placeholder = { Text("https://example.org/mcp") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().testTag("mcp_endpoint"),
-                )
+            }
+        }
+        item { McpSavedServerControls(state, store) }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = click@{
                         // State changes synchronously, before Compose recomposes the disabled button.
@@ -91,9 +115,11 @@ internal fun McpDiscoveryPanel(state: McpPreviewState, modifier: Modifier = Modi
                         state.busy = true
                         val requestEpoch = ++state.epoch
                         val url = state.endpoint.trim()
+                        val serverId = state.serverId ?: "preview"
                         state.outcome = null
                         state.job = scope.launch {
-                            val response = transport.discoverChecked(url, "preview")
+                            val response = discovery?.invoke(url, serverId)
+                                ?: transport.discoverChecked(url, serverId)
                             if (requestEpoch == state.epoch) {
                                 state.outcome = response
                                 state.busy = false
@@ -134,103 +160,12 @@ internal fun McpDiscoveryPanel(state: McpPreviewState, modifier: Modifier = Modi
                     }
                 }
                 items(tools, key = { it.nativeName }) { summary ->
-                    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(summary.title, style = MaterialTheme.typography.titleSmall,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Text(summary.remoteName, style = MaterialTheme.typography.labelSmall,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            if (summary.description != summary.remoteName) {
-                                Text(summary.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    maxLines = 3, overflow = TextOverflow.Ellipsis)
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    state.selectedTool = if (state.selectedTool == summary.nativeName) null
-                                    else summary.nativeName
-                                    state.copiedTool = null
-                                    state.copiedCallDraft = null
-                                    state.draftArguments = "{}"
-                                }
-                            ) {
-                                Text(if (state.selectedTool == summary.nativeName) "Hide schema"
-                                    else "Inspect schema")
-                            }
-                            if (state.selectedTool == summary.nativeName) {
-                                val schema = response.catalog.loadDefinition(summary.nativeName)
-                                    ?.inputSchema?.toString()
-                                if (schema != null) {
-                                    Text(schema.take(2000) +
-                                        if (schema.length > 2000) "\n… Preview truncated" else "",
-                                        style = MaterialTheme.typography.bodySmall)
-                                    val spec = response.catalog.exportToolSpec(summary.nativeName)
-                                    if (spec != null) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                if (copyPlainTextToClipboard(
-                                                        context, "MCP tool spec", spec, sensitive = true
-                                                    )) state.copiedTool = summary.nativeName
-                                            },
-                                            modifier = Modifier.testTag("mcp_copy_selected_tool"),
-                                        ) {
-                                            Text(if (state.copiedTool == summary.nativeName)
-                                                "Copied spec" else "Copy tool spec")
-                                        }
-                                    }
-                                    OutlinedTextField(
-                                        value = state.draftArguments,
-                                        onValueChange = {
-                                            state.draftArguments = it.take(8_192)
-                                            state.copiedCallDraft = null
-                                        },
-                                        label = { Text("tools/call arguments (JSON object)") },
-                                        minLines = 2,
-                                        maxLines = 6,
-                                        modifier = Modifier.fillMaxWidth().testTag("mcp_call_draft_args"),
-                                    )
-                                    val draft = response.catalog.exportToolCallDraft(
-                                        summary.nativeName, state.draftArguments)
-                                    OutlinedButton(
-                                        onClick = {
-                                            if (draft != null && copyPlainTextToClipboard(
-                                                    context, "MCP tools/call draft", draft, sensitive = true
-                                                )) state.copiedCallDraft = summary.nativeName
-                                        },
-                                        enabled = draft != null,
-                                        modifier = Modifier.testTag("mcp_copy_call_draft"),
-                                    ) {
-                                        Text(if (state.copiedCallDraft == summary.nativeName)
-                                            "Copied call draft" else "Copy tools/call draft")
-                                    }
-                                    Text(
-                                        "Local draft only. JSON syntax is checked, not the " +
-                                            "server schema. No tool runs and nothing is sent.",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    McpToolCard(state, response.catalog, summary)
                 }
             }
             is McpDiscoveryOutcome.Failure -> item {
                 Text(
-                    text = when (response.reason) {
-                        McpDiscoveryFailure.INVALID_ENDPOINT ->
-                            "Enter a public HTTPS URL without credentials, query or fragment."
-                        McpDiscoveryFailure.INVALID_RESPONSE ->
-                            "No compatible MCP 2026-07-28 catalog. Legacy or authenticated " +
-                                "servers are not supported in this preview yet."
-                        McpDiscoveryFailure.NETWORK_FAILURE ->
-                            "Cannot reach this endpoint. Check the address and network."
-                        McpDiscoveryFailure.TIMEOUT ->
-                            "Discovery timed out before all pages arrived."
-                    },
+                    text = mcpDiscoveryFailureMessage(response.reason),
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.testTag("mcp_discovery_error"),
                 )
@@ -238,4 +173,108 @@ internal fun McpDiscoveryPanel(state: McpPreviewState, modifier: Modifier = Modi
             null -> Unit
         }
     }
+}
+
+@Composable
+private fun McpToolCard(state: McpPreviewState, catalog: McpToolCatalog, summary: McpToolSummary) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(summary.title, style = MaterialTheme.typography.titleSmall,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(summary.remoteName, style = MaterialTheme.typography.labelSmall,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (summary.description != summary.remoteName) {
+                Text(summary.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+            OutlinedButton(
+                onClick = {
+                    state.selectedTool = if (state.selectedTool == summary.nativeName) null
+                    else summary.nativeName
+                    state.copiedTool = null
+                    state.copiedCallDraft = null
+                    state.draftArguments = "{}"
+                }
+            ) {
+                Text(if (state.selectedTool == summary.nativeName) "Hide schema"
+                    else "Inspect schema")
+            }
+            if (state.selectedTool == summary.nativeName) {
+                McpToolDetails(state, catalog, summary.nativeName)
+            }
+        }
+    }
+}
+
+@Composable
+private fun McpToolDetails(state: McpPreviewState, catalog: McpToolCatalog, nativeName: String) {
+    val context = LocalContext.current
+    val schema = catalog.loadDefinition(nativeName)
+        ?.inputSchema?.toString()
+    if (schema != null) {
+        Text(schema.take(2000) +
+            if (schema.length > 2000) "\n… Preview truncated" else "",
+            style = MaterialTheme.typography.bodySmall)
+        val spec = catalog.exportToolSpec(nativeName)
+        if (spec != null) {
+            OutlinedButton(
+                onClick = {
+                    if (copyPlainTextToClipboard(
+                            context, "MCP tool spec", spec, sensitive = true
+                        )) state.copiedTool = nativeName
+                },
+                modifier = Modifier.testTag("mcp_copy_selected_tool"),
+            ) {
+                Text(if (state.copiedTool == nativeName)
+                    "Copied spec" else "Copy tool spec")
+            }
+        }
+        OutlinedTextField(
+            value = state.draftArguments,
+            onValueChange = {
+                state.draftArguments = it.take(8_192)
+                state.copiedCallDraft = null
+            },
+            label = { Text("tools/call arguments (JSON object)") },
+            minLines = 2,
+            maxLines = 6,
+            modifier = Modifier.fillMaxWidth().testTag("mcp_call_draft_args"),
+        )
+        val draft = catalog.exportToolCallDraft(
+            nativeName, state.draftArguments)
+        OutlinedButton(
+            onClick = {
+                if (draft != null && copyPlainTextToClipboard(
+                        context, "MCP tools/call draft", draft, sensitive = true
+                    )) state.copiedCallDraft = nativeName
+            },
+            enabled = draft != null,
+            modifier = Modifier.testTag("mcp_copy_call_draft"),
+        ) {
+            Text(if (state.copiedCallDraft == nativeName)
+                "Copied call draft" else "Copy tools/call draft")
+        }
+        Text(
+            "Local draft only. JSON syntax is checked, not the " +
+                "server schema. No tool runs and nothing is sent.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun mcpDiscoveryFailureMessage(reason: McpDiscoveryFailure): String = when (reason) {
+    McpDiscoveryFailure.INVALID_ENDPOINT ->
+        "Enter a public HTTPS URL without credentials, query or fragment."
+    McpDiscoveryFailure.INVALID_RESPONSE ->
+        "No compatible MCP 2026-07-28 catalog. Legacy or authenticated " +
+            "servers are not supported in this preview yet."
+    McpDiscoveryFailure.NETWORK_FAILURE ->
+        "Cannot reach this endpoint. Check the address and network."
+    McpDiscoveryFailure.TIMEOUT ->
+        "Discovery timed out before all pages arrived."
 }

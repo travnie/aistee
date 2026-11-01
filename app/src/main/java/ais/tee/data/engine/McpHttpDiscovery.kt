@@ -1,6 +1,7 @@
 package ais.tee.data.engine
 
 import ais.tee.data.model.McpToolCatalog
+import ais.tee.data.model.MAX_MCP_ENDPOINT_LENGTH
 import ais.tee.data.streambench.StreambenchPublicDns
 import java.io.ByteArrayOutputStream
 import java.io.BufferedReader
@@ -44,13 +45,15 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 
+private const val JSON_RPC_FIELD = "jsonrpc"
+private const val JSON_RPC_ID_FIELD = "id"
 private const val MCP_VERSION = "2026-07-28"
 private const val MAX_RESPONSE_BYTES = 256_000
 private const val MAX_REMOTE_JSON_DEPTH = 64
 private const val MAX_CATALOG_PAGES = 16
 private const val TOTAL_DISCOVERY_MILLIS = 40_000L
 private const val MAX_CURSOR_LENGTH = 2_048
-private val MCP_SERVER_ID = Regex("^[A-Za-z0-9_-]{1,20}$")
+internal val MCP_SERVER_ID = Regex("^[A-Za-z0-9_-]{1,20}$")
 private val JSON_CONTENT_TYPE = "application/json; charset=utf-8".toMediaType()
 
 /** Coarse metadata-only failure reasons for a future user-reviewed connection diagnostic. */
@@ -103,7 +106,7 @@ internal class McpHttpDiscovery(
             if (!MCP_SERVER_ID.matches(serverId)) {
                 return@withContext McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_ENDPOINT)
             }
-            val url = validateEndpoint(endpoint)
+            val url = validatedMcpEndpoint(endpoint)
                 ?: return@withContext McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_ENDPOINT)
             try {
                 val generation = ByteArray(16).also(random::nextBytes)
@@ -161,20 +164,9 @@ internal class McpHttpDiscovery(
             }
         } ?: McpDiscoveryOutcome.Failure(McpDiscoveryFailure.TIMEOUT)
 
-    private fun validateEndpoint(raw: String): HttpUrl? {
-        val url = raw.toHttpUrlOrNull() ?: return null
-        if (url.scheme != "https" || url.username.isNotEmpty() || url.password.isNotEmpty() ||
-            url.query != null || url.fragment != null) return null
-        // IP literals and local-only hostnames are not accepted. DNS resolution is independently
-        // filtered against public addresses for every connection.
-        if (url.host.contains(':') || url.host.matches(Regex("^[0-9.]+$")) ||
-            !url.host.contains('.') || url.host.endsWith(".local")) return null
-        return url
-    }
-
     private fun toolsListRequest(id: Int, cursor: String?): String = buildJsonObject {
-        put("jsonrpc", "2.0")
-        put("id", id)
+        put(JSON_RPC_FIELD, "2.0")
+        put(JSON_RPC_ID_FIELD, id)
         put("method", "tools/list")
         putJsonObject("params") {
             if (cursor != null) put("cursor", cursor)
@@ -255,7 +247,7 @@ internal class McpHttpDiscovery(
                 if (!hasSafeMcpJsonDepth(data)) return false
                 val envelope = runCatching { Json.parseToJsonElement(data) as? JsonObject }
                     .getOrNull() ?: return false
-                if (envelope.containsKey("id")) {
+                if (envelope.containsKey(JSON_RPC_ID_FIELD)) {
                     val response = verifiedResponse(data, expectedId) ?: return false
                     if (completed != null) return false
                     completed = response
@@ -263,7 +255,7 @@ internal class McpHttpDiscovery(
                 }
                 val method = (envelope["method"] as? JsonPrimitive)?.takeIf { it.isString }
                     ?.contentOrNull
-                return envelope["jsonrpc"]?.toString() == "\"2.0\"" &&
+                return envelope[JSON_RPC_FIELD]?.toString() == "\"2.0\"" &&
                     method?.startsWith("notifications/") == true
             }
             var firstLine = true
@@ -292,8 +284,8 @@ internal class McpHttpDiscovery(
         if (!hasSafeMcpJsonDepth(raw)) return null
         val obj = runCatching { Json.parseToJsonElement(raw) as? JsonObject }
             .getOrNull() ?: return null
-        val id = obj["id"] as? JsonPrimitive
-        if (obj["jsonrpc"]?.toString() != "\"2.0\"" ||
+        val id = obj[JSON_RPC_ID_FIELD] as? JsonPrimitive
+        if (obj[JSON_RPC_FIELD]?.toString() != "\"2.0\"" ||
             id == null || id.isString || id.intOrNull != expectedId ||
             obj["error"] != null) return null
         val result = obj["result"] as? JsonObject ?: return null
@@ -343,4 +335,16 @@ internal class McpHttpDiscovery(
             .onUnmappableCharacter(CodingErrorAction.REPORT)
             .decode(ByteBuffer.wrap(bytes.toByteArray())).toString()
     }
+}
+
+internal fun validatedMcpEndpoint(raw: String): HttpUrl? {
+    if (raw.length > MAX_MCP_ENDPOINT_LENGTH || raw.any { it.isISOControl() }) return null
+    val url = raw.toHttpUrlOrNull() ?: return null
+    if (url.scheme != "https" || url.username.isNotEmpty() || url.password.isNotEmpty() ||
+        url.query != null || url.fragment != null) return null
+    // IP literals and local-only hostnames are not accepted. DNS resolution is independently
+    // filtered against public addresses for every connection.
+    if (url.host.contains(':') || url.host.matches(Regex("^[0-9.]+$")) ||
+        !url.host.contains('.') || url.host.endsWith(".local")) return null
+    return url.takeIf { it.toString().length <= MAX_MCP_ENDPOINT_LENGTH }
 }

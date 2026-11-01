@@ -16,6 +16,7 @@ Delivered feature index, reviewed **29 October 2026** against the documented mai
 - Project Library v2: stable IDs, revisions, updated time, SHA-256 identity, asset kind/origin, optimistic conflict checks and safe v1 migration.
 - Markdown Workspace and Docbench preview/repair/format for Markdown fences and JSON, JSON5 and YAML, with user-reviewed save-back and revision checks.
 - Local `o200k_base` token counting, Bench tools, native text-to-QR SVG generation, editable `SKILL.md` bundles and isolated active-skill execution with digest-bound opt-in trust and per-call consent. No automatic network skill execution.
+- Studio MCP: up to eight named endpoint configurations, encrypted on-device and excluded from Android backup, with explicit selection/update/removal and manual unauthenticated MCP 2026-07-28 discovery. Tool summaries are searchable; schemas load on selection and tool specs/call drafts can be copied offline. Saving/selecting never connects or grants access; catalogs remain ephemeral. Authentication, tool execution and native-chat integration remain planned.
 
 ## 💬 Native conversation ergonomics
 
