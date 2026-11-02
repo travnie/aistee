@@ -70,6 +70,7 @@ internal enum class McpDiscoveryFailure {
 internal sealed interface McpDiscoveryOutcome {
     data class Success(val catalog: McpToolCatalog) : McpDiscoveryOutcome
     data class Failure(val reason: McpDiscoveryFailure) : McpDiscoveryOutcome
+    data class AuthorizationRequired(val challenge: McpAuthorizationChallenge) : McpDiscoveryOutcome
 }
 
 /**
@@ -160,6 +161,9 @@ internal class McpHttpDiscovery(
                 val catalog = McpToolCatalog.fromToolsListResponses(serverId, generation, pages)
                 if (catalog == null) McpDiscoveryOutcome.Failure(McpDiscoveryFailure.INVALID_RESPONSE)
                 else McpDiscoveryOutcome.Success(catalog)
+            } catch (required: McpAuthorizationRequiredException) { // skipcq: KT-W1064
+                // HTTP callbacks propagate 401 challenges through suspension.
+                McpDiscoveryOutcome.AuthorizationRequired(required.challenge)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: IOException) { // skipcq: KT-W1064
@@ -248,6 +252,9 @@ internal class McpHttpDiscovery(
                 override fun onResponse(call: Call, response: Response) {
                     val result = runCatching {
                         response.use {
+                            if (it.code == 401) throw McpAuthorizationRequiredException(
+                                McpAuthorizationChallenge.fromResponse(request.url, it)
+                            )
                             if (it.code != 200) return@use null
                             val body = it.body ?: return@use null
                             val mime = body.contentType()?.let { type ->
@@ -349,33 +356,6 @@ internal class McpHttpDiscovery(
         return obj.toString()
     }
 
-    /**
-     * Reject oversized nesting before invoking kotlinx.serialization's recursive JSON parser.
-     * Count object/array nesting outside of strings, respecting backslash escapes.
-     * The normal JSON decoder still validates syntax and schema after this bound.
-     */
-    private fun hasSafeMcpJsonDepth(raw: String): Boolean {
-        var depth = 0
-        var inString = false
-        var escaped = false
-        for (char in raw) {
-            if (inString) {
-                when {
-                    escaped -> escaped = false
-                    char == '\\' -> escaped = true
-                    char == '"' -> inString = false
-                }
-            } else {
-                when (char) {
-                    '"' -> inString = true
-                    '{', '[' -> if (++depth > MAX_REMOTE_JSON_DEPTH) return false
-                    '}', ']' -> if (--depth < 0) return false
-                }
-            }
-        }
-        return !inString && depth == 0
-    }
-
     private fun readBoundedUtf8(stream: java.io.InputStream): String {
         val bytes = ByteArrayOutputStream()
         val chunk = ByteArray(8_192)
@@ -419,4 +399,31 @@ internal fun oneShotMcpBody(json: String): RequestBody {
         override fun writeTo(sink: BufferedSink) = delegate.writeTo(sink)
         override fun isOneShot() = true
     }
+}
+
+/**
+ * Reject oversized nesting before invoking kotlinx.serialization's recursive JSON parser.
+ * Count object/array nesting outside of strings, respecting backslash escapes.
+ * The normal JSON decoder still validates syntax and schema after this bound.
+ */
+internal fun hasSafeMcpJsonDepth(raw: String, maxDepth: Int = MAX_REMOTE_JSON_DEPTH): Boolean {
+    var depth = 0
+    var inString = false
+    var escaped = false
+    for (char in raw) {
+        if (inString) {
+            when {
+                escaped -> escaped = false
+                char == '\\' -> escaped = true
+                char == '"' -> inString = false
+            }
+        } else {
+            when (char) {
+                '"' -> inString = true
+                '{', '[' -> if (++depth > maxDepth) return false
+                '}', ']' -> if (--depth < 0) return false
+            }
+        }
+    }
+    return !inString && depth == 0
 }

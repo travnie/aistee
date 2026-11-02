@@ -11,6 +11,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import ais.tee.data.engine.McpAuthorizationInspection
+import ais.tee.data.engine.McpAuthorizationInspector
+import ais.tee.data.model.McpProtectedResourceMetadata
+import ais.tee.data.model.McpAuthorizationServerMetadata
 import ais.tee.data.engine.McpDiscoveryFailure
 import ais.tee.data.engine.McpDiscoveryOutcome
 import ais.tee.data.model.McpServerConfiguration
@@ -40,6 +44,8 @@ internal class McpPreviewState {
     var calling by mutableStateOf(false)
     var query by mutableStateOf("")
     var outcome by mutableStateOf<McpDiscoveryOutcome?>(null)
+    var resourceInspection by mutableStateOf<McpAuthorizationInspection<McpProtectedResourceMetadata>?>(null)
+    var authorizationInspection by mutableStateOf<McpAuthorizationInspection<McpAuthorizationServerMetadata>?>(null)
     var selectedTool by mutableStateOf<String?>(null)
     var copiedTool by mutableStateOf<String?>(null)
     var draftArguments by mutableStateOf("{}")
@@ -84,6 +90,8 @@ internal class McpPreviewState {
     fun reset() {
         cancelPending()
         outcome = null
+        resourceInspection = null
+        authorizationInspection = null
         discoveredEndpoint = null
         callOutcome = null
         selectedTool = null
@@ -102,8 +110,10 @@ internal fun McpDiscoveryPanel(
     serverStore: McpServerStore? = null,
     discovery: (suspend (String, String) -> McpDiscoveryOutcome)? = null,
     toolCaller: (suspend (McpToolCallReview) -> McpToolCallOutcome)? = null,
+    authorizationInspector: McpAuthorizationInspector? = null,
 ) {
     val transport = remember { McpHttpDiscovery() }
+    val authInspector = remember(authorizationInspector) { authorizationInspector ?: McpAuthorizationInspector() }
     val scope = rememberCoroutineScope()
     val onRun: (McpToolCallReview) -> Unit = { review ->
         state.executeCall(review, scope, toolCaller ?: transport::callToolChecked)
@@ -162,7 +172,7 @@ internal fun McpDiscoveryPanel(
                         },
                         enabled = state.endpoint.isNotBlank() && !state.busy,
                         modifier = Modifier.testTag("mcp_discover"),
-                    ) { Text(if (state.busy) "Discovering…" else "Discover tools") }
+                    ) { Text(if (state.busy && state.outcome == null) "Discovering…" else "Discover tools") }
                     Text(
                         "No account cookies, API keys, chats or local files are attached. " +
                             "Manual tool calls require a separate review and confirmation.",
@@ -196,6 +206,9 @@ internal fun McpDiscoveryPanel(
                     items(tools, key = { it.nativeName }) { summary ->
                         McpToolCard(state, response.catalog, summary, onRun)
                     }
+                }
+                is McpDiscoveryOutcome.AuthorizationRequired -> item {
+                    McpAuthorizationControls(state, response.challenge, scope, authInspector)
                 }
                 is McpDiscoveryOutcome.Failure -> item {
                     Text(
@@ -313,8 +326,7 @@ private fun mcpDiscoveryFailureMessage(reason: McpDiscoveryFailure): String = wh
     McpDiscoveryFailure.INVALID_ENDPOINT ->
         "Enter a public HTTPS URL without credentials, query or fragment."
     McpDiscoveryFailure.INVALID_RESPONSE ->
-        "No compatible MCP 2026-07-28 catalog. Legacy or authenticated " +
-            "servers are not supported in this preview yet."
+        "No compatible MCP 2026-07-28 catalog. Legacy servers are not supported in this preview."
     McpDiscoveryFailure.NETWORK_FAILURE ->
         "Cannot reach this endpoint. Check the address and network."
     McpDiscoveryFailure.TIMEOUT ->
