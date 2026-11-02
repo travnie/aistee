@@ -14,10 +14,12 @@ import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
-import okio.Timeout
 import org.junit.Assert.*
 import org.junit.Test
 
+private const val METADATA_ADDRESS = "https://identity.example.org/resource"
+private const val WRITE_SCOPE = "tools:write"
+private const val RESOURCE_HOST = "tools.example.org"
 private const val RESOURCE = "https://tools.example.org/mcp"
 private const val ISSUER = "https://auth.example.org/tenant"
 private const val PRM = """{"resource":"https://tools.example.org/mcp","authorization_servers":["https://auth.example.org/tenant"],"scopes_supported":["tools:read"]}"""
@@ -43,8 +45,8 @@ class McpAuthorizationInspectorTest {
         val outcome = transport.discoverChecked(RESOURCE, "demo") as McpDiscoveryOutcome.AuthorizationRequired
         assertEquals(1, requests)
         assertEquals(RESOURCE, outcome.challenge.endpoint)
-        assertEquals("https://identity.example.org/resource", outcome.challenge.resourceMetadata)
-        assertEquals(listOf("files:read", "tools:write"), outcome.challenge.scopes)
+        assertEquals(METADATA_ADDRESS, outcome.challenge.resourceMetadata)
+        assertEquals(listOf("files:read", WRITE_SCOPE), outcome.challenge.scopes)
         assertFalse(outcome.toString().contains("identity.example.org"))
     }
 
@@ -58,13 +60,13 @@ class McpAuthorizationInspectorTest {
             if (request.url.encodedPath.endsWith("/mcp")) response(request, "", 404)
             else response(request, PRM)
         })
-        val result = inspector.inspectResource(McpAuthorizationChallenge(RESOURCE, scopes = listOf("tools:write")))
+        val result = inspector.inspectResource(McpAuthorizationChallenge(RESOURCE, scopes = listOf(WRITE_SCOPE)))
             as McpAuthorizationInspection.Found
         assertEquals(listOf("https://tools.example.org/.well-known/oauth-protected-resource/mcp",
             "https://tools.example.org/.well-known/oauth-protected-resource"), visited)
-        assertEquals(listOf("tools:write"), result.metadata.scopes)
+        assertEquals(listOf(WRITE_SCOPE), result.metadata.scopes)
         assertEquals(listOf(ISSUER), result.metadata.authorizationServers)
-        assertFalse(result.toString().contains("tools.example.org"))
+        assertFalse(result.toString().contains(RESOURCE_HOST))
     }
 
     @Test fun explicitCrossOriginMetadataIsUsedWithoutGuessingFallbacks() = runBlocking {
@@ -74,19 +76,35 @@ class McpAuthorizationInspectorTest {
             response(request, PRM)
         })
         assertTrue(inspector.inspectResource(McpAuthorizationChallenge(RESOURCE,
-            "https://identity.example.org/resource")) is McpAuthorizationInspection.Found)
-        assertEquals(listOf("https://identity.example.org/resource"), visited)
+            METADATA_ADDRESS)) is McpAuthorizationInspection.Found)
+        assertEquals(listOf(METADATA_ADDRESS), visited)
     }
 
     @Test fun hostileMetadataLocationsAreRejectedBeforeNetworking() = runBlocking {
         var requests = 0
         val inspector = McpAuthorizationInspector(client { request -> requests++; response(request, PRM) })
         listOf("http://identity.example.org/metadata", "https://127.0.0.1/metadata", "https://host.local/metadata",
-            "https://user:password@identity.example.org/metadata", "https://identity.example.org/?secret=x",
+            "https://user:password@identity.example.org/metadata",
             "https://identity.example.org/#fragment").forEach { location ->
             assertInvalid(inspector.inspectResource(McpAuthorizationChallenge(RESOURCE, location)))
         }
         assertEquals(0, requests)
+    }
+
+    @Test fun metadataAndOAuthEndpointQueriesArePreserved() = runBlocking {
+        val visited = mutableListOf<String>()
+        val inspector = McpAuthorizationInspector(client { request ->
+            visited += request.url.toString()
+            response(request, if (request.url.host == RESOURCE_HOST) PRM
+                else AS_METADATA.replace("/authorize", "/authorize?tenant=one").replace("/token", "/token?tenant=one"))
+        })
+        val address = "$METADATA_ADDRESS?tenant=one"
+        val resource = (inspector.inspectResource(McpAuthorizationChallenge(RESOURCE, address)) as McpAuthorizationInspection.Found).metadata
+        val server = inspector.inspectServer(resource, ISSUER) as McpAuthorizationInspection.Found
+        assertEquals(address, visited.first())
+        assertEquals("https://auth.example.org/authorize?tenant=one", server.metadata.authorizationEndpoint)
+        assertEquals("https://auth.example.org/token?tenant=one", server.metadata.tokenEndpoint)
+        assertEquals(2, visited.size)
     }
 
     @Test fun invalidResourceAndScopeMetadataFailClosed() = runBlocking {
@@ -117,7 +135,7 @@ class McpAuthorizationInspectorTest {
         val inspector = McpAuthorizationInspector(client { request ->
             visited += request.url.toString()
             when {
-                request.url.host == "tools.example.org" -> response(request, PRM)
+                request.url.host == RESOURCE_HOST -> response(request, PRM)
                 request.url.encodedPath == "/tenant/.well-known/openid-configuration" -> response(request, AS_METADATA)
                 else -> response(request, "", 404)
             }
@@ -135,11 +153,27 @@ class McpAuthorizationInspectorTest {
         assertFalse(result.toString().contains("auth.example.org"))
     }
 
+    @Test fun trailingSlashesAreRemovedOnlyFromDiscoveryPaths() = runBlocking {
+        val visited = mutableListOf<String>()
+        val inspector = McpAuthorizationInspector(client { request ->
+            visited += request.url.toString()
+            response(request, if (request.url.host == RESOURCE_HOST)
+                PRM.replace(RESOURCE, "$RESOURCE/").replace(ISSUER, "$ISSUER/")
+            else AS_METADATA.replace(ISSUER, "$ISSUER/"))
+        })
+        val resource = (inspector.inspectResource(McpAuthorizationChallenge("$RESOURCE/")) as McpAuthorizationInspection.Found).metadata
+        val server = inspector.inspectServer(resource, "$ISSUER/") as McpAuthorizationInspection.Found
+        assertEquals(listOf("https://tools.example.org/.well-known/oauth-protected-resource/mcp",
+            "https://auth.example.org/.well-known/oauth-authorization-server/tenant"), visited)
+        assertEquals("$RESOURCE/", resource.resource)
+        assertEquals("$ISSUER/", server.metadata.issuer)
+    }
+
     @Test fun unlistedIssuersAndMismatchedIssuerMetadataAreRejected() = runBlocking {
         var requests = 0
         val inspector = McpAuthorizationInspector(client { request ->
             requests++
-            response(request, if (request.url.host == "tools.example.org") PRM
+            response(request, if (request.url.host == RESOURCE_HOST) PRM
                 else AS_METADATA.replace(ISSUER, "$ISSUER/"))
         })
         val resource = (inspector.inspectResource(McpAuthorizationChallenge(RESOURCE)) as McpAuthorizationInspection.Found).metadata
@@ -160,16 +194,13 @@ class McpAuthorizationInspectorTest {
     @Test fun cancellingInspectionCancelsTheActiveCall() = runBlocking {
         val enqueued = CompletableDeferred<Unit>()
         var cancelled = false
+        val unusedClient = OkHttpClient()
         val inspector = McpAuthorizationInspector(Call.Factory { request ->
-            object : Call {
-                override fun request() = request
-                override fun execute(): Response = error("Async only")
+            val delegate = unusedClient.newCall(request)
+            object : Call by delegate {
                 override fun enqueue(responseCallback: Callback) { enqueued.complete(Unit) }
-                override fun cancel() { cancelled = true }
-                override fun isExecuted() = true
+                override fun cancel() { cancelled = true; delegate.cancel() }
                 override fun isCanceled() = cancelled
-                override fun timeout() = Timeout.NONE
-                override fun clone(): Call = error("No retry")
             }
         })
         val pending = async { inspector.inspectResource(McpAuthorizationChallenge(RESOURCE)) }

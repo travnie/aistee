@@ -33,7 +33,7 @@ internal fun McpAuthorizationControls(
             style = MaterialTheme.typography.bodySmall)
         Text("Resource metadata: " + (challenge.resourceMetadata?.take(2_048)
             ?: "Well-known location at ${challenge.endpoint}"), style = MaterialTheme.typography.bodySmall)
-        Text("Checking contacts that address. Each issuer is contacted only when you select it below. " +
+        Text("This check contacts that address. Each issuer is contacted only when you select it below. " +
             "These details are supplied by the server and do not establish trust.", style = MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick = {
             state.resourceInspection = null
