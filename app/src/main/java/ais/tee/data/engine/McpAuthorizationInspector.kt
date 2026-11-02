@@ -1,5 +1,6 @@
 package ais.tee.data.engine
 
+import ais.tee.data.model.MAX_MCP_ENDPOINT_LENGTH
 import ais.tee.data.model.McpAuthorizationServerMetadata
 import ais.tee.data.model.McpProtectedResourceMetadata
 import java.io.IOException
@@ -19,6 +20,7 @@ import kotlinx.serialization.json.booleanOrNull
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.Response
 import kotlin.coroutines.resume
@@ -30,7 +32,7 @@ private const val METADATA_TIMEOUT_MS = 40_000L
 private const val RESOURCE_WELL_KNOWN = "/.well-known/oauth-protected-resource"
 
 /** Ephemeral 401 context. Header URLs are untrusted and never fetched automatically. */
-internal class McpAuthorizationChallenge(
+internal data class McpAuthorizationChallenge(
     val endpoint: String,
     val resourceMetadata: String? = null,
     val scopes: List<String>? = null,
@@ -67,7 +69,7 @@ internal class McpAuthorizationInspector(private val calls: Call.Factory = secur
             val endpoint = validatedMcpEndpoint(challenge.endpoint) ?: return@inspect null
             val explicit = challenge.resourceMetadata
             val urls = if (explicit != null) {
-                listOf(validatedMcpEndpoint(explicit) ?: return@inspect null)
+                listOf(validatedMetadataEndpoint(explicit) ?: return@inspect null)
             } else {
                 wellKnownUrls(endpoint, RESOURCE_WELL_KNOWN)
             }
@@ -97,16 +99,16 @@ internal class McpAuthorizationInspector(private val calls: Call.Factory = secur
             // RFC 8414 issuer equality is exact; do not normalize the advertised identifier.
             if (document.string("issuer") != issuer) return@inspect null
             val authorization = document.string("authorization_endpoint")
-                ?.takeIf { validatedMcpEndpoint(it) != null } ?: return@inspect null
+                ?.takeIf { validatedMetadataEndpoint(it) != null } ?: return@inspect null
             val token = document.string("token_endpoint")
-                ?.takeIf { validatedMcpEndpoint(it) != null } ?: return@inspect null
+                ?.takeIf { validatedMetadataEndpoint(it) != null } ?: return@inspect null
             val methods = document.strings("code_challenge_methods_supported") ?: return@inspect null
             val clientMetadata = document["client_id_metadata_document_supported"]?.let {
                 (it as? JsonPrimitive)?.takeIf { value -> !value.isString }?.booleanOrNull
                     ?: return@inspect null
             } ?: false
             val registration = document["registration_endpoint"]?.let {
-                document.string("registration_endpoint")?.takeIf { value -> validatedMcpEndpoint(value) != null }
+                document.string("registration_endpoint")?.takeIf { value -> validatedMetadataEndpoint(value) != null }
                     ?: return@inspect null
             }
             McpAuthorizationServerMetadata(issuer, authorization, token, "S256" in methods,
@@ -175,7 +177,7 @@ internal class McpAuthorizationInspector(private val calls: Call.Factory = secur
 }
 
 private fun wellKnownUrls(url: HttpUrl, suffix: String): List<HttpUrl> = listOf(
-    url.newBuilder().encodedPath(suffix + url.encodedPath.takeUnless { it == "/" }.orEmpty()).build(),
+    url.newBuilder().encodedPath(suffix + url.encodedPath.trimEnd('/')).build(),
     url.newBuilder().encodedPath(suffix).build(),
 ).distinct()
 
@@ -205,4 +207,12 @@ private fun readMetadataBytes(input: InputStream): ByteArray {
         size += read
     }
     return buffer.copyOf(size)
+}
+
+/** OAuth endpoint and metadata URLs may contain a query, unlike resource/issuer identifiers. */
+private fun validatedMetadataEndpoint(raw: String): HttpUrl? {
+    if (raw.length > MAX_MCP_ENDPOINT_LENGTH || raw.any { it.isISOControl() }) return null
+    val url = raw.toHttpUrlOrNull() ?: return null
+    val withoutQuery = url.newBuilder().query(null).build().toString()
+    return url.takeIf { it.toString().length <= MAX_MCP_ENDPOINT_LENGTH && validatedMcpEndpoint(withoutQuery) != null }
 }
