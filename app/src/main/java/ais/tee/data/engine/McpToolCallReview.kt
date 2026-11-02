@@ -39,7 +39,7 @@ internal class McpToolCallReview private constructor(
     }
 }
 
-internal enum class McpToolCallFailure { BLOCKED, INVALID_RESPONSE, NETWORK_FAILURE, TIMEOUT, CANCELLED, DENIED }
+internal enum class McpToolCallFailure { BLOCKED, AUTHORIZATION_REQUIRED, INVALID_RESPONSE, NETWORK_FAILURE, TIMEOUT, CANCELLED, DENIED }
 
 internal sealed interface McpToolCallOutcome {
     data class Completed(val result: NativeToolResult) : McpToolCallOutcome

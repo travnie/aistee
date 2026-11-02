@@ -82,6 +82,8 @@ private fun McpManualCallResult(outcome: McpToolCallOutcome) {
             when (outcome.reason) {
                 McpToolCallFailure.DENIED -> "Call denied. Nothing sent."
                 McpToolCallFailure.BLOCKED -> "Review expired or request unsupported. Nothing sent."
+                McpToolCallFailure.AUTHORIZATION_REQUIRED ->
+                    "Server requires sign-in. Authenticated calls are not available yet."
                 McpToolCallFailure.CANCELLED -> "Request stopped locally."
                 else -> "Result unknown: no supported response. The server may have acted. " +
                     "Trying again can duplicate remote changes."
