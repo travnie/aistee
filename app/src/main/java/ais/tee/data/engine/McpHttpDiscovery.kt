@@ -208,6 +208,9 @@ internal class McpHttpDiscovery(
                     val parsed = result?.let { parseMcpToolResult(review.call, it) }
                     if (parsed == null) McpToolCallOutcome.Failure(McpToolCallFailure.INVALID_RESPONSE)
                     else McpToolCallOutcome.Completed(parsed)
+                } catch (_: McpAuthorizationRequiredException) { // skipcq: KT-W1064
+                    // A 401 is an authorization response, not a network outage.
+                    McpToolCallOutcome.Failure(McpToolCallFailure.AUTHORIZATION_REQUIRED)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: IOException) { // skipcq: KT-W1064

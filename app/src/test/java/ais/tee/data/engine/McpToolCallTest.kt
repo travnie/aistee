@@ -76,6 +76,20 @@ class McpToolCallTest {
         assertEquals(1, requests)
     }
 
+    @Test fun authorizationRequiredDoesNotRetryOrReuseTheApproval() = runBlocking {
+        var requests = 0
+        val transport = McpHttpDiscovery(OkHttpClient.Builder().addInterceptor { chain ->
+            requests++
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(401).message("Unauthorized")
+                .header("WWW-Authenticate", "Bearer resource_metadata=\"https://identity.example.org/resource\"")
+                .body("private response".toResponseBody()).build()
+        }.build())
+        val review = review().also { it.approveOnce() }
+        assertEquals(McpToolCallOutcome.Failure(McpToolCallFailure.AUTHORIZATION_REQUIRED), transport.callToolChecked(review))
+        assertEquals(McpToolCallOutcome.Failure(McpToolCallFailure.BLOCKED), transport.callToolChecked(review))
+        assertEquals(1, requests)
+    }
+
     @Test fun namesUseTheRequiredSentinelEncodingWithoutHeaderInjection() {
         assertEquals(REMOTE_TOOL_NAME, mcpNameHeader("sample.echo"))
         for (name in listOf("世界", " x ", "x\r\nCookie: secret", "=?base64?literal?=")) {

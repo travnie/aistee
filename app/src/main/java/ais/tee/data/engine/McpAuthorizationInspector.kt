@@ -5,6 +5,7 @@ import ais.tee.data.model.McpAuthorizationServerMetadata
 import ais.tee.data.model.McpProtectedResourceMetadata
 import java.io.IOException
 import java.io.InputStream
+import java.io.InterruptedIOException
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
 import kotlinx.coroutines.CancellationException
@@ -43,8 +44,9 @@ internal data class McpAuthorizationChallenge(
         fun fromResponse(endpoint: HttpUrl, response: Response): McpAuthorizationChallenge {
             val headers = response.headers.values("WWW-Authenticate")
             if (headers.sumOf { it.length } > 8_192) return McpAuthorizationChallenge(endpoint.toString())
-            val bearer = response.challenges().filter { it.scheme.equals("Bearer", ignoreCase = true) }
-                .singleOrNull()
+            val bearers = response.challenges().filter { it.scheme.equals("Bearer", ignoreCase = true) }
+            val bearer = bearers.firstOrNull { it.authParams.containsKey("resource_metadata") }
+                ?: bearers.firstOrNull()
             val params = bearer?.authParams.orEmpty()
             return McpAuthorizationChallenge(endpoint.toString(), params["resource_metadata"],
                 params["scope"]?.let { parseScopeString(it) ?: listOf("") })
@@ -123,6 +125,9 @@ internal class McpAuthorizationInspector(private val calls: Call.Factory = secur
                         ?: McpAuthorizationInspection.Failed(McpAuthorizationFailure.INVALID_METADATA)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
+                } catch (_: InterruptedIOException) { // skipcq: KT-W1064
+                    // OkHttp socket/call timeouts resume through the same callback.
+                    McpAuthorizationInspection.Failed(McpAuthorizationFailure.TIMEOUT)
                 } catch (_: IOException) { // skipcq: KT-W1064
                     // Async OkHttp failures resume the suspended metadata request.
                     McpAuthorizationInspection.Failed(McpAuthorizationFailure.NETWORK_FAILURE)

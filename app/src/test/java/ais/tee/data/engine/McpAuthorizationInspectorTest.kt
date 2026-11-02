@@ -1,6 +1,7 @@
 package ais.tee.data.engine
 
 import java.io.IOException
+import java.io.InterruptedIOException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -17,6 +18,8 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Test
 
+private const val RESOURCE_METADATA_URL = "https://tools.example.org/.well-known/oauth-protected-resource/mcp"
+private const val ISSUER_METADATA_URL = "https://auth.example.org/.well-known/oauth-authorization-server/tenant"
 private const val METADATA_ADDRESS = "https://identity.example.org/resource"
 private const val WRITE_SCOPE = "tools:write"
 private const val RESOURCE_HOST = "tools.example.org"
@@ -50,6 +53,24 @@ class McpAuthorizationInspectorTest {
         assertFalse(outcome.toString().contains("identity.example.org"))
     }
 
+    @Test fun multipleBearerChallengesKeepTheSelectedMetadataAndItsScopesTogether() = runBlocking {
+        val transport = McpHttpDiscovery(client { request ->
+            response(request, "", 401).newBuilder()
+                .addHeader("WWW-Authenticate", "Bearer realm=\"other\", scope=\"tools:read\"")
+                .addHeader("WWW-Authenticate", "Bearer resource_metadata=\"$METADATA_ADDRESS\", scope=\"$WRITE_SCOPE\"")
+                .build()
+        })
+        val outcome = transport.discoverChecked(RESOURCE, "demo") as McpDiscoveryOutcome.AuthorizationRequired
+        assertEquals(METADATA_ADDRESS, outcome.challenge.resourceMetadata)
+        assertEquals(listOf(WRITE_SCOPE), outcome.challenge.scopes)
+    }
+
+    @Test fun okhttpCallTimeoutIsReportedAsTimeout() = runBlocking {
+        val inspector = McpAuthorizationInspector(client { throw InterruptedIOException("private timeout details") })
+        assertEquals(McpAuthorizationInspection.Failed(McpAuthorizationFailure.TIMEOUT),
+            inspector.inspectResource(McpAuthorizationChallenge(RESOURCE)))
+    }
+
     @Test fun resourceFallbackAndChallengeScopesAreBoundToTheEndpoint() = runBlocking {
         val visited = mutableListOf<String>()
         val inspector = McpAuthorizationInspector(client { request ->
@@ -62,7 +83,7 @@ class McpAuthorizationInspectorTest {
         })
         val result = inspector.inspectResource(McpAuthorizationChallenge(RESOURCE, scopes = listOf(WRITE_SCOPE)))
             as McpAuthorizationInspection.Found
-        assertEquals(listOf("https://tools.example.org/.well-known/oauth-protected-resource/mcp",
+        assertEquals(listOf(RESOURCE_METADATA_URL,
             "https://tools.example.org/.well-known/oauth-protected-resource"), visited)
         assertEquals(listOf(WRITE_SCOPE), result.metadata.scopes)
         assertEquals(listOf(ISSUER), result.metadata.authorizationServers)
@@ -95,7 +116,7 @@ class McpAuthorizationInspectorTest {
         val visited = mutableListOf<String>()
         val inspector = McpAuthorizationInspector(client { request ->
             visited += request.url.toString()
-            response(request, if (request.url.host == RESOURCE_HOST) PRM
+            response(request, if (request.url.toString() == "$METADATA_ADDRESS?tenant=one") PRM
                 else AS_METADATA.replace("/authorize", "/authorize?tenant=one").replace("/token", "/token?tenant=one"))
         })
         val address = "$METADATA_ADDRESS?tenant=one"
@@ -143,7 +164,7 @@ class McpAuthorizationInspectorTest {
         val resource = (inspector.inspectResource(McpAuthorizationChallenge(RESOURCE)) as McpAuthorizationInspection.Found).metadata
         assertEquals(1, visited.size)
         val result = inspector.inspectServer(resource, ISSUER) as McpAuthorizationInspection.Found
-        assertEquals(listOf("https://auth.example.org/.well-known/oauth-authorization-server/tenant",
+        assertEquals(listOf(ISSUER_METADATA_URL,
             "https://auth.example.org/.well-known/openid-configuration/tenant",
             "https://auth.example.org/tenant/.well-known/openid-configuration"), visited.drop(1))
         assertEquals(ISSUER, result.metadata.issuer)
@@ -163,8 +184,8 @@ class McpAuthorizationInspectorTest {
         })
         val resource = (inspector.inspectResource(McpAuthorizationChallenge("$RESOURCE/")) as McpAuthorizationInspection.Found).metadata
         val server = inspector.inspectServer(resource, "$ISSUER/") as McpAuthorizationInspection.Found
-        assertEquals(listOf("https://tools.example.org/.well-known/oauth-protected-resource/mcp",
-            "https://auth.example.org/.well-known/oauth-authorization-server/tenant"), visited)
+        assertEquals(listOf(RESOURCE_METADATA_URL,
+            ISSUER_METADATA_URL), visited)
         assertEquals("$RESOURCE/", resource.resource)
         assertEquals("$ISSUER/", server.metadata.issuer)
     }
