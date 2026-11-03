@@ -157,18 +157,31 @@ internal fun WebChatBookmarksDialog(
                                 .testTag("web_bookmarks_list"),
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
+                            val renderedFolders = mutableSetOf<String>()
                             grouped.forEach { (group, entries) ->
-                                item(key = "folder:$group") {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Folder, contentDescription = null,
-                                            modifier = Modifier.size(16.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(group.ifEmpty { "Unfiled" },
-                                            style = MaterialTheme.typography.labelMedium)
+                                val segments = if (group.isEmpty()) listOf("Unfiled") else group.split('/')
+                                segments.indices.forEach { depth ->
+                                    val path = if (group.isEmpty()) "" else segments.take(depth + 1).joinToString("/")
+                                    if (renderedFolders.add(path)) {
+                                        item(key = "folder:$path") {
+                                            Row(
+                                                modifier = Modifier.padding(start = (depth * 16).dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
+                                                Icon(Icons.Default.Folder, contentDescription = null,
+                                                    modifier = Modifier.size(16.dp))
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(segments[depth],
+                                                    style = MaterialTheme.typography.labelMedium)
+                                            }
+                                        }
                                     }
                                 }
                                 items(entries, key = { it.id }) { bookmark ->
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Row(
+                                        modifier = Modifier.padding(start = (segments.size * 16).dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
                                         TextButton(
                                             onClick = {
                                                 if (safeWebChatBookmarkUrl(service, bookmark.url) == bookmark.url) {

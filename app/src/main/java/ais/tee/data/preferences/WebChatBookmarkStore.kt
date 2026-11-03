@@ -44,6 +44,7 @@ internal fun safeWebChatBookmarkUrl(service: WebAiService, raw: String?): String
         uri.port !in listOf(-1, 443) || uri.rawPath.isNullOrBlank() || uri.rawPath == "/" ||
         uri.rawPath.contains("/../") || uri.rawPath.contains("/./")
     ) return null
+    if (uri.path.split('/').any { it == "." || it == ".." }) return null
     if (!providerUrlMatches(service, raw)) return null
     val last = uri.path.trimEnd('/').substringAfterLast('/').lowercase(Locale.ROOT)
     if (last in setOf("login", "logout", "signin", "signup", "oauth", "auth", "settings")) return null

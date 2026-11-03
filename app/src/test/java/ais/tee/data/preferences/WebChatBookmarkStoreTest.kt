@@ -23,6 +23,9 @@ class WebChatBookmarkStoreTest {
             "https://chatgpt.com.evil.test/c/id",
             "https://claude.ai/chat/id",
             "https://chatgpt.com/c/../settings",
+            "https://chatgpt.com/c/..",
+            "https://chatgpt.com/c/%2e%2e",
+            "https://chatgpt.com/c/%2E",
             "https://chatgpt.com/c/id\n"
         ).forEach { assertNull(it, safeWebChatBookmarkUrl(service, it)) }
     }
@@ -65,7 +68,7 @@ class WebChatBookmarkStoreTest {
         assertTrue(store.remove(first.bookmark.id))
         assertEquals(emptyList<WebChatBookmark>(), store.load().bookmarks)
         assertFalse(store.remove(first.bookmark.id))
-        assertTrue(persistence.value?.contains(address) == true)
+        assertFalse(persistence.value?.contains(address) == true)
     }
 
     @Test
