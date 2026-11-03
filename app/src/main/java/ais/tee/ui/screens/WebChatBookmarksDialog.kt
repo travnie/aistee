@@ -26,6 +26,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+internal data class WebBookmarkFolderHeading(val path: String, val name: String, val depth: Int)
+
+internal fun webBookmarkFolderHeadings(folder: String): List<WebBookmarkFolderHeading> {
+    val segments = if (folder.isEmpty()) listOf("Unfiled") else folder.split('/')
+    return segments.indices.map { depth ->
+        WebBookmarkFolderHeading(
+            path = if (folder.isEmpty()) "" else segments.take(depth + 1).joinToString("/"),
+            name = segments[depth],
+            depth = depth,
+        )
+    }
+}
+
 /**
  * All data is user-authored or a user-approved provider URL. Never inspect page contents.
  * Opens only provider-bound, validated references in the already active WebView.
@@ -159,19 +172,18 @@ internal fun WebChatBookmarksDialog(
                         ) {
                             val renderedFolders = mutableSetOf<String>()
                             grouped.forEach { (group, entries) ->
-                                val segments = if (group.isEmpty()) listOf("Unfiled") else group.split('/')
-                                segments.indices.forEach { depth ->
-                                    val path = if (group.isEmpty()) "" else segments.take(depth + 1).joinToString("/")
-                                    if (renderedFolders.add(path)) {
-                                        item(key = "folder:$path") {
+                                val headings = webBookmarkFolderHeadings(group)
+                                headings.forEach { heading ->
+                                    if (renderedFolders.add(heading.path)) {
+                                        item(key = "folder:${heading.path}") {
                                             Row(
-                                                modifier = Modifier.padding(start = (depth * 16).dp),
+                                                modifier = Modifier.padding(start = (heading.depth * 16).dp),
                                                 verticalAlignment = Alignment.CenterVertically,
                                             ) {
                                                 Icon(Icons.Default.Folder, contentDescription = null,
                                                     modifier = Modifier.size(16.dp))
                                                 Spacer(Modifier.width(6.dp))
-                                                Text(segments[depth],
+                                                Text(heading.name,
                                                     style = MaterialTheme.typography.labelMedium)
                                             }
                                         }
@@ -179,7 +191,7 @@ internal fun WebChatBookmarksDialog(
                                 }
                                 items(entries, key = { it.id }) { bookmark ->
                                     Row(
-                                        modifier = Modifier.padding(start = (segments.size * 16).dp),
+                                        modifier = Modifier.padding(start = (headings.size * 16).dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         TextButton(

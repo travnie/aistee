@@ -76,7 +76,7 @@ class WebChatBookmarksScreenshotTest {
         compose.onNodeWithText("Other provider").assertDoesNotExist()
         compose.onNodeWithTag("web_bookmarks_dialog")
             .captureRoboImage("build/outputs/roborazzi/$name.png")
-        compose.onNodeWithTag("web_bookmarks_list").performScrollToIndex(2)
+        compose.onNodeWithTag("web_bookmarks_list").performScrollToIndex(3)
         compose.onNodeWithText("Stable chat").assertIsDisplayed().performClick()
         assertEquals(chatUrl, opened)
     }
