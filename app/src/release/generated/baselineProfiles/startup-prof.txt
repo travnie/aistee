@@ -20062,3 +20062,11 @@ SPLais/tee/ui/screens/WebPageLoadState;->onReceivedError(Landroid/webkit/WebReso
 SPLais/tee/ui/screens/WebPageLoadState;->setFailure(Lais/tee/ui/screens/WebPageLoadFailure;)V
 SPLais/tee/ui/screens/WebPageLoadState;->setRetryUrl(Ljava/lang/String;)V
 SPLais/tee/web/ProviderWebRegistryKt;->providerNavigationUrlMatches(Lais/tee/data/model/WebAiService;Ljava/lang/String;)Z
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$-1244139829$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$-1249239931$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$1732845968$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/WebChatScreenKt$WebChatScreen$webChatContent$1$1$1$12$1;-><init>(Ljava/lang/Object;)V
+SPLais/tee/ui/screens/WebChatScreenKt$WebChatScreen$webChatContent$1$1$1$5$1;-><init>(Landroidx/compose/runtime/MutableState;Landroidx/compose/runtime/snapshots/SnapshotStateMap;Landroidx/compose/runtime/snapshots/SnapshotStateMap;Landroidx/compose/runtime/State;Landroidx/compose/runtime/MutableIntState;Landroidx/compose/runtime/MutableState;)V
+SPLais/tee/ui/screens/WebChatScreenKt;->WebChatToolbar(Landroid/webkit/WebView;Lais/tee/data/model/WebAiService;Lais/tee/data/model/WebChatActivityStatus;Landroid/graphics/Bitmap;Ljava/lang/String;ZZZZIZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;III)V
+SPLais/tee/data/preferences/WebChatDraftStore;-><init>(Ljava/io/File;Lkotlin/jvm/functions/Function2;)V
+SPLais/tee/data/preferences/WebChatDraftStore;-><init>(Ljava/io/File;Lkotlin/jvm/functions/Function2;ILkotlin/jvm/internal/DefaultConstructorMarker;)V

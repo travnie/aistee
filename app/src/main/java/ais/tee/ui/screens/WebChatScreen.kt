@@ -236,6 +236,7 @@ fun WebChatScreen(
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
     var showPromptHelperDialog by remember { mutableStateOf(false) }
+    var showPromptVaultDialog by remember(selectedService, isActive) { mutableStateOf(false) }
     var showProviderDiagnosticsDialog by remember { mutableStateOf(false) }
     var showClearProviderSessionsDialog by remember { mutableStateOf(false) }
     var diagnosticsProbeResult by remember { mutableStateOf<ProviderDiagnosticsProbeResult?>(null) }
@@ -1206,6 +1207,12 @@ fun WebChatScreen(
                             onOpenDrawer = { drawerScope.launch { drawerState.open() } },
                             onApplyStudio = ::applyStudioPrompt,
                             onShowPromptHelper = { showPromptHelperDialog = true },
+                            onShowPromptVault = {
+                                if (uiState.pendingWebDraft?.service != selectedService) {
+                                    viewModel.openStagedWebDraft(selectedService)
+                                }
+                                showPromptVaultDialog = true
+                            },
                             onShowDiagnostics = ::openProviderDiagnostics,
                             onShowSignInHelp = {
                                 preferredIdentityMethod = webPreferences.loadPreferredIdentityMethod()
@@ -1670,6 +1677,28 @@ fun WebChatScreen(
         )
     }
 
+    if (isActive && showPromptVaultDialog) {
+        WebPromptVaultDialog(
+            service = selectedService,
+            archive = uiState.projectLibrary,
+            libraryReady = uiState.isProjectLibraryReady,
+            pendingDraft = uiState.pendingWebDraft?.service == selectedService,
+            draftBusy = uiState.pendingWebDraft?.let {
+                it.service == selectedService && it.isClaimed
+            } == true,
+            loadText = viewModel::loadProjectLibraryAsset,
+            onStage = { text -> viewModel.stageWebDraftReply(selectedService, text) },
+            onCopy = { text ->
+                val copied = copyPlainTextToClipboard(
+                    context = context, label = "Saved prompt", text = text, sensitive = true,
+                )
+                if (copied) viewModel.showSnackbar("Saved prompt copied. Review it before sending.")
+                copied
+            },
+            onDismiss = { showPromptVaultDialog = false },
+        )
+    }
+
     if (isActive && showPromptHelperDialog) {
         AlertDialog(
             onDismissRequest = { showPromptHelperDialog = false },
@@ -1761,6 +1790,7 @@ private fun WebChatToolbar(
     onOpenDrawer: () -> Unit,
     onApplyStudio: () -> Unit,
     onShowPromptHelper: () -> Unit,
+    onShowPromptVault: () -> Unit,
     onShowDiagnostics: () -> Unit,
     onShowSignInHelp: () -> Unit,
     onClearProviderSessions: () -> Unit,
@@ -2016,6 +2046,15 @@ private fun WebChatToolbar(
                                 onShowSnackbar("Copied address")
                                 menuExpanded = false
                             }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Prompt Vault (local)") },
+                            leadingIcon = { Icon(Icons.Default.LibraryBooks, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                onShowPromptVault()
+                            },
+                            modifier = Modifier.testTag("btn_web_prompt_vault")
                         )
                         DropdownMenuItem(
                             text = { Text("Quick prompt / profile") },
