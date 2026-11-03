@@ -27,6 +27,8 @@ internal fun webPromptVaultItems(archive: ProjectLibraryArchive): List<ProjectLi
     archive.assets.filter { it.kind == ProjectLibraryAssetKind.PROMPT && it.sizeBytes > 0 }
         .sortedWith(compareBy({ it.title.lowercase() }, { it.id }))
 
+internal fun webPromptPreviewChunks(text: String): List<String> = text.chunked(2_048)
+
 internal fun webPromptCanStage(text: String): Boolean =
     text.isNotBlank() && text.length <= WebChatDraftStore.MAX_DRAFT_CHARS &&
         text.toByteArray(Charsets.UTF_8).size <= WebChatDraftStore.MAX_DRAFT_UTF8_BYTES
@@ -109,9 +111,8 @@ internal fun WebPromptVaultDialog(
                                                 } else {
                                                     preview = text
                                                 }
-                                            } catch (cancelled: CancellationException) {
-                                                throw cancelled
-                                            } catch (_: Exception) {
+                                            } catch (failure: Exception) {
+                                                if (failure is CancellationException) throw failure
                                                 error = "Could not read this local prompt"
                                                 selected = null
                                             } finally {
@@ -143,13 +144,14 @@ internal fun WebPromptVaultDialog(
                                 "Too large for a Web draft; copy it instead.",
                             style = MaterialTheme.typography.bodySmall,
                         )
-                        Column(
+                        val chunks = remember(fullText) { webPromptPreviewChunks(fullText) }
+                        LazyColumn(
                             Modifier.fillMaxWidth().heightIn(max = 180.dp)
-                                .verticalScroll(rememberScrollState()).testTag("web_prompt_vault_preview"),
+                                .testTag("web_prompt_vault_preview"),
                         ) {
-                            Text(fullText.take(1_200) +
-                                if (fullText.length > 1_200) "\n… Preview shortened; staging/copying uses the complete text." else "",
-                                style = MaterialTheme.typography.bodySmall)
+                            items(chunks.size) { index ->
+                                Text(chunks[index], style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                         if (pendingDraft) {
                             Text(

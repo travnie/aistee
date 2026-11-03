@@ -1207,7 +1207,12 @@ fun WebChatScreen(
                             onOpenDrawer = { drawerScope.launch { drawerState.open() } },
                             onApplyStudio = ::applyStudioPrompt,
                             onShowPromptHelper = { showPromptHelperDialog = true },
-                            onShowPromptVault = { showPromptVaultDialog = true },
+                            onShowPromptVault = {
+                                if (uiState.pendingWebDraft?.service != selectedService) {
+                                    viewModel.openStagedWebDraft(selectedService)
+                                }
+                                showPromptVaultDialog = true
+                            },
                             onShowDiagnostics = ::openProviderDiagnostics,
                             onShowSignInHelp = {
                                 preferredIdentityMethod = webPreferences.loadPreferredIdentityMethod()

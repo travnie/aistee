@@ -30,6 +30,14 @@ class WebPromptVaultTest {
     }
 
     @Test
+    fun longPromptPreviewPreservesTheEntireText() {
+        val text = "start" + "x".repeat(6_000) + "end"
+        val chunks = webPromptPreviewChunks(text)
+        assertTrue(chunks.size > 1)
+        assertEquals(text, chunks.joinToString(""))
+    }
+
+    @Test
     fun stagingNeverTruncatesOrSendsOversizedText() {
         assertFalse(webPromptCanStage(""))
         assertFalse(webPromptCanStage(" \n "))
