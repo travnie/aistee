@@ -6,6 +6,8 @@ import ais.tee.data.preferences.WebChatBookmarkSaveResult
 import ais.tee.data.preferences.WebChatBookmarkStore
 import ais.tee.data.preferences.safeWebChatBookmarkUrl
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -34,9 +36,12 @@ internal fun WebChatBookmarksDialog(
     currentUrl: String?,
     onOpen: (String) -> Unit,
     onDismiss: () -> Unit,
+    storeOverride: WebChatBookmarkStore? = null,
 ) {
     val context = LocalContext.current
-    val store = remember(context.applicationContext) { WebChatBookmarkStore(context.applicationContext) }
+    val store = remember(context.applicationContext, storeOverride) {
+        storeOverride ?: WebChatBookmarkStore(context.applicationContext)
+    }
     val scope = rememberCoroutineScope()
     var bookmarks by remember(service) { mutableStateOf<List<WebChatBookmark>>(emptyList()) }
     var readable by remember(service) { mutableStateOf(true) }
@@ -65,7 +70,10 @@ internal fun WebChatBookmarksDialog(
         icon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
         title = { Text("${service.shortName} bookmarks") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Text(
                     "Only Aistee saves these links. Provider chat history is unchanged.",
                     style = MaterialTheme.typography.bodySmall,
@@ -145,7 +153,7 @@ internal fun WebChatBookmarksDialog(
                             compareBy<WebChatBookmark>({ it.folder.lowercase() }, { it.title.lowercase() })
                         ).groupBy { it.folder }
                         LazyColumn(
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp)
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)
                                 .testTag("web_bookmarks_list"),
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
