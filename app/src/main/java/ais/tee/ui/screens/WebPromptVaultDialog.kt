@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.LibraryBooks
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -54,6 +55,7 @@ internal fun WebPromptVaultDialog(
 ) {
     val scope = rememberCoroutineScope()
     var search by remember { mutableStateOf("") }
+    var searchExpanded by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<ProjectLibraryAsset?>(null) }
     var preview by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
@@ -93,11 +95,22 @@ internal fun WebPromptVaultDialog(
                 }
                 if (selected == null) {
                     item(key = "search") {
-                        OutlinedTextField(
-                            value = search, onValueChange = { if (it.length <= 100) search = it },
-                            singleLine = true, label = { Text("Search saved prompts") },
-                            modifier = Modifier.fillMaxWidth().testTag("web_prompt_vault_search"),
-                        )
+                        if (searchExpanded) {
+                            OutlinedTextField(
+                                value = search, onValueChange = { if (it.length <= 100) search = it },
+                                singleLine = true, label = { Text("Search saved prompts") },
+                                modifier = Modifier.fillMaxWidth().testTag("web_prompt_vault_search"),
+                            )
+                        } else {
+                            OutlinedButton(
+                                onClick = { searchExpanded = true },
+                                modifier = Modifier.fillMaxWidth().testTag("web_prompt_vault_search_open"),
+                            ) {
+                                Icon(Icons.Default.Search, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Search saved prompts")
+                            }
+                        }
                     }
                     if (!libraryReady) {
                         item(key = "loading") {

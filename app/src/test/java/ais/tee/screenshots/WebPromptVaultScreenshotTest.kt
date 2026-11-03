@@ -74,6 +74,7 @@ class WebPromptVaultScreenshotTest {
                 }
             }
         }
+        compose.onNodeWithTag("web_prompt_vault_search_open").assertIsDisplayed()
         compose.onNodeWithText("Not a prompt").assertDoesNotExist()
         compose.onNodeWithTag("web_prompt_vault_dialog")
             .captureRoboImage("build/outputs/roborazzi/$name.png")
