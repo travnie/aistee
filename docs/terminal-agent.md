@@ -25,6 +25,31 @@ Xed's published configuration binds a wide range of host paths into its Ubuntu g
 
 The optional Termux `RUN_COMMAND` Intent needs its Android permission and `allow-external-apps=true`. It returns a bounded completion result via `PendingIntent`, not an in-app live stream, and Android background launch behavior needs device testing.
 
+## Reference architectures: Happy and TermFold (November 2026)
+
+These projects cover two complementary hosts, not two more account-backed Web providers:
+
+| Reference | Verified product shape | Aistee adaptation | Boundary |
+| --- | --- | --- | --- |
+| [Happy](https://github.com/slopus/happy) | Multi-model CLI/desktop agent sessions shown on mobile, encrypted relay, reconnectable control, subagents and shared session steering. Its server uses separate durable sequence-numbered updates and ephemeral presence. | Optional paired *remote* agent runtime: session list, streaming turns, tool/permission receipts, reconnect, Stop and explicit host identity. Reuse Aistee's Jobs and trace UI rather than another chat database or scheduler. | Aistee works locally with no relay account. Remote pairing, sync and E2EE are opt-in; WebView sign-ins and provider keys stay outside this transport. |
+| [TermFold](https://github.com/Bibarud/TermFold) | App-managed Debian 13 via PRoot, PTY/terminal, JSON-RPC Agent Client Protocol (ACP) sessions, native permission/plan/model controls, project files, and a separate agent-controlled browser preview. | Optional *on-device* Agent Lab runtime with project-aware terminal, bounded ACP event adapter, approval cards, resumable local sessions and an isolated project preview. Reuse Project Library, existing command consent and native UI. | PRoot is not a security sandbox. Do not grant shell processes the WebView cookie store, API keys or unrestricted app-private data. No agent browser automation in signed-in provider tabs. |
+
+### Protocol and UI contracts
+
+- **Keep protocols separate.** ACP here means the *Agent Client Protocol* (agent client ↔ CLI over stdio JSON-RPC), not the similarly named agent-to-agent REST protocol and not Happy's own encrypted session-event wire format. Normalize each runtime through one Aistee-owned session/trace event model, with adapters at the edge; never label a custom wire stream "ACP-compatible" without actually implementing ACP.
+- **Render capabilities only when advertised.** Accept agent-provided model/mode/reasoning choices, plans, slash commands, tool status, file locations and approval options through typed, bounded events. No invented model selector or universal permission mode. Resume needs a real persisted ID; reconnect needs explicit reconciliation instead of replaying commands blindly.
+- **Reuse Aistee ownership.** Project Library remains the source for files/artifacts, Jobs owns durable progress/cancel/error, the native tool registry owns scoped approvals, and the ordinary Web chat screen remains provider-owned. Render only a safe bounded preview of tool output; preserve raw records as explicit, user-controlled local exports where appropriate.
+- **Remote trust is scoped.** Pair a host with an explicit fingerprint/QR and revocation, verify its identity each reconnect, encrypt session content before it reaches an optional relay, sequence durable events, and treat ephemeral presence as advisory. A remote client may ask to approve an action but cannot silently broaden grants. Happy's sandbox-driven permission bypass policy is not Aistee's consent policy.
+- **Local host is opt-in.** First establish an Android process/PTY lifecycle and an inert ACP event mapper using synthetic fixtures. Test supported API/ABI combinations, true app-UID filesystem access, background/foreground service limits, cancel behavior, memory and thermal impact before adding a Linux image or downloading CLI packages. TermFold's [Android compatibility research](https://github.com/Bibarud/TermFold/blob/main/docs/ANDROID-COMPATIBILITY.md) reports a successful higher-target experiment on one Android 16 tablet, not broad compatibility or Play approval.
+- **Agent browser is a separate surface.** If added, use a project preview WebView with isolated data and origin/URL limits, visible session ownership, explicit per-action grants and emergency Stop. Snapshot only necessary current-page elements and bounded deltas. Never repurpose signed-in ChatGPT/Claude/Gemini WebViews, inject a background controller into them or treat model output as the user's click.
+
+### Practical next implementation gates
+
+1. **Protocol/UI proof without execution:** model bounded ACP session events and state transitions (start, text, tool, plan, permission, end, failed/reconnect) with deterministic fixtures. Render only to the existing Agent Lab/trace destination. Test out-of-order, duplicate, unknown and oversized events. No processes, downloads, cloud sync or shell permissions.
+2. **Local process proof:** existing small terminal/PTY slice below, including real-device same-UID access audit and reliable Stop. ACP stdio transport only after processes can be safely owned and closed; don't spawn a CLI just because a JSON model validates.
+3. **Optional remote handoff:** pair one trusted host/runtime, reconnect without duplicate side effects, show tool/permission receipts and protect encrypted local state. Session collaboration and multi-agent steering come after single-user correctness.
+4. **Linux and browser expansion:** opt-in rootfs/runtime provisioning, update/reset/export workflow, verified agent CLI compatibility, background behavior, and separately isolated project browser controls. Do not copy TermFold's target-SDK or shared-UID assumptions without measuring Aistee's supported devices.
+
 ## Authority and data boundary
 
 - A terminal command has broader effects than an ordinary built-in tool. The existing `ALLOW / DENY / ASK / REQUIRES_USER_INTERACTION` decision must be applied to a **specific** command request. Imported skills and WebView page content never acquire terminal execution by being present in context.
