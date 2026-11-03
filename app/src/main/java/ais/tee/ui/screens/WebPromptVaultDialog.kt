@@ -27,7 +27,15 @@ internal fun webPromptVaultItems(archive: ProjectLibraryArchive): List<ProjectLi
     archive.assets.filter { it.kind == ProjectLibraryAssetKind.PROMPT && it.sizeBytes > 0 }
         .sortedWith(compareBy({ it.title.lowercase() }, { it.id }))
 
-internal fun webPromptPreviewChunks(text: String): List<String> = text.chunked(2_048)
+internal fun webPromptPreviewChunks(text: String): List<String> = object : AbstractList<String>() {
+    override val size: Int = (text.length + 2_047) / 2_048
+
+    override fun get(index: Int): String {
+        if (index !in 0 until size) throw IndexOutOfBoundsException()
+        val start = index * 2_048
+        return text.substring(start, minOf(start + 2_048, text.length))
+    }
+}
 
 internal fun webPromptCanStage(text: String): Boolean =
     text.isNotBlank() && text.length <= WebChatDraftStore.MAX_DRAFT_CHARS &&

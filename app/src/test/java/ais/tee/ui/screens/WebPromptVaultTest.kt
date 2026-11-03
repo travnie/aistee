@@ -35,6 +35,8 @@ class WebPromptVaultTest {
         val chunks = webPromptPreviewChunks(text)
         assertTrue(chunks.size > 1)
         assertEquals(text, chunks.joinToString(""))
+        assertTrue(chunks.last().endsWith("end"))
+        assertThrows(IndexOutOfBoundsException::class.java) { chunks[chunks.size] }
     }
 
     @Test
