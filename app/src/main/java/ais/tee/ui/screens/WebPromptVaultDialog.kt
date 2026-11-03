@@ -8,6 +8,7 @@ import ais.tee.data.preferences.WebChatDraftStore
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.LibraryBooks
@@ -18,7 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.CancellationException
+import java.io.IOException
 import kotlinx.coroutines.launch
 
 /** Canonical Project Library remains the single prompt store. Metadata-only until selection. */
@@ -36,6 +37,9 @@ internal fun webPromptPreviewChunks(text: String): List<String> = object : Abstr
         return text.substring(start, minOf(start + 2_048, text.length))
     }
 }
+
+internal suspend fun loadWebPromptText(id: String, loader: suspend (String) -> String?): String? =
+    try { loader(id) } catch (_: IOException) { null }
 
 internal fun webPromptCanStage(text: String): Boolean =
     text.isNotBlank() && text.length <= WebChatDraftStore.MAX_DRAFT_CHARS &&
@@ -57,6 +61,7 @@ internal fun WebPromptVaultDialog(
     var search by remember { mutableStateOf("") }
     var searchExpanded by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<ProjectLibraryAsset?>(null) }
+    val listState = remember(selected?.id, search) { LazyListState() }
     var preview by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -76,6 +81,7 @@ internal fun WebPromptVaultDialog(
         text = {
             // One bounded lazy scroller: no nested verticalScroll/LazyColumn measure loop.
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp)
                     .testTag("web_prompt_vault_content"),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -134,17 +140,13 @@ internal fun WebPromptVaultDialog(
                                     loading = true
                                     scope.launch {
                                         try {
-                                            val text = loadText(asset.id)
+                                            val text = loadWebPromptText(asset.id, loadText)
                                             if (text.isNullOrBlank()) {
                                                 error = "Could not read this local prompt"
                                                 selected = null
                                             } else {
                                                 preview = text
                                             }
-                                        } catch (failure: Exception) {
-                                            if (failure is CancellationException) throw failure
-                                            error = "Could not read this local prompt"
-                                            selected = null
                                         } finally {
                                             loading = false
                                         }

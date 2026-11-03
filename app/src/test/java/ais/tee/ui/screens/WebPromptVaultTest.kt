@@ -4,6 +4,8 @@ import ais.tee.data.model.LocalProject
 import ais.tee.data.model.ProjectLibraryArchive
 import ais.tee.data.model.ProjectLibraryAsset
 import ais.tee.data.model.ProjectLibraryAssetKind
+import java.io.IOException
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -37,6 +39,12 @@ class WebPromptVaultTest {
         assertEquals(text, chunks.joinToString(""))
         assertTrue(chunks.last().endsWith("end"))
         assertThrows(IndexOutOfBoundsException::class.java) { chunks[chunks.size] }
+    }
+
+    @Test
+    fun expectedPromptIoFailuresReturnEmptyWithoutLeakingDetails() = runBlocking {
+        assertNull(loadWebPromptText("prompt") { throw IOException("private disk path") })
+        assertEquals("safe text", loadWebPromptText("prompt") { "safe text" })
     }
 
     @Test
