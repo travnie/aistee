@@ -42,6 +42,20 @@ class WebPromptVaultTest {
     }
 
     @Test
+    fun previewSlicesKeepUnicodeCharactersAndCombiningMarksWhole() {
+        val brain = "\uD83E\uDDE0"
+        val combining = "e\u0301"
+        val text = "x".repeat(2_047) + brain + combining + "y".repeat(4_100)
+        val chunks = webPromptPreviewChunks(text)
+        assertEquals(text, chunks.joinToString(""))
+        assertTrue(chunks.size > 2)
+        assertTrue(chunks.any { brain in it })
+        assertTrue(chunks.any { combining in it })
+        assertTrue(chunks.none { it.isNotEmpty() && Character.isHighSurrogate(it.last()) })
+        assertTrue(chunks.none { it.isNotEmpty() && Character.isLowSurrogate(it.first()) })
+    }
+
+    @Test
     fun expectedPromptIoFailuresReturnEmptyWithoutLeakingDetails() = runBlocking {
         assertNull(loadWebPromptText("prompt") { throw IOException("private disk path") })
         assertEquals("safe text", loadWebPromptText("prompt") { "safe text" })

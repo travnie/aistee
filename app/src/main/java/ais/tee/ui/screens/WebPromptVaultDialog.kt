@@ -20,6 +20,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.io.IOException
+import java.text.BreakIterator
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 /** Canonical Project Library remains the single prompt store. Metadata-only until selection. */
@@ -27,14 +29,29 @@ internal fun webPromptVaultItems(archive: ProjectLibraryArchive): List<ProjectLi
     archive.assets.filter { it.kind == ProjectLibraryAssetKind.PROMPT && it.sizeBytes > 0 }
         .sortedWith(compareBy({ it.title.lowercase() }, { it.id }))
 
-/** Lazy slices; large Library assets are never duplicated into thousands of strings. */
+/** Lazy text slices with grapheme-aligned offsets. Avoid broken emoji/combining marks. */
 internal fun webPromptPreviewChunks(text: String): List<String> = object : AbstractList<String>() {
-    override val size: Int = (text.length + 2_047) / 2_048
+    private val offsets: IntArray by lazy(LazyThreadSafetyMode.NONE) {
+        val breaker = BreakIterator.getCharacterInstance(Locale.ROOT)
+        breaker.setText(text)
+        val cuts = mutableListOf(0)
+        var start = 0
+        while (start < text.length) {
+            val target = minOf(start + 2_048, text.length)
+            val aligned = if (target == text.length) target else breaker.preceding(target + 1)
+            val end = if (aligned > start) aligned else breaker.following(start)
+            check(end > start && end <= text.length)
+            cuts.add(end)
+            start = end
+        }
+        cuts.toIntArray()
+    }
+
+    override val size: Int get() = offsets.size - 1
 
     override fun get(index: Int): String {
         if (index !in 0 until size) throw IndexOutOfBoundsException()
-        val start = index * 2_048
-        return text.substring(start, minOf(start + 2_048, text.length))
+        return text.substring(offsets[index], offsets[index + 1])
     }
 }
 
@@ -66,6 +83,7 @@ internal fun WebPromptVaultDialog(
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val files = remember(archive) { webPromptVaultItems(archive) }
+    val previewChunks = remember(preview) { webPromptPreviewChunks(preview.orEmpty()) }
     val filtered = remember(files, search, archive.projects) {
         files.filter { asset ->
             asset.title.contains(search, ignoreCase = true) ||
@@ -181,9 +199,8 @@ internal fun WebPromptVaultDialog(
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
-                        val chunks = webPromptPreviewChunks(fullText)
-                        items(chunks.size, key = { it }) { index ->
-                            Text(chunks[index], style = MaterialTheme.typography.bodySmall,
+                        items(previewChunks.size, key = { it }) { index ->
+                            Text(previewChunks[index], style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.testTag("web_prompt_vault_preview"))
                         }
                         if (pendingDraft) {
