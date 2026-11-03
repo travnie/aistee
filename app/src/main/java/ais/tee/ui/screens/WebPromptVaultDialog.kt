@@ -59,6 +59,19 @@ internal fun webPromptPreviewChunks(text: String): List<String> = object : Abstr
     }
 }
 
+/** A single oversized grapheme cannot be split into separately rendered Text nodes. */
+internal fun webPromptHasOversizedGrapheme(text: String): Boolean {
+    val breaker = BreakIterator.getCharacterInstance(Locale.ROOT)
+    breaker.setText(text)
+    var start = breaker.first()
+    while (true) {
+        val end = breaker.next()
+        if (end == BreakIterator.DONE) return false
+        if (end - start > 2_048) return true
+        start = end
+    }
+}
+
 internal suspend fun loadWebPromptText(id: String, loader: suspend (String) -> String?): String? =
     try { loader(id) } catch (_: IOException) { null }
 
@@ -88,6 +101,9 @@ internal fun WebPromptVaultDialog(
     var error by remember { mutableStateOf<String?>(null) }
     val files = remember(archive) { webPromptVaultItems(archive) }
     val previewChunks = remember(preview) { webPromptPreviewChunks(preview.orEmpty()) }
+    val previewHasOversizedGrapheme = remember(preview) {
+        webPromptHasOversizedGrapheme(preview.orEmpty())
+    }
     val filtered = remember(files, search, archive.projects) {
         files.filter { asset ->
             asset.title.contains(search, ignoreCase = true) ||
@@ -203,9 +219,19 @@ internal fun WebPromptVaultDialog(
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
-                        items(previewChunks.size, key = { it }) { index ->
-                            Text(previewChunks[index], style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.testTag("web_prompt_vault_preview"))
+                        if (previewHasOversizedGrapheme) {
+                            item(key = "unsafe-preview") {
+                                Text(
+                                    "Preview unavailable: a Unicode character sequence is too long to render safely. Copy or stage still uses the complete original prompt.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.testTag("web_prompt_vault_preview_warning"),
+                                )
+                            }
+                        } else {
+                            items(previewChunks.size, key = { it }) { index ->
+                                Text(previewChunks[index], style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.testTag("web_prompt_vault_preview"))
+                            }
                         }
                         if (pendingDraft) {
                             item(key = "warning") {

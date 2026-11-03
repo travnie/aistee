@@ -62,6 +62,8 @@ class WebPromptVaultTest {
         assertEquals(text, chunks.joinToString(""))
         assertTrue(chunks.size >= 5)
         assertTrue(chunks.all { it.length in 1..2_048 })
+        assertTrue(webPromptHasOversizedGrapheme(text))
+        assertFalse(webPromptHasOversizedGrapheme("x".repeat(9_100)))
     }
 
     @Test
