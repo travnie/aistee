@@ -39,7 +39,11 @@ internal fun webPromptPreviewChunks(text: String): List<String> = object : Abstr
         while (start < text.length) {
             val target = minOf(start + 2_048, text.length)
             val aligned = if (target == text.length) target else breaker.preceding(target + 1)
-            val end = if (aligned > start) aligned else breaker.following(start)
+            // Pathological grapheme clusters can be megabytes long. Bound each Text item.
+            val end = if (aligned > start) aligned else if (
+                target < text.length && Character.isHighSurrogate(text[target - 1]) &&
+                Character.isLowSurrogate(text[target])
+            ) target - 1 else target
             check(end > start && end <= text.length)
             cuts.add(end)
             start = end

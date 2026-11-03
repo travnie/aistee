@@ -56,6 +56,15 @@ class WebPromptVaultTest {
     }
 
     @Test
+    fun enormousGraphemeNeverCreatesUnboundedPreviewText() {
+        val text = "a" + "\u0301".repeat(9_000) + "end"
+        val chunks = webPromptPreviewChunks(text)
+        assertEquals(text, chunks.joinToString(""))
+        assertTrue(chunks.size >= 5)
+        assertTrue(chunks.all { it.length in 1..2_048 })
+    }
+
+    @Test
     fun expectedPromptIoFailuresReturnEmptyWithoutLeakingDetails() = runBlocking {
         assertNull(loadWebPromptText("prompt") { throw IOException("private disk path") })
         assertEquals("safe text", loadWebPromptText("prompt") { "safe text" })
