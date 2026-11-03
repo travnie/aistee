@@ -174,6 +174,18 @@ class McpAuthorizationInspectorTest {
         assertFalse(result.toString().contains("auth.example.org"))
     }
 
+    @Test fun omittedPkceAdvertisementIsValidMetadataButNotS256() = runBlocking {
+        val withoutPkce = AS_METADATA.replace(",\"code_challenge_methods_supported\":[\"S256\"]", "")
+        val inspector = McpAuthorizationInspector(client { request ->
+            response(request, if (request.url.host == RESOURCE_HOST) PRM else withoutPkce)
+        })
+        val resource = (inspector.inspectResource(McpAuthorizationChallenge(RESOURCE))
+            as McpAuthorizationInspection.Found).metadata
+        val server = inspector.inspectServer(resource, ISSUER) as McpAuthorizationInspection.Found
+        assertFalse(server.metadata.supportsS256)
+        assertEquals(ISSUER, server.metadata.issuer)
+    }
+
     @Test fun trailingSlashesAreRemovedOnlyFromDiscoveryPaths() = runBlocking {
         val visited = mutableListOf<String>()
         val inspector = McpAuthorizationInspector(client { request ->
