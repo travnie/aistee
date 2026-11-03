@@ -74,6 +74,11 @@ internal fun McpAuthorizationControls(
                     Text("Token endpoint: ${server.tokenEndpoint}", style = MaterialTheme.typography.bodySmall)
                     Text("PKCE S256: ${if (server.supportsS256) "Advertised" else "Not advertised"}",
                         style = MaterialTheme.typography.bodySmall)
+                    if (!server.supportsS256) {
+                        Text("This issuer does not advertise PKCE S256. Aistee cannot safely start a native OAuth authorization with these details.",
+                            color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.testTag("mcp_oauth_pkce_warning"))
+                    }
                     Text("Client metadata registration: ${if (server.supportsClientMetadata) "Advertised" else "Not advertised"}",
                         style = MaterialTheme.typography.bodySmall)
                     Text("Legacy dynamic registration: ${if (server.hasRegistrationEndpoint) "Advertised" else "Not advertised"}",
