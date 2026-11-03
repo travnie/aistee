@@ -27,6 +27,7 @@ Delivered feature index, reviewed **29 October 2026** against the documented mai
 - Persistent native starred turns and editable one-line notes (140 characters), branch-preserving star/notes behavior.
 - Native quote selection and reviewed insertion, code-fence language/source copy, display and inline math TeX copy, and Markdown table CSV copy.
 - Long native prompts collapse to an eight-line preview; explicit save to project as text and Project Library insertion into composer.
+- Local Web chat bookmarks: manually named provider-bound HTTPS page references with up to three folder levels, encrypted on-device, explicit open/delete and corrupt-record reset. No page text, cookies, query strings or fragments are stored. Provider-side conversations are untouched; unstable or non-linkable pages can decline bookmarking.
 - Experimental **Web** previous/next navigation and numbered timeline picker for loaded user messages. At most 200 ephemeral renderer-local anchors; no message-text/ID extraction or persistence. Shared provider opt-out, stale-target checks and synthetic WebView smoke coverage. Candidate selectors still need signed-in provider verification; Web stars, rich previews and quote extraction remain unshipped.
 
 ## 📲 Android UI and system integration
