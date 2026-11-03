@@ -45,6 +45,24 @@ class WebChatDraftStoreTest {
     }
 
     @Test
+    fun failedReplacementLeavesThePreviousDraftIntact() {
+        val root = tempRoot()
+        try {
+            val originalStore = WebChatDraftStore(root)
+            val first = requireNotNull(originalStore.stage(WebAiService.CHATGPT, "original"))
+            val failingStore = WebChatDraftStore(root, replaceFile = { _, _ -> false })
+
+            assertNull(failingStore.stage(WebAiService.CHATGPT, "replacement"))
+            assertEquals(first.id, originalStore.peek(WebAiService.CHATGPT)?.id)
+            assertEquals("original", originalStore.peek(WebAiService.CHATGPT)?.text)
+            val temp = File(root, "${WebChatDraftStore.DIRECTORY_NAME}/${WebAiService.CHATGPT.id}.draft.tmp")
+            assertFalse(temp.exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun rejectsBlankAndOversizedDrafts() {
         val root = tempRoot()
         try {

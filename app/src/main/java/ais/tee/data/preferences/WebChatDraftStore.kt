@@ -17,7 +17,10 @@ internal data class StagedWebChatDraft(
         "StagedWebChatDraft(id=$id, service=${service.id}, text=<redacted>)"
 }
 
-internal class WebChatDraftStore(private val noBackupRoot: File) {
+internal class WebChatDraftStore(
+    private val noBackupRoot: File,
+    private val replaceFile: (File, File) -> Boolean = { source, destination -> source.renameTo(destination) },
+) {
     fun stage(service: WebAiService, text: String): StagedWebChatDraft? {
         if (text.isBlank() || text.length > MAX_DRAFT_CHARS) return null
         val draft = StagedWebChatDraft(
@@ -38,11 +41,8 @@ internal class WebChatDraftStore(private val noBackupRoot: File) {
                 output.write(bytes)
                 output.flush()
             }
-            if (target.exists() && !target.delete()) {
-                temp.delete()
-                return null
-            }
-            if (!temp.renameTo(target)) {
+            // Rename replaces the old draft atomically; failed writes keep the previous draft.
+            if (!replaceFile(temp, target)) {
                 temp.delete()
                 return null
             }
