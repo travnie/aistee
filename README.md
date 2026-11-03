@@ -36,7 +36,7 @@ Kotlin Multiplatform · Android first · Local-first tools
 
 | | Already implemented |
 | --- | --- |
-| 🌐 **Web chats** | Provider-owned WebView sessions, uploads, favorites and selected activity tracking |
+| 🌐 **Web chats** | Provider-owned WebView sessions, uploads, favorites, encrypted local bookmarks/folders and selected activity tracking |
 | 💬 **Native + API** | Gemini, OpenAI, Claude, compatible gateways and eligible ChatGPT-plan sign-in; compare, streaming and provider-scoped history |
 | 🗂️ **Local workspace** | Projects, editable Library assets, Markdown/Docbench previews, imports and exports |
 | 🧰 **Tools & skills** | Token counting, Bench actions, QR generation, explicit skill trust and sandbox execution |

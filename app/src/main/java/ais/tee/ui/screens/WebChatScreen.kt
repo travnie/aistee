@@ -1780,6 +1780,7 @@ private fun WebChatToolbar(
         mutableStateOf(turnPreferences.loadDisabledTurnNavigationServices())
     }
     var showTimeline by remember(selectedService, activeWebView, currentUrl) { mutableStateOf(false) }
+    var showBookmarks by remember(selectedService, activeWebView) { mutableStateOf(false) }
     val turnNavigationEnabled = webUserTurnNavigationEnabled(
         selectedService, disabledTurnNavigationServices
     )
@@ -1790,6 +1791,17 @@ private fun WebChatToolbar(
             service = selectedService,
             onDismiss = { showTimeline = false },
             onShowSnackbar = onShowSnackbar
+        )
+    }
+
+    if (showBookmarks) {
+        WebChatBookmarksDialog(
+            service = selectedService,
+            currentUrl = activeWebView?.url,
+            onOpen = { savedUrl ->
+                activeWebView?.loadUrl(savedUrl)
+            },
+            onDismiss = { showBookmarks = false },
         )
     }
 
@@ -1981,6 +1993,16 @@ private fun WebChatToolbar(
                             }
                         )
                         HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Local chat bookmarks") },
+                            leadingIcon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
+                            enabled = activeWebView != null,
+                            onClick = {
+                                menuExpanded = false
+                                showBookmarks = true
+                            },
+                            modifier = Modifier.testTag("btn_web_bookmarks")
+                        )
                         DropdownMenuItem(
                             text = { Text("Copy address") },
                             leadingIcon = { Icon(Icons.Default.Link, contentDescription = null) },
