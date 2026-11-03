@@ -39,6 +39,32 @@ class McpAuthorizationTest {
     @Test @Config(qualifiers = "w900dp-h1000dp-xxhdpi")
     fun expanded() = inspectionFlow("mcp_auth_expanded")
 
+    @Test fun missingPkceAdvertisementShowsWarning() {
+        val endpoint = "https://tools.example.org/mcp"
+        val state = McpPreviewState().apply {
+            this.endpoint = endpoint
+            outcome = McpDiscoveryOutcome.AuthorizationRequired(McpAuthorizationChallenge(endpoint))
+            authorizationInspection = McpAuthorizationInspection.Found(
+                ais.tee.data.model.McpAuthorizationServerMetadata(
+                    issuer = "https://auth.example.org/tenant",
+                    authorizationEndpoint = "https://auth.example.org/authorize",
+                    tokenEndpoint = "https://auth.example.org/token",
+                    supportsS256 = false,
+                    supportsClientMetadata = false,
+                    hasRegistrationEndpoint = false,
+                )
+            )
+        }
+        compose.setContent {
+            AisteeTheme(darkTheme = true) {
+                Surface {
+                    McpDiscoveryPanel(state, serverStore = McpServerStore(FakeMcpServerPersistence()))
+                }
+            }
+        }
+        compose.onNodeWithTag("mcp_oauth_pkce_warning").performScrollTo().assertIsDisplayed()
+    }
+
     private fun inspectionFlow(screenshot: String, fontScale: Float = 1f) {
         val requests = AtomicInteger()
         val endpoint = "https://tools.example.org/mcp"
