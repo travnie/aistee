@@ -37,7 +37,7 @@ work = "2.12.0"
 webkit = "1.18.0"
 browser = "1.10.0"
 ksp = "2.3.13"
-appfunctions = "1.0.0-beta01"
+appfunctions = "1.0.0-rc01"
 
 [libraries]
 androidx-appfunctions = { group = "androidx.appfunctions", name = "appfunctions", version.ref = "appfunctions" }
