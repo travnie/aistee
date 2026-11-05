@@ -107,7 +107,10 @@ internal fun WebChatDraftJournalDialog(
     }
 
     AlertDialog(
-        onDismissRequest = { if (loaded && readable) flushThen { onDismiss() } else onDismiss() },
+        onDismissRequest = {
+            if (!loaded && dirty) return@AlertDialog
+            if (loaded && readable) flushThen { onDismiss() } else onDismiss()
+        },
         icon = { Icon(Icons.Default.EditNote, contentDescription = null) },
         title = { Text("Draft Vault · " + service.shortName) },
         text = {
@@ -203,7 +206,7 @@ internal fun WebChatDraftJournalDialog(
                                     onMessage("Draft staged for manual insertion. Nothing was sent.")
                                     onDismiss()
                                 } else error =
-                                    "This draft is too large for direct insertion. Use Copy full text."
+                                    "Could not stage this draft. It may exceed the insertion limit or another reply is pending. Use Copy full text."
                             }
                         },
                         modifier = Modifier.fillMaxWidth().testTag("web_draft_stage"),
@@ -237,7 +240,7 @@ internal fun WebChatDraftJournalDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = !busy,
+                enabled = !busy && (loaded || !dirty),
                 onClick = { if (loaded && readable) flushThen { onDismiss() } else onDismiss() },
             ) { Text("Close") }
         },

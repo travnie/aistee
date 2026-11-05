@@ -1214,7 +1214,7 @@ fun WebChatScreen(
                                 }
                                 showPromptVaultDialog = true
                             },
-                            onStageDraft = { service, draft -> viewModel.stageWebDraftReply(service, draft) },
+                            onStageDraft = { service, draft -> viewModel.stageVaultWebDraftReply(service, draft) },
                             onShowDiagnostics = ::openProviderDiagnostics,
                             onShowSignInHelp = {
                                 preferredIdentityMethod = webPreferences.loadPreferredIdentityMethod()
@@ -1814,7 +1814,7 @@ private fun WebChatToolbar(
     }
     var showTimeline by remember(selectedService, activeWebView, currentUrl) { mutableStateOf(false) }
     var showBookmarks by remember(selectedService, activeWebView) { mutableStateOf(false) }
-    var showDraftVault by rememberSaveable(selectedService.id) { mutableStateOf(false) }
+    var draftVaultServiceId by rememberSaveable { mutableStateOf<String?>(null) }
     val turnNavigationEnabled = webUserTurnNavigationEnabled(
         selectedService, disabledTurnNavigationServices
     )
@@ -1839,11 +1839,11 @@ private fun WebChatToolbar(
         )
     }
 
-    if (showDraftVault) {
+    WebAiService.entries.firstOrNull { it.id == draftVaultServiceId }?.let { vaultService ->
         WebChatDraftJournalDialog(
-            service = selectedService,
-            onStage = { text -> onStageDraft(selectedService, text) },
-            onDismiss = { showDraftVault = false },
+            service = vaultService,
+            onStage = { text -> onStageDraft(vaultService, text) },
+            onDismiss = { draftVaultServiceId = null },
             onMessage = onShowSnackbar,
         )
     }
@@ -2041,7 +2041,7 @@ private fun WebChatToolbar(
                             leadingIcon = { Icon(Icons.Default.EditNote, contentDescription = null) },
                             onClick = {
                                 menuExpanded = false
-                                showDraftVault = true
+                                draftVaultServiceId = selectedService.id
                             },
                             modifier = Modifier.testTag("btn_web_draft_vault")
                         )
