@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
@@ -387,9 +389,9 @@ internal fun LocalSkillLibrarySection(
                         )
                         Text(
                             document.source.take(1_000) +
-                                if (document.source.length > 1_000) "\n… (preview shortened)" else "",
+                                if (document.source.length > 1_000) "\n… (first 1,000 characters; use View to review the full skill)" else "",
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.heightIn(max = 140.dp)
+                            modifier = Modifier.heightIn(max = 140.dp).verticalScroll(rememberScrollState())
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
