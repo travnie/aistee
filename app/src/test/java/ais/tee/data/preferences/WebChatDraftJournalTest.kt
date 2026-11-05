@@ -76,4 +76,50 @@ class WebChatDraftJournalTest {
         assertFalse(journal.save(WebAiService.CHATGPT, "界".repeat(48_001)))
         assertEquals(raw, data.record)
     }
+    @Test fun restoringOldestPointKeepsUnpersistedEditorChanges() {
+        val data = Fake()
+        var now = 1_000_000L
+        val journal = WebChatDraftJournal(data) { now }
+        val service = WebAiService.CHATGPT
+        repeat(8) { index ->
+            assertTrue(journal.save(service, "checkpoint-$index-" + "a".repeat(100)))
+            assertTrue(journal.checkpoint(service))
+            now += 1_000L
+        }
+        val oldest = journal.load(service).page.versions.first()
+        val unsaved = "Editor changes never flushed separately " + "x".repeat(110)
+        assertTrue(journal.restore(service, oldest.id, unsaved))
+        val restored = journal.load(service).page
+        assertEquals(oldest.text, restored.current)
+        assertTrue(restored.versions.any { it.text == unsaved })
+    }
+
+    @Test fun oversizedCombinedHistoryPrunesVersionsNotCurrentDrafts() {
+        val data = Fake()
+        val journal = WebChatDraftJournal(data)
+        val providers = WebAiService.entries.take(8)
+        assertTrue(providers.size >= 7)
+        providers.forEachIndexed { serviceIndex, service ->
+            repeat(9) { revision ->
+                val text = "draft-$serviceIndex-$revision-" + "x".repeat(46_000)
+                assertTrue(journal.save(service, text))
+                assertTrue(journal.checkpoint(service))
+            }
+        }
+        val all = providers.map { journal.load(it) }
+        assertTrue(all.all { it.readable })
+        assertTrue(all.all { it.page.current.isNotBlank() })
+        assertTrue(all.sumOf { it.page.versions.size } < providers.size * 8)
+        assertTrue((data.record?.length ?: 0) <= 3_000_000)
+    }
+
+    @Test fun manualCheckpointIncludesLatestUnsavedTextInOneWrite() {
+        val journal = WebChatDraftJournal(Fake())
+        val source = "Not yet autosaved, but worth keeping"
+        assertTrue(journal.checkpoint(WebAiService.CHATGPT, source))
+        val page = journal.load(WebAiService.CHATGPT).page
+        assertEquals(source, page.current)
+        assertEquals(source, page.versions.single().text)
+    }
+
 }

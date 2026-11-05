@@ -84,33 +84,38 @@ internal class WebChatDraftJournal(
         write(archive.pages, updated)
     }
 
-    fun checkpoint(service: WebAiService): Boolean = synchronized(lock) {
+    /** Capture the editor's latest text and its restore point in one atomic journal write. */
+    fun checkpoint(service: WebAiService, pendingText: String? = null): Boolean = synchronized(lock) {
         val archive = readArchive()
         if (!archive.readable) return@synchronized false
         val page = archive.pages.firstOrNull { it.serviceId == service.id }
-            ?: return@synchronized false
-        if (page.current.isBlank()) return@synchronized false
+            ?: WebDraftPage(service.id)
+        val latest = pendingText ?: page.current
+        if (!validText(latest) || latest.isBlank()) return@synchronized false
         val now = clock()
         write(archive.pages, page.copy(
-            versions = addVersion(page.versions, page.current, now),
+            current = latest,
+            versions = addVersion(page.versions, latest, now),
             lastVersionEpochMs = now,
         ))
     }
 
-    /** Restoring creates a copy of the current draft first, never discards it. */
-    fun restore(service: WebAiService, versionId: String): Boolean = synchronized(lock) {
+    /** Read the requested version before rotation; keep any unpersisted editor changes. */
+    fun restore(service: WebAiService, versionId: String, pendingText: String? = null): Boolean = synchronized(lock) {
         val archive = readArchive()
         if (!archive.readable) return@synchronized false
         val page = archive.pages.firstOrNull { it.serviceId == service.id }
             ?: return@synchronized false
         val version = page.versions.firstOrNull { it.id == versionId }
             ?: return@synchronized false
-        if (page.current == version.text) return@synchronized true
+        val current = pendingText ?: page.current
+        if (!validText(current)) return@synchronized false
+        if (page.current == version.text && current == version.text) return@synchronized true
         val now = clock()
         write(archive.pages, page.copy(
             current = version.text,
-            versions = if (page.current.isBlank()) page.versions
-                else addVersion(page.versions, page.current, now),
+            versions = if (current.isBlank()) page.versions
+                else addVersion(page.versions, current, now),
             lastVersionEpochMs = now,
         ))
     }
@@ -130,11 +135,20 @@ internal class WebChatDraftJournal(
             .takeLast(MAX_JOURNAL_REVISIONS)
     }
 
+    /** Prune oldest restore points across providers, never their current drafts. */
     private fun write(pages: List<WebDraftPage>, updated: WebDraftPage): Boolean =
         runCatching {
-            val next = pages.filterNot { it.serviceId == updated.serviceId } + updated
-            val json = Json.encodeToString(Archive(version = 1, pages = next))
-            json.length <= MAX_JOURNAL_RECORD_CHARS && persistence.write(json)
+            val next = (pages.filterNot { it.serviceId == updated.serviceId } + updated).toMutableList()
+            while (true) {
+                val json = Json.encodeToString(Archive(version = 1, pages = next))
+                if (json.length <= MAX_JOURNAL_RECORD_CHARS) return@runCatching persistence.write(json)
+                val oldest = next.indices.filter { next[it].versions.isNotEmpty() }
+                    .minByOrNull { next[it].versions.first().savedAtEpochMs }
+                    ?: return@runCatching false
+                next[oldest] = next[oldest].copy(versions = next[oldest].versions.drop(1))
+            }
+            @Suppress("UNREACHABLE_CODE")
+            false
         }.getOrDefault(false)
 
     private fun readArchive(): ReadArchive = runCatching {

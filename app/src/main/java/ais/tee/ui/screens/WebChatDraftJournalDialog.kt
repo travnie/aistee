@@ -3,6 +3,7 @@ package ais.tee.ui.screens
 import ais.tee.data.model.WebAiService
 import ais.tee.data.preferences.WebChatDraftJournal
 import ais.tee.data.preferences.WebDraftVersion
+import ais.tee.data.preferences.WebChatDraftStore
 import ais.tee.share.copyPlainTextToClipboard
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -41,30 +43,32 @@ internal fun WebChatDraftJournalDialog(
         storeOverride ?: WebChatDraftJournal(context.applicationContext)
     }
     val scope = rememberCoroutineScope()
-    var text by remember(service) { mutableStateOf("") }
+    val stagedDraftStore = remember(context.applicationContext) {
+        WebChatDraftStore(context.applicationContext.noBackupFilesDir)
+    }
+    var text by rememberSaveable(service.id) { mutableStateOf("") }
     var versions by remember(service) { mutableStateOf<List<WebDraftVersion>>(emptyList()) }
     var loaded by remember(service) { mutableStateOf(false) }
     var readable by remember(service) { mutableStateOf(true) }
     var busy by remember(service) { mutableStateOf(false) }
-    var dirty by remember(service) { mutableStateOf(false) }
+    var dirty by rememberSaveable(service.id) { mutableStateOf(false) }
     var error by remember(service) { mutableStateOf<String?>(null) }
     var restoreId by remember(service) { mutableStateOf<String?>(null) }
     var confirmReset by remember(service) { mutableStateOf(false) }
 
     suspend fun refresh() {
         val snapshot = withContext(Dispatchers.IO) { store.load(service) }
-        text = snapshot.page.current
+        if (!dirty) text = snapshot.page.current
         versions = snapshot.page.versions.reversed()
         readable = snapshot.readable
         loaded = true
-        dirty = false
     }
 
     LaunchedEffect(service) { refresh() }
 
     // Edit debounce never reads the provider editor. Explicit close flushes latest text.
-    LaunchedEffect(service, text, loaded, readable) {
-        if (!loaded || !readable || !dirty) return@LaunchedEffect
+    LaunchedEffect(service, text, loaded, readable, dirty, busy) {
+        if (!loaded || !readable || !dirty || busy) return@LaunchedEffect
         delay(250)
         val snapshot = text
         val saved = withContext(Dispatchers.IO) { store.save(service, snapshot) }
@@ -75,16 +79,25 @@ internal fun WebChatDraftJournalDialog(
         } else if (!saved) error = "Could not save encrypted draft. Keep this editor open."
     }
 
-    fun flushThen(action: () -> Unit) {
+    fun flushThen(action: (String) -> Unit) {
         if (busy) return
+        val latest = text
         busy = true
         scope.launch {
-            val saved = withContext(Dispatchers.IO) { store.save(service, text) }
-            if (saved) {
-                dirty = false
-                action()
-            } else error = "Could not save encrypted draft. No text was discarded."
-            busy = false
+            try {
+                val saved = withContext(Dispatchers.IO) { store.save(service, latest) }
+                if (saved && text == latest) {
+                    dirty = false
+                    error = null
+                    action(latest)
+                } else if (!saved) {
+                    error = "Could not save encrypted draft. No text was discarded."
+                } else {
+                    error = "Draft changed while saving. Retry before closing."
+                }
+            } finally {
+                busy = false
+            }
         }
     }
 
@@ -106,6 +119,13 @@ internal fun WebChatDraftJournalDialog(
                 if (error != null) {
                     Text(error.orEmpty(), color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.testTag("web_draft_error"))
+                    if (loaded && readable && dirty) {
+                        TextButton(
+                            enabled = !busy,
+                            onClick = { flushThen { } },
+                            modifier = Modifier.testTag("web_draft_retry"),
+                        ) { Text("Retry encrypted save") }
+                    }
                 }
                 if (!loaded) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -123,6 +143,7 @@ internal fun WebChatDraftJournalDialog(
                             } else error = "Draft limit: 48,000 characters."
                         },
                         label = { Text("Write here, safely outside the WebView") },
+                        enabled = !busy,
                         minLines = 6, maxLines = 12,
                         modifier = Modifier.fillMaxWidth().testTag("web_draft_editor"),
                     )
@@ -134,17 +155,23 @@ internal fun WebChatDraftJournalDialog(
                         OutlinedButton(
                             enabled = !busy && text.isNotBlank(),
                             onClick = {
-                                flushThen {
+                                if (!busy) {
+                                    val latest = text
+                                    busy = true
                                     scope.launch {
-                                        val checkpoint = withContext(Dispatchers.IO) {
-                                            store.checkpoint(service)
-                                        }
-                                        if (!checkpoint) error = "Could not save a restore point."
-                                        else {
-                                            versions = withContext(Dispatchers.IO) {
-                                                store.load(service)
-                                            }.page.versions.reversed()
-                                            onMessage("Saved draft version.")
+                                        try {
+                                            val ok = withContext(Dispatchers.IO) {
+                                                store.checkpoint(service, latest)
+                                            }
+                                            if (ok && text == latest) {
+                                                dirty = false
+                                                refresh()
+                                                onMessage("Saved draft version.")
+                                            } else {
+                                                error = "Could not save this version. Your editor text is intact."
+                                            }
+                                        } finally {
+                                            busy = false
                                         }
                                     }
                                 }
@@ -152,7 +179,7 @@ internal fun WebChatDraftJournalDialog(
                             modifier = Modifier.testTag("web_draft_checkpoint"),
                         ) { Text("Save version") }
                         OutlinedButton(
-                            enabled = text.isNotBlank(),
+                            enabled = text.isNotBlank() && !busy,
                             onClick = {
                                 if (copyPlainTextToClipboard(context, "Draft Vault", text, sensitive = true)) {
                                     onMessage("Draft copied. Paste into the provider editor.")
@@ -164,8 +191,10 @@ internal fun WebChatDraftJournalDialog(
                     Button(
                         enabled = text.isNotBlank() && !busy,
                         onClick = {
-                            flushThen {
-                                if (onStage(text)) {
+                            flushThen { latest ->
+                                if (stagedDraftStore.peek(service) != null) {
+                                    error = "Another Web reply is already staged. Finish or cancel it first."
+                                } else if (onStage(latest)) {
                                     onMessage("Draft staged for manual insertion. Nothing was sent.")
                                     onDismiss()
                                 } else error =
@@ -174,6 +203,8 @@ internal fun WebChatDraftJournalDialog(
                         },
                         modifier = Modifier.fillMaxWidth().testTag("web_draft_stage"),
                     ) { Text("Insert into " + service.shortName + " (review first)") }
+                    Text("Existing staged Web replies are never replaced automatically.",
+                        style = MaterialTheme.typography.bodySmall)
 
                     Text("Previous versions (" + versions.size + ")",
                         style = MaterialTheme.typography.titleSmall)
@@ -210,25 +241,34 @@ internal fun WebChatDraftJournalDialog(
 
     restoreId?.let { id ->
         AlertDialog(
-            onDismissRequest = { restoreId = null },
+            onDismissRequest = { if (!busy) restoreId = null },
             title = { Text("Restore this version?") },
             text = { Text("Your current draft is saved as a restore point before replacing it.") },
             confirmButton = {
-                TextButton(onClick = {
-                    flushThen {
-                        scope.launch {
-                            val ok = withContext(Dispatchers.IO) { store.restore(service, id) }
-                            restoreId = null
-                            if (ok) {
+                TextButton(enabled = !busy, onClick = {
+                    val latest = text
+                    busy = true
+                    scope.launch {
+                        try {
+                            val ok = withContext(Dispatchers.IO) {
+                                store.restore(service, id, latest)
+                            }
+                            if (ok && text == latest) {
+                                restoreId = null
+                                dirty = false
                                 refresh()
                                 onMessage("Draft version restored.")
-                            } else error = "Could not restore the selected version."
+                            } else {
+                                error = "Could not restore the selected version. Editor text kept."
+                            }
+                        } finally {
+                            busy = false
                         }
                     }
                 }) { Text("Restore") }
             },
             dismissButton = {
-                TextButton(onClick = { restoreId = null }) { Text("Cancel") }
+                TextButton(enabled = !busy, onClick = { restoreId = null }) { Text("Cancel") }
             },
         )
     }
