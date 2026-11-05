@@ -621,22 +621,22 @@ private fun LocalSkillCard(
                     Text("Edit")
                 }
             }
+            onUseOnce?.let { use ->
+                OutlinedButton(
+                    enabled = actionsEnabled,
+                    onClick = use,
+                    modifier = Modifier.fillMaxWidth().testTag("skill_use_once_${skill.name}"),
+                ) {
+                    Icon(Icons.Default.Send, contentDescription = null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Use once (no activation)")
+                }
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                onUseOnce?.let { use ->
-                    OutlinedButton(
-                        enabled = actionsEnabled,
-                        onClick = use,
-                        modifier = Modifier.testTag("skill_use_once_${skill.name}"),
-                    ) {
-                        Icon(Icons.Default.Send, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Use once")
-                    }
-                }
                 onRun?.let { run ->
                     Button(
                         enabled = actionsEnabled,
