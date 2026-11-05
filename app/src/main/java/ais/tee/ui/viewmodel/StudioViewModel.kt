@@ -1000,6 +1000,33 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         scheduleNativeChatDraftPersistence()
     }
 
+    /** Atomic user-selected SKILL.md insertion; preserves staged Library source IDs. */
+    fun appendOneShotSkillToDraft(
+        expectedConversationId: String,
+        expectedDraft: String,
+        skillText: String,
+        maxChars: Int,
+    ): Boolean {
+        val updated = appendToNativeChatDraft(skillText, expectedDraft, maxChars) ?: return false
+        while (true) {
+            val current = _uiState.value
+            val active = current.nativeChat.activeConversation ?: return false
+            if (!current.isNativeConversationStoreReady ||
+                active.id != expectedConversationId || active.draft != expectedDraft
+            ) return false
+            val next = current.copy(
+                nativeChat = current.nativeChat.updateActiveConversation { conversation ->
+                    conversation.copy(draft = updated)
+                },
+                inputBudgetPreflight = null,
+            )
+            if (_uiState.compareAndSet(current, next)) {
+                scheduleNativeChatDraftPersistence()
+                return true
+            }
+        }
+    }
+
     suspend fun createProject(name: String): Boolean {
         val project = withContext(Dispatchers.IO) {
             projectLibraryStore.createProject(name)
