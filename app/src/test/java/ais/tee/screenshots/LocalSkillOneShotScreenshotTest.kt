@@ -1,6 +1,7 @@
-package ais.tee.ui.screens
+package ais.tee.screenshots
 
 import ais.tee.data.skills.LocalSkillSummary
+import ais.tee.ui.screens.LocalSkillCard
 import ais.tee.ui.theme.AisteeTheme
 import android.app.Application
 import androidx.compose.ui.test.assertIsDisplayed
