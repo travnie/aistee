@@ -271,6 +271,7 @@ internal fun LocalSkillLibrarySection(
     var pendingRemoveSkill by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingUseSkill by remember { mutableStateOf<LocalSkillDocument?>(null) }
     var oneShotBusy by remember { mutableStateOf(false) }
+    var oneShotTrusted by remember { mutableStateOf(false) }
 
     fun applySkills(updated: List<LocalSkillSummary>) {
         skills = updated
@@ -352,6 +353,7 @@ internal fun LocalSkillLibrarySection(
         onUseOnce = if (viewModel != null) { skill: LocalSkillSummary ->
             scope.launch {
                 oneShotBusy = false
+                oneShotTrusted = false
                 busySkill = skill.name
                 try {
                     pendingUseSkill = store.read(skill.name)
@@ -375,11 +377,27 @@ internal fun LocalSkillLibrarySection(
                 onDismissRequest = { if (!oneShotBusy) pendingUseSkill = null },
                 title = { Text("Use '$name' once?") },
                 text = {
-                    Text(
-                        "Stages untrusted SKILL.md text for one message, without enabling new " +
-                            "tools or changing skill settings. Already enabled tools retain their " +
-                            "existing consent controls. Web staging replaces the provider draft."
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Imported SKILL.md can contain unsafe instructions. Review it before " +
+                                "using its guidance. This does not grant tools or change global settings."
+                        )
+                        Text(
+                            document.source.take(1_000) +
+                                if (document.source.length > 1_000) "\n… (preview shortened)" else "",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.heightIn(max = 140.dp)
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = oneShotTrusted,
+                                onCheckedChange = { oneShotTrusted = it },
+                                modifier = Modifier.testTag("skill_one_shot_trust"),
+                            )
+                            Text("I reviewed this SKILL.md for one-time use.",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 },
                 confirmButton = {
                     Column {
@@ -407,7 +425,7 @@ internal fun LocalSkillLibrarySection(
                                         }
                                     }
                                 },
-                                enabled = !oneShotBusy,
+                                enabled = oneShotTrusted && !oneShotBusy,
                                 modifier = Modifier.testTag("skill_use_once_native"),
                             ) { Text("Native draft") }
                             TextButton(
@@ -424,7 +442,7 @@ internal fun LocalSkillLibrarySection(
                                         }
                                     }
                                 },
-                                enabled = !oneShotBusy,
+                                enabled = oneShotTrusted && !oneShotBusy,
                                 modifier = Modifier.testTag("skill_use_once_web"),
                             ) { Text("Web draft") }
                         }
@@ -572,7 +590,7 @@ private fun LocalSkillLibraryEmptyMessage(
 }
 
 @Composable
-private fun LocalSkillCard(
+internal fun LocalSkillCard(
     skill: LocalSkillSummary,
     actionsEnabled: Boolean,
     onActivationChanged: (Boolean) -> Unit,
