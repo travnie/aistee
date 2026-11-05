@@ -4,6 +4,7 @@ import android.content.Context
 import ais.tee.data.model.WebAiService
 import ais.tee.data.security.EncryptedJsonStore
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -55,7 +56,7 @@ internal class WebChatDraftJournal(
     constructor(context: Context) : this(encryptedPersistence(context))
 
     /** Reserve on caller thread before IO dispatch. */
-    fun nextWriteTicket(): Long = synchronized(lock) { ++issuedWriteTicket }
+    fun nextWriteTicket(): Long = issuedWriteTicket.incrementAndGet()
 
     fun load(service: WebAiService): WebDraftJournalSnapshot = synchronized(lock) {
         val archive = readArchive()
@@ -213,7 +214,7 @@ internal class WebChatDraftJournal(
 
     private companion object {
         val lock = Any()
-        var issuedWriteTicket = 0L
+        val issuedWriteTicket = AtomicLong(0L)
         val acceptedTickets = mutableMapOf<String, Long>()
         fun encryptedPersistence(context: Context): WebDraftJournalPersistence {
             val storage = EncryptedJsonStore(
