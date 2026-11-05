@@ -18,6 +18,7 @@ Kotlin Multiplatform · Android first · Local-first tools
 
 <a href="https://deepwiki.com/travnie/aistee"><img src="https://deepwiki.com/badge.svg" alt="DeepWiki"></a>
 <a href="https://doi.org/10.5281/zenodo.22307997"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.22307997.svg" alt="DOI"></a>
+<a href="https://app.codacy.com/gh/travnie/aistee/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade"><img src="https://app.codacy.com/project/badge/Grade/4afd14185a5246519f43693a4ef1c2a6"/></a>
 
 [**📦 Install**](#-install) · [**✨ Highlights**](#-highlights) · [**🔌 Providers**](#-providers) · [**📚 Docs**](#-docs) · [**🛠️ Develop**](#-development)
 
