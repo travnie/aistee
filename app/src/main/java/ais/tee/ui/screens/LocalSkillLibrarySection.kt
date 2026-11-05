@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FolderCopy
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -49,6 +50,10 @@ import ais.tee.data.document.TextDocument
 import ais.tee.data.document.TextDocumentCodec
 import ais.tee.data.skills.LocalSkillLibraryStore
 import ais.tee.data.skills.LocalSkillSummary
+import ais.tee.data.skills.LocalSkillDocument
+import ais.tee.data.model.appendToNativeChatDraft
+import ais.tee.ui.viewmodel.NavigationTab
+import ais.tee.ui.viewmodel.StudioViewModel
 import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
@@ -56,6 +61,13 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 private const val LOCAL_SKILL_MISSING_MESSAGE = "Local skill is no longer available."
+private const val MAX_ONE_SHOT_SKILL_DRAFT_CHARS = 128 * 1024
+
+/** User-selected instructions, never runtime activation. */
+internal fun oneShotSkillPrompt(source: String): String? =
+    source.takeIf { it.isNotBlank() }?.let {
+        "Apply this SKILL.md only for this request. Do not run skill scripts or tools.\n\n$it"
+    }
 
 private sealed interface LocalSkillExportResult {
     data object Missing : LocalSkillExportResult
@@ -244,7 +256,8 @@ internal fun LocalSkillLibrarySection(
     onViewSource: (String, String) -> Unit,
     onEditSource: (String, String) -> Unit,
     onMessage: (String) -> Unit,
-    activeSkillsEnabled: Boolean = false
+    activeSkillsEnabled: Boolean = false,
+    viewModel: StudioViewModel? = null
 ) {
     val context = LocalContext.current
     var runningSkill by rememberSaveable { mutableStateOf<String?>(null) }
@@ -254,6 +267,7 @@ internal fun LocalSkillLibrarySection(
     var pendingEnableSkillName by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingExportSkill by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingRemoveSkill by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingUseSkill by remember { mutableStateOf<LocalSkillDocument?>(null) }
 
     fun applySkills(updated: List<LocalSkillSummary>) {
         skills = updated
@@ -332,8 +346,94 @@ internal fun LocalSkillLibrarySection(
             }
         },
         onRemove = { skill -> pendingRemoveSkill = skill.name },
+        onUseOnce = if (viewModel != null) { skill: LocalSkillSummary ->
+            scope.launch {
+                busySkill = skill.name
+                try {
+                    pendingUseSkill = store.read(skill.name)
+                    if (pendingUseSkill == null) onMessage(LOCAL_SKILL_MISSING_MESSAGE)
+                } catch (_: IOException) {
+                    onMessage("Could not read this SKILL.md.")
+                } finally {
+                    busySkill = null
+                }
+            }
+        } else null,
         onRun = if (activeSkillsEnabled) { skill: LocalSkillSummary -> runningSkill = skill.name } else null
     )
+
+    pendingUseSkill?.let { document ->
+        val model = viewModel
+        if (model != null) {
+            val name = document.manifest.name
+            val prompt = oneShotSkillPrompt(document.source)
+            AlertDialog(
+                onDismissRequest = { pendingUseSkill = null },
+                title = { Text("Use '$name' once?") },
+                text = {
+                    Text(
+                        "Stages SKILL.md instructions for one message only; never executes scripts or tools. " +
+                            "Review before sending. Web staging replaces the provider's pending draft."
+                    )
+                },
+                confirmButton = {
+                    Column {
+                        Row {
+                            TextButton(
+                                onClick = {
+                                    val state = model.uiState.value
+                                    val conversation = state.nativeChat.activeConversation
+                                    val updated = if (
+                                        state.isNativeConversationStoreReady &&
+                                        conversation != null && prompt != null
+                                    ) appendToNativeChatDraft(
+                                        prompt, conversation.draft, MAX_ONE_SHOT_SKILL_DRAFT_CHARS
+                                    ) else null
+                                    if (updated == null) {
+                                        onMessage("No native conversation or prompt too large.")
+                                    } else {
+                                        model.updateNativeConversationDraft(updated)
+                                        model.selectTab(NavigationTab.COMPARE_HUB)
+                                        pendingUseSkill = null
+                                        onMessage("Staged SKILL.md once. Nothing was sent.")
+                                    }
+                                },
+                                modifier = Modifier.testTag("skill_use_once_native"),
+                            ) { Text("Native draft") }
+                            TextButton(
+                                onClick = {
+                                    val provider = model.uiState.value.selectedWebService
+                                    if (prompt != null && model.stageWebDraftReply(provider, prompt)) {
+                                        pendingUseSkill = null
+                                        onMessage("Web draft staged; review before sending.")
+                                    } else {
+                                        onMessage("Too large for Web draft. Export SKILL.md for upload.")
+                                    }
+                                },
+                                modifier = Modifier.testTag("skill_use_once_web"),
+                            ) { Text("Web draft") }
+                        }
+                        TextButton(
+                            onClick = {
+                                pendingUseSkill = null
+                                pendingExportSkill = name
+                                try {
+                                    exportLauncher.launch("SKILL.md")
+                                } catch (_: ActivityNotFoundException) {
+                                    pendingExportSkill = null
+                                    onMessage("No document picker is available.")
+                                }
+                            },
+                            modifier = Modifier.testTag("skill_use_once_export"),
+                        ) { Text("Export SKILL.md for upload") }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingUseSkill = null }) { Text("Cancel") }
+                },
+            )
+        }
+    }
 
     runningSkill?.let { name ->
         ActiveSkillRunFlow(skillName = name, store = store, onClose = { runningSkill = null })
@@ -380,7 +480,8 @@ private fun LocalSkillLibraryContent(
     onEdit: (LocalSkillSummary) -> Unit,
     onExport: (LocalSkillSummary) -> Unit,
     onRemove: (LocalSkillSummary) -> Unit,
-    onRun: ((LocalSkillSummary) -> Unit)? = null
+    onRun: ((LocalSkillSummary) -> Unit)? = null,
+    onUseOnce: ((LocalSkillSummary) -> Unit)? = null
 ) {
     val filtered = skills.filter { skill ->
         skill.name.contains(searchQuery, ignoreCase = true) ||
@@ -409,7 +510,8 @@ private fun LocalSkillLibraryContent(
                 onEdit = { onEdit(skill) },
                 onExport = { onExport(skill) },
                 onRemove = { onRemove(skill) },
-                onRun = onRun?.takeIf { skill.hasActiveRuntime }?.let { run -> { run(skill) } }
+                onRun = onRun?.takeIf { skill.hasActiveRuntime }?.let { run -> { run(skill) } },
+                onUseOnce = onUseOnce?.let { use -> { use(skill) } }
             )
         }
     }
@@ -456,7 +558,8 @@ private fun LocalSkillCard(
     onEdit: () -> Unit,
     onExport: () -> Unit,
     onRemove: () -> Unit,
-    onRun: (() -> Unit)? = null
+    onRun: (() -> Unit)? = null,
+    onUseOnce: (() -> Unit)? = null
 ) {
     Card(
         shape = MaterialTheme.shapes.medium,
@@ -523,6 +626,17 @@ private fun LocalSkillCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                onUseOnce?.let { use ->
+                    OutlinedButton(
+                        enabled = actionsEnabled,
+                        onClick = use,
+                        modifier = Modifier.testTag("skill_use_once_${skill.name}"),
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Use once")
+                    }
+                }
                 onRun?.let { run ->
                     Button(
                         enabled = actionsEnabled,
