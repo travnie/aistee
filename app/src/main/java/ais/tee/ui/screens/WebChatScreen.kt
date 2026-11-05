@@ -35,6 +35,7 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1813,7 +1814,7 @@ private fun WebChatToolbar(
     }
     var showTimeline by remember(selectedService, activeWebView, currentUrl) { mutableStateOf(false) }
     var showBookmarks by remember(selectedService, activeWebView) { mutableStateOf(false) }
-    var showDraftVault by remember(selectedService) { mutableStateOf(false) }
+    var showDraftVault by rememberSaveable(selectedService.id) { mutableStateOf(false) }
     val turnNavigationEnabled = webUserTurnNavigationEnabled(
         selectedService, disabledTurnNavigationServices
     )
