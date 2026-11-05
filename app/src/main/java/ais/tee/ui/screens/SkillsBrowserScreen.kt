@@ -322,7 +322,8 @@ fun SkillsBrowserScreen(
                                 openLocalSkillEditor(name, source, allowDiscardDirty = false)
                             },
                             onMessage = viewModel::showSnackbar,
-                            activeSkillsEnabled = activeSkillsEnabled
+                            activeSkillsEnabled = activeSkillsEnabled,
+                            viewModel = viewModel
                         )
                     }
 
