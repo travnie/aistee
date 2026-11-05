@@ -1,0 +1,185 @@
+package ais.tee.data.preferences
+
+import android.content.Context
+import ais.tee.data.model.WebAiService
+import ais.tee.data.security.EncryptedJsonStore
+import java.util.UUID
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private const val MAX_JOURNAL_TEXT_CHARS = 48_000
+private const val MAX_JOURNAL_TEXT_BYTES = 192_000
+private const val MAX_JOURNAL_RECORD_CHARS = 3_000_000
+private const val MAX_JOURNAL_REVISIONS = 8
+private const val AUTO_REVISION_MS = 120_000L
+
+/** Entirely Aistee-owned text. Never reads a provider DOM, form, or session. */
+@Serializable
+internal data class WebDraftVersion(
+    val id: String,
+    val text: String,
+    val savedAtEpochMs: Long,
+)
+
+@Serializable
+internal data class WebDraftPage(
+    val serviceId: String,
+    val current: String = "",
+    val versions: List<WebDraftVersion> = emptyList(),
+    val lastVersionEpochMs: Long = 0L,
+)
+
+internal data class WebDraftJournalSnapshot(
+    val page: WebDraftPage,
+    val readable: Boolean = true,
+)
+
+internal interface WebDraftJournalPersistence {
+    fun read(): String?
+    fun hasStoredData(): Boolean
+    fun write(text: String): Boolean
+    fun clear(): Boolean
+}
+
+/** Keystore-backed composer journal. No backup and no provider-owned content inspection. */
+internal class WebChatDraftJournal(
+    private val persistence: WebDraftJournalPersistence,
+    private val clock: () -> Long = System::currentTimeMillis,
+) {
+    constructor(context: Context) : this(encryptedPersistence(context))
+
+    fun load(service: WebAiService): WebDraftJournalSnapshot = synchronized(lock) {
+        val archive = readArchive()
+        WebDraftJournalSnapshot(
+            page = archive.pages.firstOrNull { it.serviceId == service.id }
+                ?: WebDraftPage(service.id),
+            readable = archive.readable,
+        )
+    }
+
+    /** Latest text autosaves; significant older text periodically becomes a restore point. */
+    fun save(service: WebAiService, text: String): Boolean = synchronized(lock) {
+        if (!validText(text)) return@synchronized false
+        val archive = readArchive()
+        if (!archive.readable) return@synchronized false
+        val previous = archive.pages.firstOrNull { it.serviceId == service.id }
+            ?: WebDraftPage(service.id)
+        if (previous.current == text) return@synchronized true
+        val now = clock()
+        val shouldVersion = previous.current.length >= 80 &&
+            now - previous.lastVersionEpochMs >= AUTO_REVISION_MS
+        val updated = if (shouldVersion) {
+            previous.copy(
+                current = text,
+                versions = addVersion(previous.versions, previous.current, now),
+                lastVersionEpochMs = now,
+            )
+        } else previous.copy(current = text)
+        write(archive.pages, updated)
+    }
+
+    fun checkpoint(service: WebAiService): Boolean = synchronized(lock) {
+        val archive = readArchive()
+        if (!archive.readable) return@synchronized false
+        val page = archive.pages.firstOrNull { it.serviceId == service.id }
+            ?: return@synchronized false
+        if (page.current.isBlank()) return@synchronized false
+        val now = clock()
+        write(archive.pages, page.copy(
+            versions = addVersion(page.versions, page.current, now),
+            lastVersionEpochMs = now,
+        ))
+    }
+
+    /** Restoring creates a copy of the current draft first, never discards it. */
+    fun restore(service: WebAiService, versionId: String): Boolean = synchronized(lock) {
+        val archive = readArchive()
+        if (!archive.readable) return@synchronized false
+        val page = archive.pages.firstOrNull { it.serviceId == service.id }
+            ?: return@synchronized false
+        val version = page.versions.firstOrNull { it.id == versionId }
+            ?: return@synchronized false
+        if (page.current == version.text) return@synchronized true
+        val now = clock()
+        write(archive.pages, page.copy(
+            current = version.text,
+            versions = if (page.current.isBlank()) page.versions
+                else addVersion(page.versions, page.current, now),
+            lastVersionEpochMs = now,
+        ))
+    }
+
+    /** Reset unreadable encrypted data only after an explicit user confirmation. */
+    fun reset(): Boolean = synchronized(lock) {
+        runCatching { persistence.clear() }.getOrDefault(false)
+    }
+
+    private fun addVersion(
+        existing: List<WebDraftVersion>,
+        text: String,
+        now: Long,
+    ): List<WebDraftVersion> {
+        if (text.isBlank() || existing.lastOrNull()?.text == text) return existing
+        return (existing + WebDraftVersion(UUID.randomUUID().toString(), text, now))
+            .takeLast(MAX_JOURNAL_REVISIONS)
+    }
+
+    private fun write(pages: List<WebDraftPage>, updated: WebDraftPage): Boolean =
+        runCatching {
+            val next = pages.filterNot { it.serviceId == updated.serviceId } + updated
+            val json = Json.encodeToString(Archive(version = 1, pages = next))
+            json.length <= MAX_JOURNAL_RECORD_CHARS && persistence.write(json)
+        }.getOrDefault(false)
+
+    private fun readArchive(): ReadArchive = runCatching {
+        val raw = persistence.read() ?: return@runCatching ReadArchive(
+            pages = emptyList(), readable = !persistence.hasStoredData()
+        )
+        require(raw.length <= MAX_JOURNAL_RECORD_CHARS)
+        val archive = Json.decodeFromString<Archive>(raw)
+        require(archive.version == 1)
+        require(archive.pages.size <= WebAiService.entries.size)
+        require(archive.pages.map { it.serviceId }.toSet().size == archive.pages.size)
+        require(archive.pages.all { page ->
+            WebAiService.entries.any { it.id == page.serviceId } &&
+                validText(page.current) && page.lastVersionEpochMs >= 0 &&
+                page.versions.size <= MAX_JOURNAL_REVISIONS &&
+                page.versions.map { it.id }.toSet().size == page.versions.size &&
+                page.versions.all { v ->
+                    v.id.length in 1..40 && v.savedAtEpochMs >= 0 &&
+                        validText(v.text) && v.text.isNotBlank()
+                }
+        })
+        ReadArchive(archive.pages)
+    }.getOrElse { ReadArchive(emptyList(), readable = false) }
+
+    private fun validText(text: String): Boolean =
+        text.length <= MAX_JOURNAL_TEXT_CHARS &&
+            text.toByteArray(Charsets.UTF_8).size <= MAX_JOURNAL_TEXT_BYTES
+
+    @Serializable
+    private data class Archive(val version: Int, val pages: List<WebDraftPage>)
+
+    private data class ReadArchive(
+        val pages: List<WebDraftPage>,
+        val readable: Boolean = true,
+    )
+
+    private companion object {
+        val lock = Any()
+        fun encryptedPersistence(context: Context): WebDraftJournalPersistence {
+            val storage = EncryptedJsonStore(
+                context,
+                "encrypted_web_draft_journal",
+                "aistee-web-draft-journal",
+            )
+            return object : WebDraftJournalPersistence {
+                override fun read() = storage.read()
+                override fun hasStoredData() = storage.hasStoredData()
+                override fun write(text: String) = storage.write(text)
+                override fun clear() = storage.clear()
+            }
+        }
+    }
+}
