@@ -20,7 +20,9 @@ internal data class WebDraftVersion(
     val id: String,
     val text: String,
     val savedAtEpochMs: Long,
-)
+) {
+    override fun toString(): String = "WebDraftVersion(id=<redacted>, text=<redacted>)"
+}
 
 @Serializable
 internal data class WebDraftPage(
@@ -28,7 +30,10 @@ internal data class WebDraftPage(
     val current: String = "",
     val versions: List<WebDraftVersion> = emptyList(),
     val lastVersionEpochMs: Long = 0L,
-)
+) {
+    override fun toString(): String =
+        "WebDraftPage(serviceId=$serviceId, current=<redacted>, versions=${versions.size})"
+}
 
 internal data class WebDraftJournalSnapshot(
     val page: WebDraftPage,

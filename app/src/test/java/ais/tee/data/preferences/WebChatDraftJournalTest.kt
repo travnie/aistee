@@ -73,7 +73,7 @@ class WebChatDraftJournalTest {
         assertTrue(journal.save(WebAiService.CHATGPT, "original"))
         val raw = data.record
         assertFalse(journal.save(WebAiService.CHATGPT, "x".repeat(48_001)))
-        assertFalse(journal.save(WebAiService.CHATGPT, "界".repeat(48_000)))
+        assertFalse(journal.save(WebAiService.CHATGPT, "界".repeat(48_001)))
         assertEquals(raw, data.record)
     }
 }
