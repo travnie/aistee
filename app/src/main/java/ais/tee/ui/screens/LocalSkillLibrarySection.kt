@@ -430,7 +430,7 @@ internal fun LocalSkillLibrarySection(
                                         }
                                     }
                                 },
-                                enabled = oneShotTrusted && !oneShotBusy,
+                                enabled = prompt != null && oneShotTrusted && !oneShotBusy,
                                 modifier = Modifier.testTag("skill_use_once_native"),
                             ) { Text("Native draft") }
                             TextButton(
@@ -448,7 +448,7 @@ internal fun LocalSkillLibrarySection(
                                         }
                                     }
                                 },
-                                enabled = oneShotTrusted && !oneShotBusy,
+                                enabled = prompt != null && oneShotTrusted && !oneShotBusy,
                                 modifier = Modifier.testTag("skill_use_once_web"),
                             ) { Text("Web draft") }
                         }
