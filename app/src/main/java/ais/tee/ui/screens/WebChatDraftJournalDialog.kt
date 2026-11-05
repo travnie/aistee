@@ -73,9 +73,14 @@ internal fun WebChatDraftJournalDialog(
         val snapshot = text
         val saved = withContext(Dispatchers.IO) { store.save(service, snapshot) }
         if (saved && text == snapshot) {
-            dirty = false
-            error = null
-            versions = withContext(Dispatchers.IO) { store.load(service) }.page.versions.reversed()
+            val updatedVersions = withContext(Dispatchers.IO) {
+                store.load(service).page.versions.reversed()
+            }
+            if (text == snapshot) {
+                versions = updatedVersions
+                error = null
+                dirty = false
+            }
         } else if (!saved) error = "Could not save encrypted draft. Keep this editor open."
     }
 
