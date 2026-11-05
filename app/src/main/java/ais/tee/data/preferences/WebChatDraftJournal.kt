@@ -54,6 +54,9 @@ internal class WebChatDraftJournal(
 ) {
     constructor(context: Context) : this(encryptedPersistence(context))
 
+    /** Reserve on caller thread before IO dispatch. */
+    fun nextWriteTicket(): Long = synchronized(lock) { ++issuedWriteTicket }
+
     fun load(service: WebAiService): WebDraftJournalSnapshot = synchronized(lock) {
         val archive = readArchive()
         WebDraftJournalSnapshot(
@@ -64,13 +67,17 @@ internal class WebChatDraftJournal(
     }
 
     /** Latest text autosaves; significant older text periodically becomes a restore point. */
-    fun save(service: WebAiService, text: String): Boolean = synchronized(lock) {
+    fun save(service: WebAiService, text: String, ticket: Long = nextWriteTicket()): Boolean = synchronized(lock) {
+        if (superseded(service, ticket)) return@synchronized true
         if (!validText(text)) return@synchronized false
         val archive = readArchive()
         if (!archive.readable) return@synchronized false
         val previous = archive.pages.firstOrNull { it.serviceId == service.id }
             ?: WebDraftPage(service.id)
-        if (previous.current == text) return@synchronized true
+        if (previous.current == text) {
+            acceptedTickets[service.id] = ticket
+            return@synchronized true
+        }
         val now = clock()
         val shouldVersion = previous.current.length >= 80 &&
             now - previous.lastVersionEpochMs >= AUTO_REVISION_MS
@@ -81,11 +88,12 @@ internal class WebChatDraftJournal(
                 lastVersionEpochMs = now,
             )
         } else previous.copy(current = text)
-        write(archive.pages, updated)
+        writeAndRecord(service, ticket, archive.pages, updated)
     }
 
     /** Capture the editor's latest text and its restore point in one atomic journal write. */
-    fun checkpoint(service: WebAiService, pendingText: String? = null): Boolean = synchronized(lock) {
+    fun checkpoint(service: WebAiService, pendingText: String? = null, ticket: Long = nextWriteTicket()): Boolean = synchronized(lock) {
+        if (superseded(service, ticket)) return@synchronized true
         val archive = readArchive()
         if (!archive.readable) return@synchronized false
         val page = archive.pages.firstOrNull { it.serviceId == service.id }
@@ -93,7 +101,7 @@ internal class WebChatDraftJournal(
         val latest = pendingText ?: page.current
         if (!validText(latest) || latest.isBlank()) return@synchronized false
         val now = clock()
-        write(archive.pages, page.copy(
+        writeAndRecord(service, ticket, archive.pages, page.copy(
             current = latest,
             versions = addVersion(page.versions, latest, now),
             lastVersionEpochMs = now,
@@ -101,7 +109,8 @@ internal class WebChatDraftJournal(
     }
 
     /** Read the requested version before rotation; keep any unpersisted editor changes. */
-    fun restore(service: WebAiService, versionId: String, pendingText: String? = null): Boolean = synchronized(lock) {
+    fun restore(service: WebAiService, versionId: String, pendingText: String? = null, ticket: Long = nextWriteTicket()): Boolean = synchronized(lock) {
+        if (superseded(service, ticket)) return@synchronized true
         val archive = readArchive()
         if (!archive.readable) return@synchronized false
         val page = archive.pages.firstOrNull { it.serviceId == service.id }
@@ -110,14 +119,31 @@ internal class WebChatDraftJournal(
             ?: return@synchronized false
         val current = pendingText ?: page.current
         if (!validText(current)) return@synchronized false
-        if (page.current == version.text && current == version.text) return@synchronized true
+        if (page.current == version.text && current == version.text) {
+            acceptedTickets[service.id] = ticket
+            return@synchronized true
+        }
         val now = clock()
-        write(archive.pages, page.copy(
+        writeAndRecord(service, ticket, archive.pages, page.copy(
             current = version.text,
             versions = if (current.isBlank()) page.versions
                 else addVersion(page.versions, current, now),
             lastVersionEpochMs = now,
         ))
+    }
+
+    private fun superseded(service: WebAiService, ticket: Long): Boolean =
+        ticket < (acceptedTickets[service.id] ?: Long.MIN_VALUE)
+
+    private fun writeAndRecord(
+        service: WebAiService,
+        ticket: Long,
+        pages: List<WebDraftPage>,
+        updated: WebDraftPage,
+    ): Boolean {
+        val ok = write(pages, updated)
+        if (ok) acceptedTickets[service.id] = ticket
+        return ok
     }
 
     /** Reset unreadable encrypted data only after an explicit user confirmation. */
@@ -187,6 +213,8 @@ internal class WebChatDraftJournal(
 
     private companion object {
         val lock = Any()
+        var issuedWriteTicket = 0L
+        val acceptedTickets = mutableMapOf<String, Long>()
         fun encryptedPersistence(context: Context): WebDraftJournalPersistence {
             val storage = EncryptedJsonStore(
                 context,

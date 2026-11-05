@@ -69,9 +69,10 @@ internal fun WebChatDraftJournalDialog(
     // Edit debounce never reads the provider editor. Explicit close flushes latest text.
     LaunchedEffect(service, text, loaded, readable, dirty, busy) {
         if (!loaded || !readable || !dirty || busy) return@LaunchedEffect
+        val ticket = store.nextWriteTicket()
         delay(250)
         val snapshot = text
-        val saved = withContext(Dispatchers.IO) { store.save(service, snapshot) }
+        val saved = withContext(Dispatchers.IO) { store.save(service, snapshot, ticket) }
         if (saved && text == snapshot) {
             val updatedVersions = withContext(Dispatchers.IO) {
                 store.load(service).page.versions.reversed()
@@ -87,10 +88,11 @@ internal fun WebChatDraftJournalDialog(
     fun flushThen(action: (String) -> Unit) {
         if (busy) return
         val latest = text
+        val ticket = store.nextWriteTicket()
         busy = true
         scope.launch {
             try {
-                val saved = withContext(Dispatchers.IO) { store.save(service, latest) }
+                val saved = withContext(Dispatchers.IO) { store.save(service, latest, ticket) }
                 if (saved && text == latest) {
                     dirty = false
                     error = null
@@ -165,11 +167,12 @@ internal fun WebChatDraftJournalDialog(
                             onClick = {
                                 if (!busy) {
                                     val latest = text
+                                    val ticket = store.nextWriteTicket()
                                     busy = true
                                     scope.launch {
                                         try {
                                             val ok = withContext(Dispatchers.IO) {
-                                                store.checkpoint(service, latest)
+                                                store.checkpoint(service, latest, ticket)
                                             }
                                             if (ok && text == latest) {
                                                 dirty = false
@@ -255,11 +258,12 @@ internal fun WebChatDraftJournalDialog(
             confirmButton = {
                 TextButton(enabled = !busy, onClick = {
                     val latest = text
+                    val ticket = store.nextWriteTicket()
                     busy = true
                     scope.launch {
                         try {
                             val ok = withContext(Dispatchers.IO) {
-                                store.restore(service, id, latest)
+                                store.restore(service, id, latest, ticket)
                             }
                             if (ok && text == latest) {
                                 restoreId = null

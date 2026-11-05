@@ -18,6 +18,19 @@ class WebChatDraftJournalTest {
         override fun clear(): Boolean { record = null; return true }
     }
 
+    @Test fun delayedAutosaveCannotUndoNewerCheckpoint() {
+        val data = Fake()
+        val first = WebChatDraftJournal(data)
+        val second = WebChatDraftJournal(data)
+        val oldTicket = first.nextWriteTicket()
+        val newTicket = second.nextWriteTicket()
+        assertTrue(second.checkpoint(WebAiService.CHATGPT, "newer checkpoint", newTicket))
+        assertTrue(first.save(WebAiService.CHATGPT, "stale autosave", oldTicket))
+        val stored = first.load(WebAiService.CHATGPT).page
+        assertEquals("newer checkpoint", stored.current)
+        assertEquals("newer checkpoint", stored.versions.single().text)
+    }
+
     @Test fun restoresOlderTextWithoutLosingCurrentDraft() {
         val data = Fake()
         var now = 1_000_000L
