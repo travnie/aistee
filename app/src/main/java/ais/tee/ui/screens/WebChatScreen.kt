@@ -1213,6 +1213,7 @@ fun WebChatScreen(
                                 }
                                 showPromptVaultDialog = true
                             },
+                            onStageDraft = { service, draft -> viewModel.stageWebDraftReply(service, draft) },
                             onShowDiagnostics = ::openProviderDiagnostics,
                             onShowSignInHelp = {
                                 preferredIdentityMethod = webPreferences.loadPreferredIdentityMethod()
@@ -1791,6 +1792,7 @@ private fun WebChatToolbar(
     onApplyStudio: () -> Unit,
     onShowPromptHelper: () -> Unit,
     onShowPromptVault: () -> Unit,
+    onStageDraft: (WebAiService, String) -> Boolean,
     onShowDiagnostics: () -> Unit,
     onShowSignInHelp: () -> Unit,
     onClearProviderSessions: () -> Unit,
@@ -1811,6 +1813,7 @@ private fun WebChatToolbar(
     }
     var showTimeline by remember(selectedService, activeWebView, currentUrl) { mutableStateOf(false) }
     var showBookmarks by remember(selectedService, activeWebView) { mutableStateOf(false) }
+    var showDraftVault by remember(selectedService) { mutableStateOf(false) }
     val turnNavigationEnabled = webUserTurnNavigationEnabled(
         selectedService, disabledTurnNavigationServices
     )
@@ -1832,6 +1835,15 @@ private fun WebChatToolbar(
                 activeWebView?.loadUrl(savedUrl)
             },
             onDismiss = { showBookmarks = false },
+        )
+    }
+
+    if (showDraftVault) {
+        WebChatDraftJournalDialog(
+            service = selectedService,
+            onStage = { text -> onStageDraft(selectedService, text) },
+            onDismiss = { showDraftVault = false },
+            onMessage = onShowSnackbar,
         )
     }
 
@@ -2023,6 +2035,15 @@ private fun WebChatToolbar(
                             }
                         )
                         HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Draft Vault (local)") },
+                            leadingIcon = { Icon(Icons.Default.EditNote, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                showDraftVault = true
+                            },
+                            modifier = Modifier.testTag("btn_web_draft_vault")
+                        )
                         DropdownMenuItem(
                             text = { Text("Local chat bookmarks") },
                             leadingIcon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
