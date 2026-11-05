@@ -1,6 +1,6 @@
 # Android intelligence system - research and plan
 
-Status: **debug-only AppFunctions prototype; release integration remains proposed**. Debug builds include a generated, same-UID-only token-count service and default-off process-session consent. External assistants cannot invoke this preview. Release builds contain no AppFunctions service, metadata, control or runtime dependency. Reviewed on 30 October 2026; compileSdk 37 / targetSdk 36.
+Status: **debug-only AppFunctions prototype; release integration remains proposed**. Debug builds include a generated, same-UID-only token-count service and default-off process-session consent. External assistants cannot invoke this preview. Release builds contain no AppFunctions service, metadata, control or runtime dependency. Reviewed on 5 November 2026; compileSdk 37 / targetSdk 36.
 
 ## AppFunctions (Android MCP)
 
@@ -9,11 +9,11 @@ AppFunctions expose typed app operations to supported Android system agents. It 
 Platform facts:
 
 - `compileSdk` 36 or higher (Aistee is on 37). The service entry point is `@RequiresApi(36)`.
-- The latest reviewed official migration path uses `androidx.appfunctions:appfunctions` **1.0.0-beta01** and the KSP compiler. Use an abstract `AppFunctionService` annotated `@AppFunctionServiceEntryPoint`; KSP generates the concrete service and metadata. Do not use the removed `AppFunctionConfiguration.Provider` or standalone service dependency.
+- The latest reviewed official migration path uses `androidx.appfunctions:appfunctions` **1.0.0-rc01** and the KSP compiler. Use an abstract `AppFunctionService` annotated `@AppFunctionServiceEntryPoint`; KSP generates the concrete service and metadata. Do not use the removed `AppFunctionConfiguration.Provider` or standalone service dependency.
 - The generated service is declared with `android:permission="android.permission.BIND_APP_FUNCTION_SERVICE"` and the `android.app.appfunctions.*` properties. `AppFunctionManager.getInstance()` returns null where the feature is unsupported.
 - Use `@AppFunctionDeclaration` (replacing `@AppFunction`), explicit `isDescribedByKDoc` flags and `appfn:instructions` metadata. Suspend functions still need an I/O dispatcher for blocking work. Keep KDoc accurate for each function and public serializable property.
-- Ship functions **disabled by default** with explicit user opt-in; check the beta01 enablement and declaration signatures against the actual resolved library before coding.
-- Verify generated service/manifest/metadata, discovery, opt-in state, cancellation and side-effect permissions on a compatible emulator or device. Discover supported `adb shell cmd app_function` arguments from device help. Official docs: [AppFunctions release notes](https://developer.android.com/jetpack/androidx/releases/appfunctions) and [beta01 migration guide](https://developer.android.com/agents/skills/device-ai/appfunctions/references/migrate-to-service-entry-point).
+- Ship functions **disabled by default** with explicit user opt-in; check the RC01 enablement and declaration signatures against the actual resolved library before coding.
+- Verify generated service/manifest/metadata, discovery, opt-in state, cancellation and side-effect permissions on a compatible emulator or device. Discover supported `adb shell cmd app_function` arguments from device help. Official docs: [AppFunctions release notes](https://developer.android.com/jetpack/androidx/releases/appfunctions) and [service-entry-point migration guide](https://developer.android.com/agents/skills/device-ai/appfunctions/references/migrate-to-service-entry-point).
 
 Google's guidance: system agents may process the user's request on a server; expose narrow, non-sensitive capabilities and confirm destructive actions in the app.
 
@@ -78,7 +78,7 @@ The [open product backlog](product-ideas.md) owns feature priority. This file ow
 
 **Implementation notes from the Android development skill:**
 
-- AppFunctions beta APIs require fresh verification before compiling: `@AppFunctionDeclaration`, explicit `isDescribedByKDoc`, `appfn:instructions`, `AppFunctionName` from `androidx.appfunctions`, and a KSP-generated service, with `BIND_APP_FUNCTION_SERVICE` manifest protection. Aistee's debug build uses AppFunctions beta01 with KSP 2.3.13; release has no AppFunctions integration. Do not add Hilt, Koin or a second DI layer just for this.
+- AppFunctions RC APIs require fresh verification before compiling: `@AppFunctionDeclaration`, explicit `isDescribedByKDoc`, `appfn:instructions`, `AppFunctionName` from `androidx.appfunctions`, and a KSP-generated service, with `BIND_APP_FUNCTION_SERVICE` manifest protection. Aistee's debug build uses AppFunctions rc01 with KSP 2.3.13; release has no AppFunctions integration. Do not add Hilt, Koin or a second DI layer just for this.
 - Unsupported Android devices still use all existing local tools. Handle missing/omitted typed arguments and explicit nulls deliberately, preserve coroutine cancellation, and check actual `adb shell cmd app_function help` before writing invocation scripts.
 - For Gemini Nano, separate library minSdk from device/AICore availability; only infer when `FeatureStatus.AVAILABLE`, close the client on teardown, reject untrusted output as tool instructions, and guard structured output behind `isStructuredOutputFeatureAvailable()`.
 - Favor JVM fakes for pure decisions and Robolectric for Android host glue. Only the generated service, manifest integration, OS discovery and user authentication boundaries require instrumented/device tests. See [Android performance](android-performance.md) for the existing test stack and Baseline Profile rules.
