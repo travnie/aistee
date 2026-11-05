@@ -102,7 +102,7 @@ internal fun WebChatDraftJournalDialog(
     }
 
     AlertDialog(
-        onDismissRequest = { if (loaded && readable) flushThen(onDismiss) else onDismiss() },
+        onDismissRequest = { if (loaded && readable) flushThen { onDismiss() } else onDismiss() },
         icon = { Icon(Icons.Default.EditNote, contentDescription = null) },
         title = { Text("Draft Vault · " + service.shortName) },
         text = {
@@ -233,7 +233,7 @@ internal fun WebChatDraftJournalDialog(
         confirmButton = {
             TextButton(
                 enabled = !busy,
-                onClick = { if (loaded && readable) flushThen(onDismiss) else onDismiss() },
+                onClick = { if (loaded && readable) flushThen { onDismiss() } else onDismiss() },
             ) { Text("Close") }
         },
         modifier = Modifier.testTag("web_draft_vault_dialog"),
