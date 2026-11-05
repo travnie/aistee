@@ -53,6 +53,7 @@ import ais.tee.data.document.TextDocumentCodec
 import ais.tee.data.skills.LocalSkillLibraryStore
 import ais.tee.data.skills.LocalSkillSummary
 import ais.tee.data.skills.LocalSkillDocument
+import ais.tee.data.preferences.WebChatDraftStore
 import ais.tee.data.model.appendToNativeChatDraft
 import ais.tee.ui.viewmodel.NavigationTab
 import ais.tee.ui.viewmodel.StudioViewModel
@@ -435,12 +436,13 @@ internal fun LocalSkillLibrarySection(
                                     if (!oneShotBusy) {
                                         oneShotBusy = true
                                         val provider = model.uiState.value.selectedWebService
-                                        if (prompt != null && model.stageWebDraftReply(provider, prompt)) {
+                                        val existing = WebChatDraftStore(context.noBackupFilesDir).peek(provider)
+                                        if (prompt != null && existing == null && model.stageWebDraftReply(provider, prompt)) {
                                             pendingUseSkill = null
                                             onMessage("Web draft staged. Review before sending.")
                                         } else {
                                             oneShotBusy = false
-                                            onMessage("Too large for Web draft. Export SKILL.md for upload.")
+                                            onMessage(if (existing != null) "A Web draft is already staged. Finish it before using this SKILL.md." else "Too large for Web draft. Export SKILL.md for upload.")
                                         }
                                     }
                                 },
