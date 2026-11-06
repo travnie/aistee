@@ -24,11 +24,12 @@ class WebChatDraftJournalTest {
         val second = WebChatDraftJournal(data)
         val oldTicket = first.nextWriteTicket()
         val newTicket = second.nextWriteTicket()
-        assertTrue(second.checkpoint(WebAiService.CHATGPT, "newer checkpoint", newTicket))
+        val checkpointText = "newer checkpoint"
+        assertTrue(second.checkpoint(WebAiService.CHATGPT, checkpointText, newTicket))
         assertTrue(first.save(WebAiService.CHATGPT, "stale autosave", oldTicket))
         val stored = first.load(WebAiService.CHATGPT).page
-        assertEquals("newer checkpoint", stored.current)
-        assertEquals("newer checkpoint", stored.versions.single().text)
+        assertEquals(checkpointText, stored.current)
+        assertEquals(checkpointText, stored.versions.single().text)
     }
 
     @Test fun restoresOlderTextWithoutLosingCurrentDraft() {
@@ -40,11 +41,12 @@ class WebChatDraftJournalTest {
         assertTrue(journal.checkpoint(provider))
         val saved = journal.load(provider).page.versions.single().id
         now += 5_000
-        assertTrue(journal.save(provider, "replacement content"))
+        val replacement = "replacement content"
+        assertTrue(journal.save(provider, replacement))
         assertTrue(journal.restore(provider, saved))
         val recovered = journal.load(provider).page
-        assertTrue(recovered.current.startsWith("original"))
-        assertTrue(recovered.versions.any { it.text == "replacement content" })
+        assertTrue(recovered.current.startsWith("original long text"))
+        assertTrue(recovered.versions.any { it.text == replacement })
         assertEquals("", journal.load(WebAiService.CLAUDE).page.current)
     }
 
@@ -58,15 +60,17 @@ class WebChatDraftJournalTest {
         }
         val snapshot = journal.load(WebAiService.CHATGPT)
         assertEquals(8, snapshot.page.versions.size)
+        assertEquals((7..14).map { "long $it" + "x".repeat(110) }, snapshot.page.versions.map { it.text })
         assertTrue(snapshot.readable)
     }
 
     @Test fun corruptCiphertextCannotBeOverwrittenByAutosave() {
-        val fake = Fake().apply { record = "{bad" }
+        val corruptRecord = "{bad"
+        val fake = Fake().apply { record = corruptRecord }
         val journal = WebChatDraftJournal(fake)
         assertFalse(journal.load(WebAiService.CHATGPT).readable)
         assertFalse(journal.save(WebAiService.CHATGPT, "valuable"))
-        assertEquals("{bad", fake.record)
+        assertEquals(corruptRecord, fake.record)
         assertTrue(journal.reset())
         assertTrue(journal.save(WebAiService.CHATGPT, "new"))
     }
@@ -74,10 +78,11 @@ class WebChatDraftJournalTest {
     @Test fun failedDiskWriteRetainsPreviousDraft() {
         val fake = Fake()
         val journal = WebChatDraftJournal(fake)
-        assertTrue(journal.save(WebAiService.CHATGPT, "safe old text"))
+        val safeText = "safe old text"
+        assertTrue(journal.save(WebAiService.CHATGPT, safeText))
         fake.canWrite = false
         assertFalse(journal.save(WebAiService.CHATGPT, "unsaved new text"))
-        assertEquals("safe old text", journal.load(WebAiService.CHATGPT).page.current)
+        assertEquals(safeText, journal.load(WebAiService.CHATGPT).page.current)
     }
 
     @Test fun oversizeInputNeverTruncatesOrChangesStorage() {

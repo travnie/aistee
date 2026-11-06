@@ -17,7 +17,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -46,12 +45,13 @@ internal fun WebChatDraftJournalDialog(
     val stagedDraftStore = remember(context.applicationContext) {
         WebChatDraftStore(context.applicationContext.noBackupFilesDir)
     }
-    var text by rememberSaveable(service.id) { mutableStateOf("") }
+    // Sensitive drafts live in memory or the encrypted journal, never SavedStateRegistry.
+    var text by remember(service.id) { mutableStateOf("") }
     var versions by remember(service) { mutableStateOf<List<WebDraftVersion>>(emptyList()) }
     var loaded by remember(service) { mutableStateOf(false) }
     var readable by remember(service) { mutableStateOf(true) }
     var busy by remember(service) { mutableStateOf(false) }
-    var dirty by rememberSaveable(service.id) { mutableStateOf(false) }
+    var dirty by remember(service.id) { mutableStateOf(false) }
     var error by remember(service) { mutableStateOf<String?>(null) }
     var restoreId by remember(service) { mutableStateOf<String?>(null) }
     var confirmReset by remember(service) { mutableStateOf(false) }
@@ -116,130 +116,64 @@ internal fun WebChatDraftJournalDialog(
         icon = { Icon(Icons.Default.EditNote, contentDescription = null) },
         title = { Text("Draft Vault · " + service.shortName) },
         text = {
-            Column(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    "Aistee saves this composer independently of the provider's WebView. " +
-                        "It does not capture anything typed directly into the website.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                if (error != null) {
-                    Text(error.orEmpty(), color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.testTag("web_draft_error"))
-                    if (loaded && readable && dirty) {
-                        TextButton(
-                            enabled = !busy,
-                            onClick = { flushThen { } },
-                            modifier = Modifier.testTag("web_draft_retry"),
-                        ) { Text("Retry encrypted save") }
-                    }
-                }
-                if (!loaded) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                } else if (!readable) {
-                    Text("Encrypted journal cannot be read. Existing data will not be overwritten.",
-                        color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = { confirmReset = true }) { Text("Reset unreadable journal") }
-                } else {
-                    OutlinedTextField(
-                        value = text,
-                        onValueChange = { value ->
-                            if (value.length <= 48_000) {
-                                text = value
-                                dirty = true
-                            } else error = "Draft limit: 48,000 characters."
-                        },
-                        label = { Text("Write here, safely outside the WebView") },
-                        enabled = !busy,
-                        minLines = 6, maxLines = 12,
-                        modifier = Modifier.fillMaxWidth().testTag("web_draft_editor"),
-                    )
-                    Text(
-                        if (dirty) "Saving changes…" else "Saved locally · encrypted",
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            enabled = !busy && text.isNotBlank(),
-                            onClick = {
-                                if (!busy) {
-                                    val latest = text
-                                    val ticket = store.nextWriteTicket()
-                                    busy = true
-                                    scope.launch {
-                                        try {
-                                            val ok = withContext(Dispatchers.IO) {
-                                                store.checkpoint(service, latest, ticket)
-                                            }
-                                            if (ok && text == latest) {
-                                                dirty = false
-                                                refresh()
-                                                onMessage("Saved draft version.")
-                                            } else {
-                                                error = "Could not save this version. Your editor text is intact."
-                                            }
-                                        } finally {
-                                            busy = false
-                                        }
-                                    }
+            WebDraftVaultContent(
+                service = service,
+                text = text,
+                versions = versions,
+                loaded = loaded,
+                readable = readable,
+                busy = busy,
+                dirty = dirty,
+                error = error,
+                onRetry = { flushThen { } },
+                onResetRequest = { confirmReset = true },
+                onTextChange = { value ->
+                    if (value.length <= 48_000) {
+                        text = value
+                        dirty = true
+                    } else error = "Draft limit: 48,000 characters."
+                },
+                onSaveVersion = {
+                    if (!busy) {
+                        val latest = text
+                        val ticket = store.nextWriteTicket()
+                        busy = true
+                        scope.launch {
+                            try {
+                                val ok = withContext(Dispatchers.IO) {
+                                    store.checkpoint(service, latest, ticket)
                                 }
-                            },
-                            modifier = Modifier.testTag("web_draft_checkpoint"),
-                        ) { Text("Save version") }
-                        OutlinedButton(
-                            enabled = text.isNotBlank() && !busy,
-                            onClick = {
-                                if (copyPlainTextToClipboard(context, "Draft Vault", text, sensitive = true)) {
-                                    onMessage("Draft copied. Paste into the provider editor.")
-                                } else error = "Could not copy the draft."
-                            },
-                            modifier = Modifier.testTag("web_draft_copy"),
-                        ) { Text("Copy full text") }
-                    }
-                    Button(
-                        enabled = text.isNotBlank() && !busy,
-                        onClick = {
-                            flushThen { latest ->
-                                if (stagedDraftStore.peek(service) != null) {
-                                    error = "Another Web reply is already staged. Finish or cancel it first."
-                                } else if (onStage(latest)) {
-                                    onMessage("Draft staged for manual insertion. Nothing was sent.")
-                                    onDismiss()
-                                } else error =
-                                    "Could not stage this draft. It may exceed the insertion limit or another reply is pending. Use Copy full text."
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().testTag("web_draft_stage"),
-                    ) { Text("Insert into " + service.shortName + " (review first)") }
-                    Text("Existing staged Web replies are never replaced automatically.",
-                        style = MaterialTheme.typography.bodySmall)
-
-                    Text("Previous versions (" + versions.size + ")",
-                        style = MaterialTheme.typography.titleSmall)
-                    if (versions.isEmpty()) {
-                        Text("Restore points appear here as you write longer drafts, or tap Save version.",
-                            style = MaterialTheme.typography.bodySmall)
-                    }
-                    versions.forEach { version ->
-                        OutlinedButton(
-                            enabled = !busy,
-                            onClick = { restoreId = version.id },
-                            modifier = Modifier.fillMaxWidth().testTag("web_draft_restore"),
-                        ) {
-                            Column(Modifier.fillMaxWidth()) {
-                                Text(DateFormat.getDateTimeInstance(
-                                    DateFormat.SHORT, DateFormat.SHORT,
-                                ).format(Date(version.savedAtEpochMs)))
-                                Text(version.text.take(100).replace('\n', ' '),
-                                    style = MaterialTheme.typography.bodySmall)
+                                if (ok && text == latest) {
+                                    dirty = false
+                                    refresh()
+                                    onMessage("Saved draft version.")
+                                } else {
+                                    error = "Could not save this version. Your editor text is intact."
+                                }
+                            } finally {
+                                busy = false
                             }
                         }
                     }
-                }
-            }
+                },
+                onCopy = {
+                    if (copyPlainTextToClipboard(context, "Draft Vault", text, sensitive = true)) {
+                        onMessage("Draft copied. Paste into the provider editor.")
+                    } else error = "Could not copy the draft."
+                },
+                onStage = {
+                    flushThen { latest ->
+                        if (stagedDraftStore.peek(service) != null) {
+                            error = "Another Web reply is already staged. Finish or cancel it first."
+                        } else if (onStage(latest)) {
+                            onMessage("Draft staged for manual insertion. Nothing was sent.")
+                            onDismiss()
+                        } else error =
+                            "Could not stage this draft. It may exceed the insertion limit or another reply is pending. Use Copy full text."
+                    }
+                },
+                onRestoreRequest = { restoreId = it },
+            )
         },
         confirmButton = {
             TextButton(
@@ -300,5 +234,120 @@ internal fun WebChatDraftJournalDialog(
             },
             dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/** Stateless content; persistence and lifecycle remain owned by the dialog. */
+@Composable
+private fun WebDraftVaultContent(
+    service: WebAiService,
+    text: String,
+    versions: List<WebDraftVersion>,
+    loaded: Boolean,
+    readable: Boolean,
+    busy: Boolean,
+    dirty: Boolean,
+    error: String?,
+    onRetry: () -> Unit,
+    onResetRequest: () -> Unit,
+    onTextChange: (String) -> Unit,
+    onSaveVersion: () -> Unit,
+    onCopy: () -> Unit,
+    onStage: () -> Unit,
+    onRestoreRequest: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "Aistee saves this composer independently of the provider's WebView. " +
+                "It does not capture anything typed directly into the website.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (error != null) {
+            Text(error, color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.testTag("web_draft_error"))
+            if (loaded && readable && dirty) {
+                TextButton(
+                    enabled = !busy,
+                    onClick = onRetry,
+                    modifier = Modifier.testTag("web_draft_retry"),
+                ) { Text("Retry encrypted save") }
+            }
+        }
+        when {
+            !loaded -> LinearProgressIndicator(Modifier.fillMaxWidth())
+            !readable -> {
+                Text("Encrypted journal cannot be read. Existing data will not be overwritten.",
+                    color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = onResetRequest) { Text("Reset unreadable journal") }
+            }
+            else -> {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = onTextChange,
+                    label = { Text("Write here, safely outside the WebView") },
+                    enabled = !busy,
+                    minLines = 6, maxLines = 12,
+                    modifier = Modifier.fillMaxWidth().testTag("web_draft_editor"),
+                )
+                Text(
+                    if (dirty) "Saving changes…" else "Saved locally · encrypted",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        enabled = !busy && text.isNotBlank(),
+                        onClick = onSaveVersion,
+                        modifier = Modifier.testTag("web_draft_checkpoint"),
+                    ) { Text("Save version") }
+                    OutlinedButton(
+                        enabled = text.isNotBlank() && !busy,
+                        onClick = onCopy,
+                        modifier = Modifier.testTag("web_draft_copy"),
+                    ) { Text("Copy full text") }
+                }
+                Button(
+                    enabled = text.isNotBlank() && !busy,
+                    onClick = onStage,
+                    modifier = Modifier.fillMaxWidth().testTag("web_draft_stage"),
+                ) { Text("Insert into " + service.shortName + " (review first)") }
+                Text("Existing staged Web replies are never replaced automatically.",
+                    style = MaterialTheme.typography.bodySmall)
+
+                WebDraftVersionList(versions, busy, onRestoreRequest)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WebDraftVersionList(
+    versions: List<WebDraftVersion>,
+    busy: Boolean,
+    onRestoreRequest: (String) -> Unit,
+) {
+    Text("Previous versions (" + versions.size + ")",
+        style = MaterialTheme.typography.titleSmall)
+    if (versions.isEmpty()) {
+        Text("Restore points appear here as you write longer drafts, or tap Save version.",
+            style = MaterialTheme.typography.bodySmall)
+    }
+    versions.forEach { version ->
+        OutlinedButton(
+            enabled = !busy,
+            onClick = { onRestoreRequest(version.id) },
+            modifier = Modifier.fillMaxWidth().testTag("web_draft_restore"),
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                Text(DateFormat.getDateTimeInstance(
+                    DateFormat.SHORT, DateFormat.SHORT,
+                ).format(Date(version.savedAtEpochMs)))
+                Text(version.text.take(100).replace('\n', ' '),
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
     }
 }
