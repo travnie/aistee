@@ -1,6 +1,7 @@
 package ais.tee.ui.screens
 
 import ais.tee.data.model.WebAiService
+import android.content.Context
 import ais.tee.data.preferences.WebChatDraftJournal
 import ais.tee.data.preferences.WebDraftVersion
 import ais.tee.data.preferences.WebChatDraftStore
@@ -23,38 +24,31 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Local composer; no form-field inspection or provider DOM interception. */
-@Composable
-internal fun WebChatDraftJournalDialog(
-    service: WebAiService,
-    onStage: (String) -> Boolean,
-    onDismiss: () -> Unit,
-    onMessage: (String) -> Unit,
-    storeOverride: WebChatDraftJournal? = null,
+/** Editor buffers remain in Compose memory or the encrypted journal, never Android saved state. */
+private class WebDraftVaultEditor(
+    private val service: WebAiService,
+    private val store: WebChatDraftJournal,
+    private val stagedDraftStore: WebChatDraftStore,
+    private val context: Context,
+    private val scope: CoroutineScope,
 ) {
-    val context = LocalContext.current
-    val store = remember(context.applicationContext, storeOverride) {
-        storeOverride ?: WebChatDraftJournal(context.applicationContext)
-    }
-    val scope = rememberCoroutineScope()
-    val stagedDraftStore = remember(context.applicationContext) {
-        WebChatDraftStore(context.applicationContext.noBackupFilesDir)
-    }
-    // Sensitive drafts live in memory or the encrypted journal, never SavedStateRegistry.
-    var text by remember(service.id) { mutableStateOf("") }
-    var versions by remember(service) { mutableStateOf<List<WebDraftVersion>>(emptyList()) }
-    var loaded by remember(service) { mutableStateOf(false) }
-    var readable by remember(service) { mutableStateOf(true) }
-    var busy by remember(service) { mutableStateOf(false) }
-    var dirty by remember(service.id) { mutableStateOf(false) }
-    var error by remember(service) { mutableStateOf<String?>(null) }
-    var restoreId by remember(service) { mutableStateOf<String?>(null) }
-    var confirmReset by remember(service) { mutableStateOf(false) }
+    var text by mutableStateOf("")
+    var versions by mutableStateOf<List<WebDraftVersion>>(emptyList())
+    var loaded by mutableStateOf(false)
+    var readable by mutableStateOf(true)
+    var busy by mutableStateOf(false)
+    var dirty by mutableStateOf(false)
+    var error by mutableStateOf<String?>(null)
+    var restoreId by mutableStateOf<String?>(null)
+    var confirmReset by mutableStateOf(false)
+
+    val canClose: Boolean get() = !busy && (loaded || !dirty)
 
     suspend fun refresh() {
         val snapshot = withContext(Dispatchers.IO) { store.load(service) }
@@ -64,25 +58,29 @@ internal fun WebChatDraftJournalDialog(
         loaded = true
     }
 
-    LaunchedEffect(service) { refresh() }
-
-    // Edit debounce never reads the provider editor. Explicit close flushes latest text.
-    LaunchedEffect(service, text, loaded, readable, dirty, busy) {
-        if (!loaded || !readable || !dirty || busy) return@LaunchedEffect
+    suspend fun autosave() {
+        if (!loaded || !readable || !dirty || busy) return
         val ticket = store.nextWriteTicket()
         delay(250)
         val snapshot = text
         val saved = withContext(Dispatchers.IO) { store.save(service, snapshot, ticket) }
         if (saved && text == snapshot) {
-            val updatedVersions = withContext(Dispatchers.IO) {
+            val updated = withContext(Dispatchers.IO) {
                 store.load(service).page.versions.reversed()
             }
             if (text == snapshot) {
-                versions = updatedVersions
+                versions = updated
                 error = null
                 dirty = false
             }
         } else if (!saved) error = "Could not save encrypted draft. Keep this editor open."
+    }
+
+    fun updateText(value: String) {
+        if (value.length <= 48_000) {
+            text = value
+            dirty = true
+        } else error = "Draft limit: 48,000 characters."
     }
 
     fun flushThen(action: (String) -> Unit) {
@@ -108,131 +106,184 @@ internal fun WebChatDraftJournalDialog(
         }
     }
 
+    fun dismiss(onDismiss: () -> Unit) {
+        if (!loaded && dirty) return
+        if (loaded && readable) flushThen { onDismiss() } else onDismiss()
+    }
+
+    fun checkpoint(onMessage: (String) -> Unit) {
+        if (busy) return
+        val latest = text
+        val ticket = store.nextWriteTicket()
+        busy = true
+        scope.launch {
+            try {
+                val ok = withContext(Dispatchers.IO) {
+                    store.checkpoint(service, latest, ticket)
+                }
+                if (ok && text == latest) {
+                    dirty = false
+                    refresh()
+                    onMessage("Saved draft version.")
+                } else {
+                    error = "Could not save this version. Your editor text is intact."
+                }
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun copy(onMessage: (String) -> Unit) {
+        if (copyPlainTextToClipboard(context, "Draft Vault", text, sensitive = true)) {
+            onMessage("Draft copied. Paste into the provider editor.")
+        } else error = "Could not copy the draft."
+    }
+
+    fun stage(
+        onStage: (String) -> Boolean,
+        onDismiss: () -> Unit,
+        onMessage: (String) -> Unit,
+    ) {
+        flushThen { latest ->
+            if (stagedDraftStore.peek(service) != null) {
+                error = "Another Web reply is already staged. Finish or cancel it first."
+            } else if (onStage(latest)) {
+                onMessage("Draft staged for manual insertion. Nothing was sent.")
+                onDismiss()
+            } else {
+                error = "Could not stage this draft. It may exceed the insertion limit or another reply is pending. Use Copy full text."
+            }
+        }
+    }
+
+    fun restore(id: String, onMessage: (String) -> Unit) {
+        if (busy) return
+        val latest = text
+        val ticket = store.nextWriteTicket()
+        busy = true
+        scope.launch {
+            try {
+                val ok = withContext(Dispatchers.IO) {
+                    store.restore(service, id, latest, ticket)
+                }
+                if (ok && text == latest) {
+                    restoreId = null
+                    dirty = false
+                    refresh()
+                    onMessage("Draft version restored.")
+                } else {
+                    error = "Could not restore the selected version. Editor text kept."
+                }
+            } finally {
+                busy = false
+            }
+        }
+    }
+
+    fun reset() {
+        if (busy) return
+        busy = true
+        scope.launch {
+            try {
+                val cleared = withContext(Dispatchers.IO) { store.reset() }
+                confirmReset = false
+                if (cleared) refresh() else error = "Could not reset encrypted journal."
+            } finally {
+                busy = false
+            }
+        }
+    }
+}
+
+/** Local composer; no form-field inspection or provider DOM interception. */
+@Composable
+internal fun WebChatDraftJournalDialog(
+    service: WebAiService,
+    onStage: (String) -> Boolean,
+    onDismiss: () -> Unit,
+    onMessage: (String) -> Unit,
+    storeOverride: WebChatDraftJournal? = null,
+) {
+    val context = LocalContext.current.applicationContext
+    val store = remember(context, storeOverride) {
+        storeOverride ?: WebChatDraftJournal(context)
+    }
+    val scope = rememberCoroutineScope()
+    val stagedDraftStore = remember(context) {
+        WebChatDraftStore(context.noBackupFilesDir)
+    }
+    val editor = remember(service, store, stagedDraftStore, scope) {
+        WebDraftVaultEditor(service, store, stagedDraftStore, context, scope)
+    }
+
+    LaunchedEffect(editor) { editor.refresh() }
+    LaunchedEffect(editor, editor.text, editor.loaded, editor.readable, editor.dirty, editor.busy) {
+        editor.autosave()
+    }
+
     AlertDialog(
-        onDismissRequest = {
-            if (!loaded && dirty) return@AlertDialog
-            if (loaded && readable) flushThen { onDismiss() } else onDismiss()
-        },
+        onDismissRequest = { editor.dismiss(onDismiss) },
         icon = { Icon(Icons.Default.EditNote, contentDescription = null) },
         title = { Text("Draft Vault · " + service.shortName) },
         text = {
             WebDraftVaultContent(
                 service = service,
-                text = text,
-                versions = versions,
-                loaded = loaded,
-                readable = readable,
-                busy = busy,
-                dirty = dirty,
-                error = error,
-                onRetry = { flushThen { } },
-                onResetRequest = { confirmReset = true },
-                onTextChange = { value ->
-                    if (value.length <= 48_000) {
-                        text = value
-                        dirty = true
-                    } else error = "Draft limit: 48,000 characters."
-                },
-                onSaveVersion = {
-                    if (!busy) {
-                        val latest = text
-                        val ticket = store.nextWriteTicket()
-                        busy = true
-                        scope.launch {
-                            try {
-                                val ok = withContext(Dispatchers.IO) {
-                                    store.checkpoint(service, latest, ticket)
-                                }
-                                if (ok && text == latest) {
-                                    dirty = false
-                                    refresh()
-                                    onMessage("Saved draft version.")
-                                } else {
-                                    error = "Could not save this version. Your editor text is intact."
-                                }
-                            } finally {
-                                busy = false
-                            }
-                        }
-                    }
-                },
-                onCopy = {
-                    if (copyPlainTextToClipboard(context, "Draft Vault", text, sensitive = true)) {
-                        onMessage("Draft copied. Paste into the provider editor.")
-                    } else error = "Could not copy the draft."
-                },
-                onStage = {
-                    flushThen { latest ->
-                        if (stagedDraftStore.peek(service) != null) {
-                            error = "Another Web reply is already staged. Finish or cancel it first."
-                        } else if (onStage(latest)) {
-                            onMessage("Draft staged for manual insertion. Nothing was sent.")
-                            onDismiss()
-                        } else error =
-                            "Could not stage this draft. It may exceed the insertion limit or another reply is pending. Use Copy full text."
-                    }
-                },
-                onRestoreRequest = { restoreId = it },
+                text = editor.text,
+                versions = editor.versions,
+                loaded = editor.loaded,
+                readable = editor.readable,
+                busy = editor.busy,
+                dirty = editor.dirty,
+                error = editor.error,
+                onRetry = { editor.flushThen { } },
+                onResetRequest = { editor.confirmReset = true },
+                onTextChange = editor::updateText,
+                onSaveVersion = { editor.checkpoint(onMessage) },
+                onCopy = { editor.copy(onMessage) },
+                onStage = { editor.stage(onStage, onDismiss, onMessage) },
+                onRestoreRequest = { editor.restoreId = it },
             )
         },
         confirmButton = {
             TextButton(
-                enabled = !busy && (loaded || !dirty),
-                onClick = { if (loaded && readable) flushThen { onDismiss() } else onDismiss() },
+                enabled = editor.canClose,
+                onClick = { editor.dismiss(onDismiss) },
             ) { Text("Close") }
         },
         modifier = Modifier.testTag("web_draft_vault_dialog"),
     )
 
-    restoreId?.let { id ->
+    editor.restoreId?.let { id ->
         AlertDialog(
-            onDismissRequest = { if (!busy) restoreId = null },
+            onDismissRequest = { if (!editor.busy) editor.restoreId = null },
             title = { Text("Restore this version?") },
             text = { Text("Your current draft is saved as a restore point before replacing it.") },
             confirmButton = {
-                TextButton(enabled = !busy, onClick = {
-                    val latest = text
-                    val ticket = store.nextWriteTicket()
-                    busy = true
-                    scope.launch {
-                        try {
-                            val ok = withContext(Dispatchers.IO) {
-                                store.restore(service, id, latest, ticket)
-                            }
-                            if (ok && text == latest) {
-                                restoreId = null
-                                dirty = false
-                                refresh()
-                                onMessage("Draft version restored.")
-                            } else {
-                                error = "Could not restore the selected version. Editor text kept."
-                            }
-                        } finally {
-                            busy = false
-                        }
-                    }
-                }) { Text("Restore") }
+                TextButton(enabled = !editor.busy, onClick = { editor.restore(id, onMessage) }) {
+                    Text("Restore")
+                }
             },
             dismissButton = {
-                TextButton(enabled = !busy, onClick = { restoreId = null }) { Text("Cancel") }
+                TextButton(enabled = !editor.busy, onClick = { editor.restoreId = null }) {
+                    Text("Cancel")
+                }
             },
         )
     }
-    if (confirmReset) {
+    if (editor.confirmReset) {
         AlertDialog(
-            onDismissRequest = { confirmReset = false },
+            onDismissRequest = { if (!editor.busy) editor.confirmReset = false },
             title = { Text("Reset unreadable draft journal?") },
             text = { Text("All local Draft Vault entries will be lost. Provider chats remain unchanged.") },
             confirmButton = {
-                TextButton(onClick = {
-                    scope.launch {
-                        val cleared = withContext(Dispatchers.IO) { store.reset() }
-                        confirmReset = false
-                        if (cleared) refresh() else error = "Could not reset encrypted journal."
-                    }
-                }) { Text("Reset") }
+                TextButton(enabled = !editor.busy, onClick = editor::reset) { Text("Reset") }
             },
-            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(enabled = !editor.busy, onClick = { editor.confirmReset = false }) {
+                    Text("Cancel")
+                }
+            },
         )
     }
 }
