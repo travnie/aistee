@@ -79,6 +79,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
+private const val VAULT_DRAFT_PREFIX = "vault:"
+
 data class NativeChatNavigationRequest(
     val id: Long,
     val conversationId: String,
@@ -696,6 +698,26 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         webChatPreferencesStore.saveSelectedService(service)
     }
 
+    /** Vault handoff stays in memory; encrypted journal retains the durable source. */
+    fun stageVaultWebDraftReply(service: WebAiService, text: String): Boolean {
+        if (text.isBlank() || text.length > WebChatDraftStore.MAX_DRAFT_CHARS ||
+            text.toByteArray(Charsets.UTF_8).size > WebChatDraftStore.MAX_DRAFT_UTF8_BYTES ||
+            webChatDraftStore.peek(service) != null
+        ) return false
+        val draft = PendingWebDraft(VAULT_DRAFT_PREFIX + UUID.randomUUID(), service, text)
+        while (true) {
+            val state = _uiState.value
+            if (state.pendingWebDraft != null) return false
+            if (_uiState.compareAndSet(state, state.copy(
+                    currentTab = NavigationTab.WEB_CHATS,
+                    selectedWebService = service,
+                    pendingWebDraft = draft,
+                ))) break
+        }
+        webChatPreferencesStore.saveSelectedService(service)
+        return true
+    }
+
     fun stageWebDraftReply(service: WebAiService, text: String): Boolean {
         val staged = webChatDraftStore.stage(service, text) ?: return false
         _uiState.update { state ->
@@ -742,6 +764,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun completePendingWebDraft(service: WebAiService, draftId: String): Boolean {
+        if (draftId.startsWith(VAULT_DRAFT_PREFIX)) {
+            while (true) {
+                val state = _uiState.value
+                val pending = state.pendingWebDraft
+                if (pending?.service != service || pending.id != draftId) return false
+                if (_uiState.compareAndSet(state, state.copy(pendingWebDraft = null))) return true
+            }
+        }
         val consumed = webChatDraftStore.consume(service, draftId)
         val latest = if (consumed) null else webChatDraftStore.peek(service)
         val staleWasReplaced = latest?.id != draftId
@@ -772,6 +802,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun dismissPendingWebDraft(service: WebAiService, draftId: String): Boolean {
+        if (draftId.startsWith(VAULT_DRAFT_PREFIX)) {
+            while (true) {
+                val state = _uiState.value
+                val pending = state.pendingWebDraft
+                if (pending?.service != service || pending.id != draftId) return false
+                if (_uiState.compareAndSet(state, state.copy(pendingWebDraft = null))) return true
+            }
+        }
         val current = webChatDraftStore.peek(service)
         val cleared = when {
             current == null -> true

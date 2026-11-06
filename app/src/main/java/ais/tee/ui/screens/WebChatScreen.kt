@@ -35,6 +35,7 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1213,6 +1214,7 @@ fun WebChatScreen(
                                 }
                                 showPromptVaultDialog = true
                             },
+                            onStageDraft = { service, draft -> viewModel.stageVaultWebDraftReply(service, draft) },
                             onShowDiagnostics = ::openProviderDiagnostics,
                             onShowSignInHelp = {
                                 preferredIdentityMethod = webPreferences.loadPreferredIdentityMethod()
@@ -1775,6 +1777,22 @@ fun WebChatScreen(
 }
 
 @Composable
+private fun WebChatDraftVaultHost(
+    serviceId: String?,
+    onStageDraft: (WebAiService, String) -> Boolean,
+    onDismiss: () -> Unit,
+    onMessage: (String) -> Unit,
+) {
+    val service = WebAiService.entries.firstOrNull { it.id == serviceId } ?: return
+    WebChatDraftJournalDialog(
+        service = service,
+        onStage = { text -> onStageDraft(service, text) },
+        onDismiss = onDismiss,
+        onMessage = onMessage,
+    )
+}
+
+@Composable
 private fun WebChatToolbar(
     activeWebView: WebView?,
     selectedService: WebAiService,
@@ -1791,6 +1809,7 @@ private fun WebChatToolbar(
     onApplyStudio: () -> Unit,
     onShowPromptHelper: () -> Unit,
     onShowPromptVault: () -> Unit,
+    onStageDraft: (WebAiService, String) -> Boolean,
     onShowDiagnostics: () -> Unit,
     onShowSignInHelp: () -> Unit,
     onClearProviderSessions: () -> Unit,
@@ -1811,6 +1830,7 @@ private fun WebChatToolbar(
     }
     var showTimeline by remember(selectedService, activeWebView, currentUrl) { mutableStateOf(false) }
     var showBookmarks by remember(selectedService, activeWebView) { mutableStateOf(false) }
+    var draftVaultServiceId by rememberSaveable { mutableStateOf<String?>(null) }
     val turnNavigationEnabled = webUserTurnNavigationEnabled(
         selectedService, disabledTurnNavigationServices
     )
@@ -1834,6 +1854,13 @@ private fun WebChatToolbar(
             onDismiss = { showBookmarks = false },
         )
     }
+
+    WebChatDraftVaultHost(
+        serviceId = draftVaultServiceId,
+        onStageDraft = onStageDraft,
+        onDismiss = { draftVaultServiceId = null },
+        onMessage = onShowSnackbar,
+    )
 
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -2023,6 +2050,15 @@ private fun WebChatToolbar(
                             }
                         )
                         HorizontalDivider()
+                        DropdownMenuItem(
+                            text = { Text("Draft Vault (local)") },
+                            leadingIcon = { Icon(Icons.Default.EditNote, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                draftVaultServiceId = selectedService.id
+                            },
+                            modifier = Modifier.testTag("btn_web_draft_vault")
+                        )
                         DropdownMenuItem(
                             text = { Text("Local chat bookmarks") },
                             leadingIcon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
