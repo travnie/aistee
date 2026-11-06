@@ -79,6 +79,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
+private const val VAULT_DRAFT_PREFIX = "vault:"
+
 data class NativeChatNavigationRequest(
     val id: Long,
     val conversationId: String,
@@ -702,7 +704,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             text.toByteArray(Charsets.UTF_8).size > WebChatDraftStore.MAX_DRAFT_UTF8_BYTES ||
             webChatDraftStore.peek(service) != null
         ) return false
-        val draft = PendingWebDraft("vault:" + UUID.randomUUID(), service, text)
+        val draft = PendingWebDraft(VAULT_DRAFT_PREFIX + UUID.randomUUID(), service, text)
         while (true) {
             val state = _uiState.value
             if (state.pendingWebDraft != null) return false
@@ -762,7 +764,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun completePendingWebDraft(service: WebAiService, draftId: String): Boolean {
-        if (draftId.startsWith("vault:")) {
+        if (draftId.startsWith(VAULT_DRAFT_PREFIX)) {
             while (true) {
                 val state = _uiState.value
                 val pending = state.pendingWebDraft
@@ -800,7 +802,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun dismissPendingWebDraft(service: WebAiService, draftId: String): Boolean {
-        if (draftId.startsWith("vault:")) {
+        if (draftId.startsWith(VAULT_DRAFT_PREFIX)) {
             while (true) {
                 val state = _uiState.value
                 val pending = state.pendingWebDraft
