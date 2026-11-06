@@ -1777,6 +1777,22 @@ fun WebChatScreen(
 }
 
 @Composable
+private fun WebChatDraftVaultHost(
+    serviceId: String?,
+    onStageDraft: (WebAiService, String) -> Boolean,
+    onDismiss: () -> Unit,
+    onMessage: (String) -> Unit,
+) {
+    val service = WebAiService.entries.firstOrNull { it.id == serviceId } ?: return
+    WebChatDraftJournalDialog(
+        service = service,
+        onStage = { text -> onStageDraft(service, text) },
+        onDismiss = onDismiss,
+        onMessage = onMessage,
+    )
+}
+
+@Composable
 private fun WebChatToolbar(
     activeWebView: WebView?,
     selectedService: WebAiService,
@@ -1839,14 +1855,12 @@ private fun WebChatToolbar(
         )
     }
 
-    WebAiService.entries.firstOrNull { it.id == draftVaultServiceId }?.let { vaultService ->
-        WebChatDraftJournalDialog(
-            service = vaultService,
-            onStage = { text -> onStageDraft(vaultService, text) },
-            onDismiss = { draftVaultServiceId = null },
-            onMessage = onShowSnackbar,
-        )
-    }
+    WebChatDraftVaultHost(
+        serviceId = draftVaultServiceId,
+        onStageDraft = onStageDraft,
+        onDismiss = { draftVaultServiceId = null },
+        onMessage = onShowSnackbar,
+    )
 
     Surface(
         color = MaterialTheme.colorScheme.surface,
