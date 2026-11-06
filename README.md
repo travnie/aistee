@@ -1,48 +1,48 @@
 <div align="center">
 
-# ⚡ Aistee
+# :zap: Aistee
 
 **One AI workbench, many providers. Your data stays yours.**
 
 Kotlin Multiplatform · Android first · Local-first tools
 
-[![Android CI](https://img.shields.io/github/actions/workflow/status/travnie/aistee/android-ci.yml?branch=main&label=Android%20%2B%20KMP&logo=android&color=818CF8&style=flat-square)](https://github.com/travnie/aistee/actions/workflows/android-ci.yml)
-[![Performance](https://img.shields.io/github/actions/workflow/status/travnie/aistee/performance-ci.yml?branch=main&label=performance&color=38BDF8&style=flat-square)](https://github.com/travnie/aistee/actions/workflows/performance-ci.yml)
+[![Android CI](https://img.shields.io/github/actions/workflow/status/travnie/aistee/android-ci.yml?branch=main&label=Android%20%2B%20KMP&logo=android&logoColor=white&style=flat-square)](https://github.com/travnie/aistee/actions/workflows/android-ci.yml)
+[![Performance](https://img.shields.io/github/actions/workflow/status/travnie/aistee/performance-ci.yml?branch=main&label=performance&logo=githubactions&logoColor=white&style=flat-square)](https://github.com/travnie/aistee/actions/workflows/performance-ci.yml)
 [![Latest APK](https://img.shields.io/badge/APK-rolling-818CF8?logo=android&logoColor=white&style=flat-square)](https://github.com/travnie/aistee/releases/download/aistee-latest/aistee.apk)
 [![Last commit](https://img.shields.io/github/last-commit/travnie/aistee?color=A78BFA&logo=git&style=flat-square)](https://github.com/travnie/aistee/commits/main)
-[![License](https://img.shields.io/github/license/travnie/aistee?color=818CF8&style=flat-square)](LICENSE)
+[![License](https://img.shields.io/github/license/travnie/aistee?color=818CF8&logo=opensourceinitiative&logoColor=white&style=flat-square)](https://spdx.org/licenses/ISC.html)
 
-![Kotlin](https://img.shields.io/badge/Kotlin%20Multiplatform-7F52FF?logo=kotlin&logoColor=white&style=flat-square)
-![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white&style=flat-square)
-![Compose](https://img.shields.io/badge/Material%203-4285F4?logo=jetpackcompose&logoColor=white&style=flat-square)
+[![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin%20Multiplatform-7F52FF?logo=kotlin&logoColor=white&style=flat-square)](https://kotlinlang.org/docs/multiplatform.html)
+[![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white&style=flat-square)](https://developer.android.com/about/versions/oreo)
+[![Material 3](https://img.shields.io/badge/Material%203-4285F4?logo=jetpackcompose&logoColor=white&style=flat-square)](https://m3.material.io/)
 
-<a href="https://deepwiki.com/travnie/aistee"><img src="https://deepwiki.com/badge.svg" alt="DeepWiki"></a>
+[![DeepWiki](https://img.shields.io/badge/DeepWiki-docs-1F6FEB?logo=readthedocs&logoColor=white&style=flat-square)](https://deepwiki.com/travnie/aistee)
 <a href="https://doi.org/10.5281/zenodo.22307997"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.22307997.svg" alt="DOI"></a>
-<a href="https://app.codacy.com/gh/travnie/aistee/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade"><img src="https://app.codacy.com/project/badge/Grade/4afd14185a5246519f43693a4ef1c2a6"/></a>
+<a href="https://app.codacy.com/gh/travnie/aistee/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade"><img src="https://app.codacy.com/project/badge/Grade/4afd14185a5246519f43693a4ef1c2a6" alt="Codacy code quality grade"/></a>
 
-[**📦 Install**](#-install) · [**✨ Highlights**](#-highlights) · [**🔌 Providers**](#-providers) · [**📚 Docs**](#-docs) · [**🛠️ Develop**](#-development)
+[**:package: Install**](#package-install) · [**:sparkles: Highlights**](#sparkles-highlights) · [**:electric_plug: Providers**](#electric_plug-providers) · [**:books: Docs**](#books-docs) · [**:hammer_and_wrench: Develop**](#hammer_and_wrench-development)
 
 </div>
 
 > [!NOTE]
 > **Early prototype.** Android is the first client; shared provider/domain logic lives in Kotlin Multiplatform. Desktop and iOS are planned, not released.
 
-## 📦 Install
+## :package: Install
 
 **[Download the rolling signed APK](https://github.com/travnie/aistee/releases/download/aistee-latest/aistee.apk)**, updated after successful release builds on `main`.
 
 [Versioned releases](https://github.com/travnie/aistee/releases) use `vX.Y` tags matching `versionName`, with `aistee_X.Y.apk` / `aistee_X.Y.aab`. Minimum Android version: **8.0 (API 26)**.
 
-## ✨ Highlights
+## :sparkles: Highlights
 
 | | Already implemented |
 | --- | --- |
-| 🌐 **Web chats** | Provider-owned WebView sessions, uploads, favorites, encrypted local bookmarks/folders, local Prompt Vault and selected activity tracking |
-| 💬 **Native + API** | Gemini, OpenAI, Claude, compatible gateways and eligible ChatGPT-plan sign-in; compare, streaming and provider-scoped history |
-| 🗂️ **Local workspace** | Projects, editable Library assets, Markdown/Docbench previews, imports and exports |
-| 🧰 **Tools & skills** | Token counting, Bench actions, QR generation, explicit skill trust and sandbox execution |
-| 📲 **Android** | Adaptive Material 3 UI, conversation widgets, notifications and native Direct Reply |
-| 🔐 **Privacy** | No Aistee account wall, encrypted native API keys, App lock and privacy controls |
+| :globe_with_meridians: **Web chats** | Provider-owned WebView sessions, uploads, favorites, encrypted local bookmarks/folders, local Prompt Vault and selected activity tracking |
+| :speech_balloon: **Native + API** | Gemini, OpenAI, Claude, compatible gateways and eligible ChatGPT-plan sign-in; compare, streaming and provider-scoped history |
+| :card_file_box: **Local workspace** | Projects, editable Library assets, Markdown/Docbench previews, imports and exports |
+| :toolbox: **Tools & skills** | Token counting, Bench actions, QR generation, explicit skill trust and sandbox execution |
+| :iphone: **Android** | Adaptive Material 3 UI, conversation widgets, notifications and native Direct Reply |
+| :closed_lock_with_key: **Privacy** | No Aistee account wall, encrypted native API keys, App lock and privacy controls |
 
 See [implemented features](docs/implemented.md) for the delivered inventory and [product ideas](docs/product-ideas.md) for open work.
 
@@ -56,7 +56,7 @@ Aistee combines:
 
 Android also accepts shared text, images and application files. Web content is staged for the selected provider and file delivery requires explicit confirmation.
 
-## 🔌 Providers
+## :electric_plug: Providers
 
 **Web sessions, API keys, gateways and external apps are separate authorization and funding routes.** A consumer login does not become an API key.
 
@@ -102,7 +102,7 @@ Provider-specific verification and API research live in [docs/provider-capabilit
 - Native API keys are encrypted at rest with an Android Keystore-backed AES-GCM key and are never logged or exported.
 - [`trvny/.ai`](https://github.com/trvny/.ai) remains the canonical portable profiles/instructions/skills source. Aistee consumes it through an explicit boundary instead of vendoring a copy.
 
-## 🏗️ Architecture
+## :building_construction: Architecture
 
 ```text
 shared (Kotlin Multiplatform)
@@ -121,7 +121,7 @@ platform clients
 
 Backends are optional. Add one only when a feature requires server-side state or execution.
 
-## 🧭 Current focus
+## :compass: Current focus
 
 - verify embedded sign-in, upload and activity probes for the newer Web providers,
 - add browser-backed auth handoff only where a provider exposes a verifiable contract,
@@ -129,7 +129,7 @@ Backends are optional. Add one only when a feature requires server-side state or
 - continue measured Material 3 Adaptive / large-screen UX work,
 - keep security and privacy as release gates across storage, WebViews, tools, exports, widgets and notifications.
 
-## 📚 Docs
+## :books: Docs
 
 - [Documentation index](docs/README.md)
 - [Delivered features](docs/implemented.md)
@@ -140,15 +140,15 @@ Backends are optional. Add one only when a feature requires server-side state or
 - [Android performance](docs/android-performance.md)
 - [Design](DESIGN.md)
 
-## 🛠️ Development
+## :hammer_and_wrench: Development
 
 Android keeps minSdk 26; current compile/target SDK levels live in `app/build.gradle.kts`. Portable logic belongs in `shared`; platform APIs stay in platform modules/source sets. Long-chat responsiveness, reliable uploads and provider isolation are product constraints, not optional polish.
 
-## 📜 License
+## :scroll: License
 
 ISC, see [LICENSE](LICENSE).
 
-## 📰 Mininewsy
+## :newspaper: Mininewsy
 
 <!--README_FEED:START-->
 - [Trust but Verify: Implementing Frontier AI Policy in California and Beyond](https://carnegieendowment.org/research/2026/11/trust-but-verify-implementing-frontier-ai-policy-in-california-and-beyond)
@@ -159,7 +159,7 @@ ISC, see [LICENSE](LICENSE).
 - [November 2026](https://docs.perplexity.ai/docs/resources/changelog#november-2026)
 <!--README_FEED:END-->
 
-## 💬 Cytat z szuflady
+## :speech_balloon: Cytat z szuflady
 
 <!-- markdownlint-disable MD033 -->
 <!--STARTS_HERE_QUOTE_README-->
