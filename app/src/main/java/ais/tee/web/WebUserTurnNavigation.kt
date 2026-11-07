@@ -131,6 +131,14 @@ internal fun parseWebUserTurnJumpResult(raw: String?): WebUserTurnJumpResult = w
     else -> WebUserTurnJumpResult.FAILED
 }
 
+internal fun webUserTurnResultForRoute(
+    raw: String?,
+    expectedUrl: String,
+    currentUrl: String?
+): WebUserTurnJumpResult =
+    if (currentUrl == expectedUrl) parseWebUserTurnJumpResult(raw)
+    else WebUserTurnJumpResult.OFF_PROVIDER
+
 internal fun jumpToWebUserTurn(
     webView: WebView,
     service: WebAiService,
@@ -164,7 +172,9 @@ internal fun jumpToWebUserTurn(
             onResult(WebUserTurnJumpResult.OFF_PROVIDER)
         } else {
             webView.evaluateJavascript(script) { raw ->
-                onResult(parseWebUserTurnJumpResult(raw))
+                // Navigation may finish while the script is executing. Never report a
+                // successful jump for a page other than the one the user selected.
+                onResult(webUserTurnResultForRoute(raw, expectedUrl, webView.url))
             }
         }
     }
