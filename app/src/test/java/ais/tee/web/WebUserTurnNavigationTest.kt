@@ -177,6 +177,19 @@ class WebUserTurnNavigationTest {
     }
 
     @Test
+    fun navigationDuringJavascriptCallbackCannotReportSuccessfulJump() {
+        assertEquals(WebUserTurnJumpResult.OFF_PROVIDER, webUserTurnResultForRoute(
+            "\"moved\"", PAGE, "https://chatgpt.com/c/chat-two"
+        ))
+        assertEquals(WebUserTurnJumpResult.OFF_PROVIDER, webUserTurnResultForRoute(
+            "\"moved\"", PAGE, null
+        ))
+        assertEquals(WebUserTurnJumpResult.MOVED, webUserTurnResultForRoute(
+            "\"moved\"", PAGE, PAGE
+        ))
+    }
+
+    @Test
     fun parserRejectsUnexpectedCallbackData() {
         assertEquals(WebUserTurnJumpResult.MOVED, parseWebUserTurnJumpResult("\"moved\""))
         assertEquals(WebUserTurnJumpResult.NO_TURNS, parseWebUserTurnJumpResult("\"no-turns\""))
