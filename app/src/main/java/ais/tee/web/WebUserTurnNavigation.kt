@@ -26,16 +26,27 @@ internal fun webUserTurnNavigationEnabled(
  */
 internal fun webUserTurnJumpScript(
     service: WebAiService,
-    direction: WebUserTurnDirection
+    direction: WebUserTurnDirection,
+    expectedGeneration: Long? = null
 ): String? {
     // No provider-controlled URL is included in the executable script.
     // The native call site validates the URL separately.
     val anchors = ProviderWebRegistry.turnAnchors(service) ?: return null
     val previous = direction == WebUserTurnDirection.PREVIOUS
     val selector = javascriptStringLiteral(anchors.userSelector)
+    val routeGuard = expectedGeneration?.let { generation ->
+        """
+            var routeTracker = window.__aisteeTurnRouteTracker;
+            if (!routeTracker || routeTracker.generation !== $generation ||
+                routeTracker.route !== String(location.href || '') ||
+                history.pushState !== routeTracker.pushStateHook ||
+                history.replaceState !== routeTracker.replaceStateHook) return 'off-provider';
+        """.trimIndent()
+    }.orEmpty()
     return """
         (function() {
             ${providerRuntimeGuardScript(service, "'off-provider'")}
+            $routeGuard
             // The native preflight binds an exact route in this page's own JS context.
             // Never splice an untrusted URL into executable JavaScript.
             if (String(window.__aisteeVerifiedTurnRoute || '') !==
@@ -109,6 +120,7 @@ internal fun webUserTurnJumpScript(
                 }
                 if (!target) return 'boundary';
                 target.node.scrollIntoView({ behavior: 'auto', block: 'center' });
+                $routeGuard
                 window.__aisteeUserTurnCursor = {
                     node: target.node,
                     url: String(location.href || '')
@@ -120,6 +132,46 @@ internal fun webUserTurnJumpScript(
         })();
     """.trimIndent()
 }
+
+/**
+ * Page-local route revision, installed only on explicit turn navigation. No JS bridge,
+ * page text or persisted identifiers. Same-URL SPA history mutations still advance it.
+ */
+internal fun webUserTurnRouteTrackerScript(): String = """
+    (function() {
+        var route = String(location.href || '');
+        var tracker = window.__aisteeTurnRouteTracker;
+        if (!tracker) {
+            tracker = { generation: 0, route: route };
+            var advance = function() {
+                tracker.generation++;
+                tracker.route = String(location.href || '');
+            };
+            var pushState = history.pushState;
+            var replaceState = history.replaceState;
+            tracker.pushStateHook = function() {
+                var result = pushState.apply(this, arguments);
+                advance();
+                return result;
+            };
+            tracker.replaceStateHook = function() {
+                var result = replaceState.apply(this, arguments);
+                advance();
+                return result;
+            };
+            history.pushState = tracker.pushStateHook;
+            history.replaceState = tracker.replaceStateHook;
+            window.addEventListener('popstate', advance, true);
+            window.addEventListener('hashchange', advance, true);
+            window.__aisteeTurnRouteTracker = tracker;
+        }
+        if (history.pushState !== tracker.pushStateHook ||
+            history.replaceState !== tracker.replaceStateHook) return '';
+        tracker.route = route;
+        window.__aisteeVerifiedTurnRoute = route;
+        return route + '\n' + String(tracker.generation);
+    })();
+""".trimIndent()
 
 internal fun parseWebUserTurnJumpResult(raw: String?): WebUserTurnJumpResult = when (
     raw?.trim()?.removeSurrounding("\"")
@@ -134,15 +186,20 @@ internal fun parseWebUserTurnJumpResult(raw: String?): WebUserTurnJumpResult = w
 internal fun webUserTurnResultForRoute(
     raw: String?,
     expectedUrl: String,
-    currentUrl: String?
+    currentUrl: String?,
+    expectedGeneration: Long? = null,
+    currentGeneration: Long? = null
 ): WebUserTurnJumpResult =
-    if (currentUrl == expectedUrl) parseWebUserTurnJumpResult(raw)
+    if (currentUrl == expectedUrl &&
+        (expectedGeneration == null || currentGeneration == expectedGeneration)
+    ) parseWebUserTurnJumpResult(raw)
     else WebUserTurnJumpResult.OFF_PROVIDER
 
 internal fun jumpToWebUserTurn(
     webView: WebView,
     service: WebAiService,
     direction: WebUserTurnDirection,
+    isCurrent: () -> Boolean,
     onResult: (WebUserTurnJumpResult) -> Unit
 ) {
     val expectedUrl = webView.url
@@ -152,29 +209,53 @@ internal fun jumpToWebUserTurn(
         onResult(WebUserTurnJumpResult.OFF_PROVIDER)
         return
     }
-    val script = webUserTurnJumpScript(service, direction)
-    if (script == null) {
+    if (webUserTurnJumpScript(service, direction) == null) {
         onResult(WebUserTurnJumpResult.OFF_PROVIDER)
         return
     }
-    // This script is constant: the browser reports its location rather than native code
-    // embedding a provider-controlled URL into an executable JavaScript string.
-    webView.evaluateJavascript(
-        "(function() {" +
-            "window.__aisteeVerifiedTurnRoute = String(location.href || '');" +
-            "return window.__aisteeVerifiedTurnRoute;" +
-        "})()"
-    ) { rawLocation ->
-        val currentLocation = runCatching {
+    // Install a page-local SPA generation guard without interpolating the provider URL.
+    webView.evaluateJavascript(webUserTurnRouteTrackerScript()) preflight@{ rawLocation ->
+        // Every release path removes the view from the live map before destroy().
+        // Check ownership BEFORE any further WebView access in asynchronous callbacks.
+        if (!isCurrent()) return@preflight
+        val reported = runCatching {
             org.json.JSONTokener(rawLocation).nextValue() as? String
         }.getOrNull()
-        if (currentLocation != expectedUrl || webView.url != expectedUrl) {
+        val expectedPrefix = "$expectedUrl\n"
+        val expectedGeneration = reported?.takeIf { it.startsWith(expectedPrefix) }
+            ?.removePrefix(expectedPrefix)?.toLongOrNull()
+        if (expectedGeneration == null || webView.url != expectedUrl) {
             onResult(WebUserTurnJumpResult.OFF_PROVIDER)
-        } else {
-            webView.evaluateJavascript(script) { raw ->
-                // Navigation may finish while the script is executing. Never report a
-                // successful jump for a page other than the one the user selected.
-                onResult(webUserTurnResultForRoute(raw, expectedUrl, webView.url))
+            return@preflight
+        }
+        val script = requireNotNull(
+            webUserTurnJumpScript(service, direction, expectedGeneration)
+        )
+        webView.evaluateJavascript(script) jump@{ raw ->
+            if (!isCurrent()) return@jump
+            // A same-URL SPA transition can occur after JS finishes but before
+            // Android delivers the result. Re-read the page-local generation.
+            webView.evaluateJavascript(
+                """
+                    (function() {
+                        var tracker = window.__aisteeTurnRouteTracker;
+                        if (!tracker || tracker.route !== String(location.href || '') ||
+                            history.pushState !== tracker.pushStateHook ||
+                            history.replaceState !== tracker.replaceStateHook) return '-1';
+                        return String(tracker.generation);
+                    })();
+                """.trimIndent()
+            ) verify@{ rawGeneration ->
+                if (!isCurrent()) return@verify
+                val currentGeneration = runCatching {
+                    (org.json.JSONTokener(rawGeneration).nextValue() as? String)
+                        ?.toLongOrNull()
+                }.getOrNull()
+                onResult(
+                    webUserTurnResultForRoute(
+                        raw, expectedUrl, webView.url, expectedGeneration, currentGeneration
+                    )
+                )
             }
         }
     }

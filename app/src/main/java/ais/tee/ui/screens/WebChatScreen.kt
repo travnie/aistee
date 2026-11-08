@@ -923,12 +923,14 @@ fun WebChatScreen(
         val requestedUrl = webView.url
         val requestedRevision = documentRevisions[service] ?: 0
         closeFindInPage()
-        jumpToWebUserTurn(webView, service, direction) { result ->
-            // Ignore callbacks from switched providers, evicted renderers or SPA navigation.
-            if (!currentIsActive || selectedService != service ||
-                webViewMap[service] !== webView ||
-                (documentRevisions[service] ?: 0) != requestedRevision ||
-                requestedUrl == null || requestedUrl != webView.url
+        val stillCurrent = {
+            currentIsActive && selectedService == service &&
+                webViewMap[service] === webView &&
+                (documentRevisions[service] ?: 0) == requestedRevision
+        }
+        jumpToWebUserTurn(webView, service, direction, isCurrent = stillCurrent) { result ->
+            // Ownership first: a destroyed WebView must never be queried.
+            if (!stillCurrent() || requestedUrl == null || requestedUrl != webView.url
             ) return@jumpToWebUserTurn
 
             val message = when (result) {
@@ -1303,6 +1305,13 @@ fun WebChatScreen(
                                     }
                                 },
                                 onUrlChanged = { url ->
+                                    // SPA route changes may skip onPageStarted.
+                                    if (lastKnownUrls[service] != null &&
+                                        lastKnownUrls[service] != url
+                                    ) {
+                                        documentRevisions[service] =
+                                            (documentRevisions[service] ?: 0) + 1
+                                    }
                                     lastKnownUrls[service] = url
                                     if (selectedService == service) {
                                         findSession?.takeIf { it.webView === webViewMap[service] }?.let {
