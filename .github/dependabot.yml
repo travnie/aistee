@@ -30,9 +30,9 @@ updates:
       # Re-enable this release after CodeQL adds compiler support.
       - dependency-name: "org.jetbrains.kotlin*"
         versions: ["2.4.20"]
-      # 0.112.0 breaks YAML/Docbench JVM tests with NoSuchMethodError (#432).
+      # 0.112.0 and 0.113.0 break YAML/Docbench JVM tests with NoSuchMethodError (#432, #467).
       - dependency-name: "io.heapy.kotaml:kotaml"
-        versions: ["0.112.0"]
+        versions: ["0.112.0", "0.113.0"]
     groups:
       kotlin:
         patterns:
