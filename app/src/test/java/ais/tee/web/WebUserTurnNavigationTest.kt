@@ -190,6 +190,73 @@ class WebUserTurnNavigationTest {
     }
 
     @Test
+    fun sameUrlRouteGenerationChangeRejectsLateResults() {
+        assertEquals(WebUserTurnJumpResult.OFF_PROVIDER, webUserTurnResultForRoute(
+            "\"moved\"", PAGE, PAGE, expectedGeneration = 4L, currentGeneration = 5L
+        ))
+        assertEquals(WebUserTurnJumpResult.OFF_PROVIDER, webUserTurnResultForRoute(
+            "\"moved\"", PAGE, PAGE, expectedGeneration = 4L, currentGeneration = null
+        ))
+        assertEquals(WebUserTurnJumpResult.MOVED, webUserTurnResultForRoute(
+            "\"moved\"", PAGE, PAGE, expectedGeneration = 4L, currentGeneration = 4L
+        ))
+    }
+
+    @Test
+    fun sameUrlSpaHistoryMutationsAdvancePageGeneration() {
+        val context = Context.enter()
+        try {
+            context.optimizationLevel = -1
+            val scope = context.initStandardObjects()
+            context.evaluateString(scope, """
+                var location = { href: "$PAGE" };
+                var listeners = {};
+                var window = {
+                    addEventListener: function(event, callback) {
+                        listeners[event] = callback;
+                    }
+                };
+                var history = {
+                    pushState: function() { return true; },
+                    replaceState: function() { return true; }
+                };
+            """.trimIndent(), "route-setup", 1, null)
+            fun readRevision(): String = Context.toString(context.evaluateString(
+                scope, webUserTurnRouteTrackerScript(), "route-tracker", 1, null
+            ))
+            assertEquals("$PAGE\n0", readRevision())
+            context.evaluateString(
+                scope, "history.pushState({}, '', '$PAGE')", "same-route-push", 1, null
+            )
+            assertEquals("$PAGE\n1", readRevision())
+            context.evaluateString(
+                scope, "history.replaceState({}, '', '$PAGE')", "same-route-replace", 1, null
+            )
+            assertEquals("$PAGE\n2", readRevision())
+            context.evaluateString(scope, "listeners.popstate()", "back-navigation", 1, null)
+            assertEquals("$PAGE\n3", readRevision())
+            context.evaluateString(
+                scope, "history.pushState = function() {}", "overridden-hook", 1, null
+            )
+            assertEquals("", readRevision())
+        } finally {
+            Context.exit()
+        }
+    }
+
+    @Test
+    fun guardedJumpScriptIncludesSameUrlGenerationCheck() {
+        val script = requireNotNull(
+            webUserTurnJumpScript(
+                WebAiService.CHATGPT, WebUserTurnDirection.NEXT, expectedGeneration = 7L
+            )
+        )
+        assertTrue(script.contains("routeTracker.generation !== 7"))
+        assertTrue(script.contains("history.pushState !== routeTracker.pushStateHook"))
+        assertTrue(!script.contains(PAGE))
+    }
+
+    @Test
     fun parserRejectsUnexpectedCallbackData() {
         assertEquals(WebUserTurnJumpResult.MOVED, parseWebUserTurnJumpResult("\"moved\""))
         assertEquals(WebUserTurnJumpResult.NO_TURNS, parseWebUserTurnJumpResult("\"no-turns\""))
