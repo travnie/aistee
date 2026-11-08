@@ -11,6 +11,7 @@ internal enum class WebUserTurnJumpResult {
     NO_TURNS,
     BOUNDARY,
     OFF_PROVIDER,
+    STALE,
     FAILED
 }
 
@@ -193,7 +194,7 @@ internal fun webUserTurnResultForRoute(
     if (currentUrl == expectedUrl &&
         (expectedGeneration == null || currentGeneration == expectedGeneration)
     ) parseWebUserTurnJumpResult(raw)
-    else WebUserTurnJumpResult.OFF_PROVIDER
+    else WebUserTurnJumpResult.STALE
 
 internal fun jumpToWebUserTurn(
     webView: WebView,
