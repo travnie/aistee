@@ -178,10 +178,10 @@ class WebUserTurnNavigationTest {
 
     @Test
     fun navigationDuringJavascriptCallbackCannotReportSuccessfulJump() {
-        assertEquals(WebUserTurnJumpResult.OFF_PROVIDER, webUserTurnResultForRoute(
+        assertEquals(WebUserTurnJumpResult.STALE, webUserTurnResultForRoute(
             "\"moved\"", PAGE, "https://chatgpt.com/c/chat-two"
         ))
-        assertEquals(WebUserTurnJumpResult.OFF_PROVIDER, webUserTurnResultForRoute(
+        assertEquals(WebUserTurnJumpResult.STALE, webUserTurnResultForRoute(
             "\"moved\"", PAGE, null
         ))
         assertEquals(WebUserTurnJumpResult.MOVED, webUserTurnResultForRoute(
@@ -191,10 +191,10 @@ class WebUserTurnNavigationTest {
 
     @Test
     fun sameUrlRouteGenerationChangeRejectsLateResults() {
-        assertEquals(WebUserTurnJumpResult.OFF_PROVIDER, webUserTurnResultForRoute(
+        assertEquals(WebUserTurnJumpResult.STALE, webUserTurnResultForRoute(
             "\"moved\"", PAGE, PAGE, expectedGeneration = 4L, currentGeneration = 5L
         ))
-        assertEquals(WebUserTurnJumpResult.OFF_PROVIDER, webUserTurnResultForRoute(
+        assertEquals(WebUserTurnJumpResult.STALE, webUserTurnResultForRoute(
             "\"moved\"", PAGE, PAGE, expectedGeneration = 4L, currentGeneration = null
         ))
         assertEquals(WebUserTurnJumpResult.MOVED, webUserTurnResultForRoute(

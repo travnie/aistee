@@ -934,7 +934,7 @@ fun WebChatScreen(
             ) return@jumpToWebUserTurn
 
             val message = when (result) {
-                WebUserTurnJumpResult.MOVED -> null
+                WebUserTurnJumpResult.MOVED, WebUserTurnJumpResult.STALE -> null
                 WebUserTurnJumpResult.NO_TURNS ->
                     "No user turns detected in this provider page."
                 WebUserTurnJumpResult.BOUNDARY -> if (direction == WebUserTurnDirection.PREVIOUS) {
