@@ -1197,6 +1197,9 @@ fun WebChatScreen(
                     Column {
                         WebChatToolbar(
                             activeWebView = activeWebView,
+                            isCurrentWebView = { view ->
+                                currentIsActive && webViewMap[selectedService] === view
+                            },
                             selectedService = selectedService,
                             activityStatus = activityStatuses[selectedService] ?: WebChatActivityStatus.IDLE,
                             providerFavicon = providerFavicons[selectedService],
@@ -1804,6 +1807,7 @@ private fun WebChatDraftVaultHost(
 @Composable
 private fun WebChatToolbar(
     activeWebView: WebView?,
+    isCurrentWebView: (WebView) -> Boolean,
     selectedService: WebAiService,
     activityStatus: WebChatActivityStatus,
     providerFavicon: Bitmap?,
@@ -1848,6 +1852,7 @@ private fun WebChatToolbar(
         WebUserTurnTimelineDialog(
             webView = activeWebView,
             service = selectedService,
+            isCurrentWebView = { isCurrentWebView(activeWebView) },
             onDismiss = { showTimeline = false },
             onShowSnackbar = onShowSnackbar
         )

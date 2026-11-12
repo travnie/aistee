@@ -82,6 +82,33 @@ class WebUserTurnTimelineTest {
     }
 
     @Test
+    fun revokedViewLeaseSkipsDestroyedWebViewOperations() {
+        var ownerChecks = 0
+        var pageReads = 0
+        assertFalse(webTimelineLeaseValid(closed = false, isCurrentWebView = {
+            ownerChecks++
+            false
+        }, inspectPage = {
+            pageReads++
+            error("Released WebView must not be accessed")
+        }))
+        assertEquals(1, ownerChecks)
+        assertEquals(0, pageReads)
+        assertFalse(webTimelineLeaseValid(closed = true, isCurrentWebView = {
+            error("Closed session must not query its owner")
+        }, inspectPage = {
+            error("Closed session must not query the page")
+        }))
+        assertTrue(webTimelineLeaseValid(closed = false, isCurrentWebView = {
+            true
+        }, inspectPage = {
+            pageReads++
+            true
+        }))
+        assertEquals(1, pageReads)
+    }
+
+    @Test
     fun callbackParserRejectsMalformedOrUnboundedMetadata() {
         assertEquals(WebUserTurnTimeline(3, false), parseWebUserTurnTimeline("{\"count\":3,\"limited\":false}"))
         listOf(null, "null", "[]", "{}", "{\"count\":201,\"limited\":true}",

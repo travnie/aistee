@@ -158,19 +158,29 @@ internal fun webUserTurnTimelineJumpScript(service: WebAiService, token: String,
     """.trimIndent()
 }
 
+/** Gate WebView access before asynchronous callbacks can touch a released renderer. */
+internal fun webTimelineLeaseValid(
+    closed: Boolean,
+    isCurrentWebView: () -> Boolean,
+    inspectPage: () -> Boolean
+): Boolean = !closed && isCurrentWebView() && inspectPage()
+
 // Foreground, page-bound handle. DOM references stay in the renderer; no message IDs or text.
 internal class WebUserTurnTimelineSession(
     private val webView: WebView,
-    private val service: WebAiService
+    private val service: WebAiService,
+    private val isCurrentWebView: () -> Boolean
 ) {
     private val pageUrl = webView.url
     private val token = UUID.randomUUID().toString()
     private var closed = false
     private var hasSnapshot = false
 
-    private fun current(): Boolean = !closed && pageUrl != null && webView.url == pageUrl &&
-        providerUrlMatches(service, pageUrl) &&
-        !webView.settings.allowContentAccess && !webView.settings.allowFileAccess
+    private fun current(): Boolean = webTimelineLeaseValid(closed, isCurrentWebView) {
+        pageUrl != null && webView.url == pageUrl &&
+            providerUrlMatches(service, pageUrl) &&
+            !webView.settings.allowContentAccess && !webView.settings.allowFileAccess
+    }
 
     fun read(onResult: (WebUserTurnTimeline?) -> Unit) {
         if (!current()) { onResult(null); return }
@@ -223,8 +233,10 @@ internal class WebUserTurnTimelineSession(
 
     fun close() {
         if (closed) return
+        val stillOwned = isCurrentWebView()
         closed = true
-        // Renderer may already be gone. Cleanup never loads a document or modifies provider state.
+        // Never execute cleanup against an evicted or destroyed renderer.
+        if (!stillOwned) return
         runCatching {
             webView.evaluateJavascript(
                 "(function(){var s=window.__aisteeTurnTimeline;" +
