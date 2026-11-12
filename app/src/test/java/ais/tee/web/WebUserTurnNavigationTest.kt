@@ -207,6 +207,7 @@ class WebUserTurnNavigationTest {
         val context = Context.enter()
         try {
             context.optimizationLevel = -1
+            context.languageVersion = Context.VERSION_ES6
             val scope = context.initStandardObjects()
             context.evaluateString(scope, """
                 var location = { href: "$PAGE" };
@@ -220,25 +221,50 @@ class WebUserTurnNavigationTest {
                     pushState: function() { return true; },
                     replaceState: function() { return true; }
                 };
+                var cachedPush = history.pushState.bind(history);
+                var turnNodes = [{}, {}];
+                var document = {
+                    querySelectorAll: function() { return turnNodes; }
+                };
             """.trimIndent(), "route-setup", 1, null)
-            fun readRevision(): String = Context.toString(context.evaluateString(
-                scope, webUserTurnRouteTrackerScript(), "route-tracker", 1, null
+            fun startJump(): String = Context.toString(context.evaluateString(
+                scope, requireNotNull(webUserTurnRouteTrackerScript(WebAiService.CHATGPT)),
+                "route-tracker", 1, null
             ))
-            assertEquals("$PAGE\n0", readRevision())
-            context.evaluateString(
-                scope, "history.pushState({}, '', '$PAGE')", "same-route-push", 1, null
-            )
-            assertEquals("$PAGE\n1", readRevision())
-            context.evaluateString(
-                scope, "history.replaceState({}, '', '$PAGE')", "same-route-replace", 1, null
-            )
-            assertEquals("$PAGE\n2", readRevision())
+            fun revision(): String = Context.toString(context.evaluateString(
+                scope, webUserTurnRouteVerificationScript(), "route-check", 1, null
+            ))
+            assertEquals("$PAGE\n0", startJump())
+            assertEquals("0", revision())
+            context.evaluateString(scope, "history.pushState({}, '', '$PAGE')",
+                "same-route-push", 1, null)
+            assertEquals("1", revision())
+            context.evaluateString(scope, "history.replaceState({}, '', '$PAGE')",
+                "same-route-replace", 1, null)
+            assertEquals("2", revision())
             context.evaluateString(scope, "listeners.popstate()", "back-navigation", 1, null)
-            assertEquals("$PAGE\n3", readRevision())
-            context.evaluateString(
-                scope, "history.pushState = function() {}", "overridden-hook", 1, null
-            )
-            assertEquals("", readRevision())
+            assertEquals("3", revision())
+
+            // A cached original history method bypasses the wrapper, but the
+            // replacement chat's turn DOM nodes invalidate the old callback.
+            context.evaluateString(scope,
+                "cachedPush({}, '', '$PAGE'); turnNodes = [{}, {}];",
+                "cached-navigation", 1, null)
+            assertEquals("-1", revision())
+            assertEquals("$PAGE\n4", startJump())
+            assertEquals("4", revision())
+            assertEquals("$PAGE\n5", startJump())
+            assertEquals("5", revision())
+
+            // A provider replacing the hook invalidates pending results; the
+            // next explicit jump installs a fresh wrapper on its new method.
+            context.evaluateString(scope, "history.pushState = function() {}",
+                "provider-overrides-hook", 1, null)
+            assertEquals("-1", revision())
+            assertEquals("$PAGE\n6", startJump())
+            context.evaluateString(scope, "history.pushState({}, '', '$PAGE')",
+                "restored-hook", 1, null)
+            assertEquals("7", revision())
         } finally {
             Context.exit()
         }
