@@ -41,7 +41,9 @@ internal fun webUserTurnJumpScript(
             if (!routeTracker || routeTracker.generation !== $generation ||
                 routeTracker.route !== String(location.href || '') ||
                 history.pushState !== routeTracker.pushStateHook ||
-                history.replaceState !== routeTracker.replaceStateHook) return 'off-provider';
+                history.replaceState !== routeTracker.replaceStateHook ||
+                typeof routeTracker.turnMatches !== 'function' ||
+                !routeTracker.turnMatches()) return 'stale';
         """.trimIndent()
     }.orEmpty()
     return """
@@ -136,41 +138,85 @@ internal fun webUserTurnJumpScript(
 
 /**
  * Page-local route revision, installed only on explicit turn navigation. No JS bridge,
- * page text or persisted identifiers. Same-URL SPA history mutations still advance it.
+ * page text or persisted identifiers. Detects same-URL SPA history changes and usual
+ * conversation rerenders, including calls through pre-captured history methods.
  */
-internal fun webUserTurnRouteTrackerScript(): String = """
+internal fun webUserTurnRouteTrackerScript(service: WebAiService): String? {
+    val anchors = ProviderWebRegistry.turnAnchors(service) ?: return null
+    val selector = javascriptStringLiteral(anchors.userSelector)
+    return """
+        (function() {
+            var route = String(location.href || '');
+            var tracker = window.__aisteeTurnRouteTracker;
+            if (!tracker) {
+                tracker = {
+                    generation: -1,
+                    route: route,
+                    advance: function() {
+                        this.generation++;
+                        this.route = String(location.href || '');
+                    }
+                };
+                window.__aisteeTurnRouteTracker = tracker;
+                window.addEventListener('popstate', function() { tracker.advance(); }, true);
+                window.addEventListener('hashchange', function() { tracker.advance(); }, true);
+            }
+
+            // Providers can replace history methods after our first jump.
+            // Restore hooks on the next explicit jump; existing requests fail closed.
+            if (typeof history.pushState !== 'function' ||
+                typeof history.replaceState !== 'function') return '';
+            if (history.pushState !== tracker.pushStateHook) {
+                var pushState = history.pushState;
+                tracker.pushStateHook = function() {
+                    var result = pushState.apply(this, arguments);
+                    tracker.advance();
+                    return result;
+                };
+                history.pushState = tracker.pushStateHook;
+            }
+            if (history.replaceState !== tracker.replaceStateHook) {
+                var replaceState = history.replaceState;
+                tracker.replaceStateHook = function() {
+                    var result = replaceState.apply(this, arguments);
+                    tracker.advance();
+                    return result;
+                };
+                history.replaceState = tracker.replaceStateHook;
+            }
+
+            // Explicit requests also invalidate earlier pending callbacks.
+            tracker.advance();
+            var turns = document.querySelectorAll($selector);
+            tracker.turnCount = turns.length;
+            tracker.firstTurn = turns.length ? turns[0] : null;
+            tracker.lastTurn = turns.length ? turns[turns.length - 1] : null;
+            // A provider may have cached the original history method before our hook
+            // was installed. Check DOM identity to reject ordinary same-URL rerenders.
+            // No message content, IDs or attributes are read or stored.
+            tracker.turnMatches = function() {
+                var current = document.querySelectorAll($selector);
+                return current.length === this.turnCount &&
+                    (!current.length ||
+                        (current[0] === this.firstTurn &&
+                         current[current.length - 1] === this.lastTurn));
+            };
+            window.__aisteeVerifiedTurnRoute = route;
+            return route + '\n' + String(tracker.generation);
+        })();
+    """.trimIndent()
+}
+
+/** Verify a completed jump against both route generation and user-turn DOM identity. */
+internal fun webUserTurnRouteVerificationScript(): String = """
     (function() {
-        var route = String(location.href || '');
         var tracker = window.__aisteeTurnRouteTracker;
-        if (!tracker) {
-            tracker = { generation: 0, route: route };
-            var advance = function() {
-                tracker.generation++;
-                tracker.route = String(location.href || '');
-            };
-            var pushState = history.pushState;
-            var replaceState = history.replaceState;
-            tracker.pushStateHook = function() {
-                var result = pushState.apply(this, arguments);
-                advance();
-                return result;
-            };
-            tracker.replaceStateHook = function() {
-                var result = replaceState.apply(this, arguments);
-                advance();
-                return result;
-            };
-            history.pushState = tracker.pushStateHook;
-            history.replaceState = tracker.replaceStateHook;
-            window.addEventListener('popstate', advance, true);
-            window.addEventListener('hashchange', advance, true);
-            window.__aisteeTurnRouteTracker = tracker;
-        }
-        if (history.pushState !== tracker.pushStateHook ||
-            history.replaceState !== tracker.replaceStateHook) return '';
-        tracker.route = route;
-        window.__aisteeVerifiedTurnRoute = route;
-        return route + '\n' + String(tracker.generation);
+        if (!tracker || tracker.route !== String(location.href || '') ||
+            history.pushState !== tracker.pushStateHook ||
+            history.replaceState !== tracker.replaceStateHook ||
+            typeof tracker.turnMatches !== 'function' ||
+            !tracker.turnMatches()) return '-1';
+        return String(tracker.generation);
     })();
 """.trimIndent()
 
@@ -215,7 +261,7 @@ internal fun jumpToWebUserTurn(
         return
     }
     // Install a page-local SPA generation guard without interpolating the provider URL.
-    webView.evaluateJavascript(webUserTurnRouteTrackerScript()) preflight@{ rawLocation ->
+    webView.evaluateJavascript(requireNotNull(webUserTurnRouteTrackerScript(service))) preflight@{ rawLocation ->
         // Every release path removes the view from the live map before destroy().
         // Check ownership BEFORE any further WebView access in asynchronous callbacks.
         if (!isCurrent()) return@preflight
@@ -226,7 +272,7 @@ internal fun jumpToWebUserTurn(
         val expectedGeneration = reported?.takeIf { it.startsWith(expectedPrefix) }
             ?.removePrefix(expectedPrefix)?.toLongOrNull()
         if (expectedGeneration == null || webView.url != expectedUrl) {
-            onResult(WebUserTurnJumpResult.OFF_PROVIDER)
+            onResult(WebUserTurnJumpResult.STALE)
             return@preflight
         }
         val script = requireNotNull(
@@ -237,15 +283,7 @@ internal fun jumpToWebUserTurn(
             // A same-URL SPA transition can occur after JS finishes but before
             // Android delivers the result. Re-read the page-local generation.
             webView.evaluateJavascript(
-                """
-                    (function() {
-                        var tracker = window.__aisteeTurnRouteTracker;
-                        if (!tracker || tracker.route !== String(location.href || '') ||
-                            history.pushState !== tracker.pushStateHook ||
-                            history.replaceState !== tracker.replaceStateHook) return '-1';
-                        return String(tracker.generation);
-                    })();
-                """.trimIndent()
+                webUserTurnRouteVerificationScript()
             ) verify@{ rawGeneration ->
                 if (!isCurrent()) return@verify
                 val currentGeneration = runCatching {
