@@ -21,10 +21,14 @@ import kotlinx.coroutines.delay
 internal fun WebUserTurnTimelineDialog(
     webView: WebView,
     service: WebAiService,
+    isCurrentWebView: () -> Boolean,
     onDismiss: () -> Unit,
     onShowSnackbar: (String) -> Unit
 ) {
-    val session = remember(webView, service) { WebUserTurnTimelineSession(webView, service) }
+    val latestIsCurrent by rememberUpdatedState(isCurrentWebView)
+    val session = remember(webView, service) {
+        WebUserTurnTimelineSession(webView, service) { latestIsCurrent() }
+    }
     var snapshot by remember(session) { mutableStateOf<WebUserTurnTimeline?>(null) }
     var loading by remember(session) { mutableStateOf(true) }
     var jumping by remember(session) { mutableStateOf(false) }
