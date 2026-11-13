@@ -26,8 +26,12 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.lifecycle.ViewModelProvider
 import ais.tee.data.model.WebAiService
+import ais.tee.web.WebUserTurnJumpResult
+import ais.tee.web.WebUserTurnTimelineSession
 import ais.tee.ui.viewmodel.StudioViewModel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -45,6 +49,52 @@ class WebUserTurnTimelineTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
     private var fixtureView: WebView? = null
+
+    @Test
+    fun revokedRendererLeaseNeverReadsDestroyedWebView() {
+        composeRule.runOnIdle {
+            val webView = WebView(composeRule.activity)
+            webView.destroy()
+            val session = WebUserTurnTimelineSession(
+                webView, WebAiService.CHATGPT,
+                isCurrentWebView = { false },
+                isRetainedWebView = { false }
+            )
+            session.read { assertNull(it) }
+            session.jump(0) { assertEquals(WebUserTurnJumpResult.OFF_PROVIDER, it) }
+            session.checkCurrent { assertFalse(it) }
+            session.close()
+        }
+    }
+
+    @Test
+    fun retainedRendererCleanupRunsWhileNotForeground() {
+        val webView = loadConversationFixture()
+        val loaded = AtomicBoolean(false)
+        val foreground = AtomicBoolean(true)
+        val retained = AtomicBoolean(true)
+        lateinit var session: WebUserTurnTimelineSession
+        composeRule.runOnIdle {
+            session = WebUserTurnTimelineSession(
+                webView, WebAiService.CHATGPT,
+                isCurrentWebView = { foreground.get() },
+                isRetainedWebView = { retained.get() }
+            )
+            session.read { loaded.set(it != null) }
+        }
+        composeRule.waitUntil(5_000) { loaded.get() }
+        foreground.set(false)
+        composeRule.runOnIdle { session.close() }
+        val cleared = AtomicBoolean(false)
+        composeRule.waitUntil(5_000) {
+            composeRule.runOnIdle {
+                webView.evaluateJavascript(
+                    "typeof window.__aisteeTurnTimeline === 'undefined'"
+                ) { cleared.set(it == "true") }
+            }
+            cleared.get()
+        }
+    }
 
     @Test
     fun choosingLoadedTurnScrollsExistingRendererWithoutChangingDraft() {

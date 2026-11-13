@@ -1200,6 +1200,9 @@ fun WebChatScreen(
                             isCurrentWebView = { view ->
                                 currentIsActive && webViewMap[selectedService] === view
                             },
+                            isRetainedWebView = { view ->
+                                webViewMap.values.any { it === view }
+                            },
                             selectedService = selectedService,
                             activityStatus = activityStatuses[selectedService] ?: WebChatActivityStatus.IDLE,
                             providerFavicon = providerFavicons[selectedService],
@@ -1808,6 +1811,7 @@ private fun WebChatDraftVaultHost(
 private fun WebChatToolbar(
     activeWebView: WebView?,
     isCurrentWebView: (WebView) -> Boolean,
+    isRetainedWebView: (WebView) -> Boolean,
     selectedService: WebAiService,
     activityStatus: WebChatActivityStatus,
     providerFavicon: Bitmap?,
@@ -1853,6 +1857,7 @@ private fun WebChatToolbar(
             webView = activeWebView,
             service = selectedService,
             isCurrentWebView = { isCurrentWebView(activeWebView) },
+            isRetainedWebView = { isRetainedWebView(activeWebView) },
             onDismiss = { showTimeline = false },
             onShowSnackbar = onShowSnackbar
         )
