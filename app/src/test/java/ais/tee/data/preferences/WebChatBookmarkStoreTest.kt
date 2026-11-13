@@ -1,6 +1,7 @@
 package ais.tee.data.preferences
 
 import ais.tee.data.model.WebAiService
+import java.io.ByteArrayInputStream
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -95,6 +96,60 @@ class WebChatBookmarkStoreTest {
         persistence.allowWrite = false
         assertTrue(store.save(service, address, "New", "") is WebChatBookmarkSaveResult.Rejected)
         assertEquals(null, persistence.value)
+    }
+
+    @Test
+    fun portableBackupRoundTripsAndMergesWithoutOverwritingLocalNames() {
+        val source = WebChatBookmarkStore(FakePersistence())
+        assertTrue(source.save(service, address, "Exported", "Work/AI") is WebChatBookmarkSaveResult.Saved)
+        val json = requireNotNull(source.exportPortableArchive())
+        assertTrue(json.contains("\"version\":1"))
+        assertTrue(json.contains("\"bookmarks\""))
+        val local = WebChatBookmarkStore(FakePersistence())
+        assertEquals(WebChatBookmarkImportResult.Imported(1, 0), local.importPortableArchive(json))
+        assertEquals("Exported", local.load().bookmarks.single().title)
+        assertEquals(WebChatBookmarkImportResult.Imported(0, 1), local.importPortableArchive(json))
+        val sameAddress = json.replace("chatgpt.com/c/", "CHATGPT.COM.:443/c/")
+        assertEquals(WebChatBookmarkImportResult.Imported(0, 1), local.importPortableArchive(sameAddress))
+        assertEquals(1, local.load().bookmarks.size)
+        assertTrue(local.save(service, address, "Local title", "Personal") is WebChatBookmarkSaveResult.Saved)
+        assertEquals(WebChatBookmarkImportResult.Imported(0, 1), local.importPortableArchive(json))
+        assertEquals("Local title", local.load().bookmarks.single().title)
+    }
+
+    @Test
+    fun malformedOrUnsafeImportCannotReplaceEncryptedStorage() {
+        val persistence = FakePersistence()
+        val local = WebChatBookmarkStore(persistence)
+        assertTrue(local.save(service, address, "Safe", "") is WebChatBookmarkSaveResult.Saved)
+        val previous = persistence.value
+        val backup = requireNotNull(local.exportPortableArchive())
+        listOf(
+            "{", backup.replace("\"version\":1", "\"version\":2"),
+            backup.replace("chatgpt.com", "chatgpt.com.evil.test"),
+            backup.replace("https://chatgpt.com/c/bookmark-123", "https://chatgpt.com/c/id?secret=x"),
+            backup.replace("\"title\":\"Safe\"", "\"title\":\"\"")
+        ).forEach { bad ->
+            assertTrue(local.importPortableArchive(bad) is WebChatBookmarkImportResult.Rejected)
+            assertEquals(previous, persistence.value)
+        }
+        val oversized = "x".repeat(WEB_BOOKMARK_BACKUP_MAX_CHARS + 1)
+        assertNull(readWebChatBookmarkBackup(ByteArrayInputStream(oversized.toByteArray())))
+        assertNull(readWebChatBookmarkBackup(ByteArrayInputStream(
+            byteArrayOf('{'.code.toByte(), 0xC3.toByte(), '}'.code.toByte())
+        )))
+    }
+
+    @Test
+    fun importedRecordsCannotOverwriteUnreadableStore() {
+        val source = WebChatBookmarkStore(FakePersistence())
+        source.save(service, address, "Saved", "")
+        val backup = requireNotNull(source.exportPortableArchive())
+        val damaged = FakePersistence("{bad")
+        val local = WebChatBookmarkStore(damaged)
+        assertTrue(local.importPortableArchive(backup) is WebChatBookmarkImportResult.Rejected)
+        assertEquals("{bad", damaged.value)
+        assertNull(local.exportPortableArchive())
     }
 
     private class FakePersistence(

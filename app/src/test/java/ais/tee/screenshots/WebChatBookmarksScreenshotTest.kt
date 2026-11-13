@@ -4,6 +4,7 @@ import ais.tee.data.model.WebAiService
 import ais.tee.data.preferences.WebChatBookmarkPersistence
 import ais.tee.data.preferences.WebChatBookmarkSaveResult
 import ais.tee.data.preferences.WebChatBookmarkStore
+import ais.tee.ui.screens.WebChatBookmarkBackupActions
 import ais.tee.ui.screens.WebChatBookmarksDialog
 import ais.tee.ui.theme.AisteeTheme
 import android.app.Application
@@ -49,7 +50,8 @@ class WebChatBookmarksScreenshotTest {
     private fun capture(name: String, fontScale: Float = 1f) {
         val store = WebChatBookmarkStore(MemoryPersistence())
         val chatUrl = "https://chatgpt.com/c/current"
-        assertTrue(store.save(WebAiService.CHATGPT, chatUrl, "Stable chat", "Work/Research")
+        val storedUrl = "https://CHATGPT.COM.:443/c/current"
+        assertTrue(store.save(WebAiService.CHATGPT, storedUrl, "Stable chat", "Work/Research")
             is WebChatBookmarkSaveResult.Saved)
         assertTrue(store.save(WebAiService.CHATGPT, "https://chatgpt.com/c/other",
             "Design ideas", "Work/Research") is WebChatBookmarkSaveResult.Saved)
@@ -65,6 +67,7 @@ class WebChatBookmarksScreenshotTest {
                         currentUrl = chatUrl,
                         onOpen = { opened = it },
                         onDismiss = {},
+                        backup = WebChatBookmarkBackupActions(false, {}, {}),
                         storeOverride = store,
                     )
                 }
@@ -74,11 +77,12 @@ class WebChatBookmarksScreenshotTest {
             compose.onAllNodesWithText("Stable chat").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithText("Other provider").assertDoesNotExist()
+        compose.onNodeWithText("Edit this bookmark").assertExists()
         compose.onNodeWithTag("web_bookmarks_dialog")
             .captureRoboImage("build/outputs/roborazzi/$name.png")
         compose.onNodeWithTag("web_bookmarks_list").performScrollToIndex(3)
         compose.onNodeWithText("Stable chat").assertIsDisplayed().performClick()
-        assertEquals(chatUrl, opened)
+        assertEquals(storedUrl, opened)
     }
 
     private class MemoryPersistence : WebChatBookmarkPersistence {
