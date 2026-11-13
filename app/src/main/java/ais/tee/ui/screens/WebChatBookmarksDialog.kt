@@ -2,9 +2,16 @@ package ais.tee.ui.screens
 
 import ais.tee.data.model.WebAiService
 import ais.tee.data.preferences.WebChatBookmark
+import ais.tee.data.preferences.WebChatBookmarkImportResult
 import ais.tee.data.preferences.WebChatBookmarkSaveResult
 import ais.tee.data.preferences.WebChatBookmarkStore
+import ais.tee.data.preferences.readWebChatBookmarkBackup
 import ais.tee.data.preferences.safeWebChatBookmarkUrl
+import ais.tee.data.preferences.webBookmarkIdentityKey
+import android.content.ActivityNotFoundException
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -22,7 +29,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -39,6 +48,88 @@ internal fun webBookmarkFolderHeadings(folder: String): List<WebBookmarkFolderHe
     }
 }
 
+internal data class WebChatBookmarkBackupActions(
+    val busy: Boolean,
+    val export: () -> Unit,
+    val importBackup: () -> Unit,
+)
+
+@Composable
+internal fun rememberWebChatBookmarkBackupActions(
+    onMessage: (String) -> Unit,
+): WebChatBookmarkBackupActions {
+    val context = LocalContext.current.applicationContext
+    val scope = rememberCoroutineScope()
+    val showMessage by rememberUpdatedState(onMessage)
+    var busy by remember { mutableStateOf(false) }
+
+    fun transfer(uri: Uri, failureMessage: String, operation: (Uri) -> String) {
+        busy = true
+        scope.launch {
+            val slow = launch {
+                delay(15_000L)
+                showMessage("Bookmark backup transfer is still in progress.")
+            }
+            val message = try {
+                withContext(Dispatchers.IO) { operation(uri) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                failureMessage
+            } finally {
+                slow.cancel()
+                busy = false
+            }
+            showMessage(message)
+        }
+    }
+
+    // Register both contracts even with the dialog closed. The registry restores
+    // the picker result after activity recreation.
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            transfer(uri, "Could not export bookmark backup") { destination ->
+                val json = requireNotNull(WebChatBookmarkStore(context).exportPortableArchive())
+                val output = requireNotNull(context.contentResolver.openOutputStream(destination))
+                output.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+                "Exported bookmarks from all providers."
+            }
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            transfer(uri, "Could not read bookmark backup") { source ->
+                val input = requireNotNull(context.contentResolver.openInputStream(source))
+                val raw = requireNotNull(readWebChatBookmarkBackup(input))
+                when (val result = WebChatBookmarkStore(context).importPortableArchive(raw)) {
+                    is WebChatBookmarkImportResult.Imported -> {
+                        val noun = if (result.added == 1) "bookmark" else "bookmarks"
+                        "Imported ${result.added} $noun; skipped ${result.skipped} existing."
+                    }
+                    is WebChatBookmarkImportResult.Rejected -> result.reason
+                }
+            }
+        }
+    }
+
+    fun launchPicker(launch: () -> Unit) {
+        if (busy) return
+        try {
+            launch()
+        } catch (_: ActivityNotFoundException) {
+            showMessage("No document picker is available.")
+        }
+    }
+
+    return WebChatBookmarkBackupActions(
+        busy = busy,
+        export = { launchPicker { exportLauncher.launch("aistee-web-bookmarks.json") } },
+        importBackup = { launchPicker { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) } },
+    )
+}
+
 /**
  * All data is user-authored or a user-approved provider URL. Never inspect page contents.
  * Opens only provider-bound, validated references in the already active WebView.
@@ -49,6 +140,7 @@ internal fun WebChatBookmarksDialog(
     currentUrl: String?,
     onOpen: (String) -> Unit,
     onDismiss: () -> Unit,
+    backup: WebChatBookmarkBackupActions,
     storeOverride: WebChatBookmarkStore? = null,
 ) {
     val context = LocalContext.current
@@ -60,14 +152,18 @@ internal fun WebChatBookmarksDialog(
     var readable by remember(service) { mutableStateOf(true) }
     var loading by remember(service) { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
-    var adding by remember { mutableStateOf(false) }
-    var title by remember { mutableStateOf("") }
-    var folder by remember { mutableStateOf("") }
+    val safeCurrentUrl = safeWebChatBookmarkUrl(service, currentUrl)
+    val currentKey = safeCurrentUrl?.let { webBookmarkIdentityKey(service.id, it) }
+    val existing = currentKey?.let { key ->
+        bookmarks.firstOrNull { webBookmarkIdentityKey(it.providerId, it.url) == key }
+    }
+    var adding by remember(service, safeCurrentUrl) { mutableStateOf(false) }
+    var title by remember(service, safeCurrentUrl) { mutableStateOf("") }
+    var folder by remember(service, safeCurrentUrl) { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<WebChatBookmark?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
-    val bookmarkedPageUrl = remember(service) { currentUrl }
-    val safeCurrentUrl = safeWebChatBookmarkUrl(service, bookmarkedPageUrl)
+    val actionsEnabled = !busy && !backup.busy
 
     suspend fun refresh() {
         val snapshot = withContext(Dispatchers.IO) { store.load() }
@@ -76,7 +172,9 @@ internal fun WebChatBookmarksDialog(
         loading = false
     }
 
-    LaunchedEffect(service) { refresh() }
+    LaunchedEffect(service, backup.busy) {
+        if (!backup.busy) refresh()
+    }
 
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
@@ -96,10 +194,30 @@ internal fun WebChatBookmarksDialog(
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.testTag("web_bookmarks_error"))
                 }
+                Text("Export includes bookmarks from ALL providers, not just ${service.shortName}. The JSON file is not encrypted and contains conversation links.",
+                    style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            error = null
+                            backup.export()
+                        },
+                        enabled = readable && !loading && actionsEnabled,
+                        modifier = Modifier.testTag("web_bookmarks_export")
+                    ) { Text("Export all JSON") }
+                    TextButton(
+                        onClick = {
+                            error = null
+                            backup.importBackup()
+                        },
+                        enabled = readable && !loading && actionsEnabled,
+                        modifier = Modifier.testTag("web_bookmarks_import")
+                    ) { Text("Import JSON") }
+                }
                 if (!readable) {
                     Text("Encrypted bookmarks cannot be read on this device. They will not be overwritten.",
                         color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = { confirmReset = true }) { Text("Reset unreadable bookmarks") }
+                    TextButton(onClick = { confirmReset = true }, enabled = actionsEnabled) { Text("Reset unreadable bookmarks") }
                 } else {
                     if (safeCurrentUrl == null) {
                         Text("This address cannot be bookmarked safely. Pages with query strings, fragments or unrecognized hosts are excluded.",
@@ -107,16 +225,15 @@ internal fun WebChatBookmarksDialog(
                     } else if (!adding) {
                         OutlinedButton(
                             onClick = {
-                                val existing = bookmarks.firstOrNull { it.url == safeCurrentUrl }
                                 adding = true
                                 title = existing?.title.orEmpty()
                                 folder = existing?.folder.orEmpty()
                                 error = null
                             },
-                            enabled = !loading && !busy,
+                            enabled = !loading && actionsEnabled,
                             modifier = Modifier.fillMaxWidth().testTag("web_bookmarks_add")
                         ) {
-                            Text(if (bookmarks.any { it.url == safeCurrentUrl }) "Edit this bookmark" else "Bookmark this page")
+                            Text(if (existing != null) "Edit this bookmark" else "Bookmark this page")
                         }
                     }
                     if (adding && safeCurrentUrl != null) {
@@ -151,7 +268,7 @@ internal fun WebChatBookmarksDialog(
                                         busy = false
                                     }
                                 },
-                                enabled = !busy && title.isNotBlank(),
+                                enabled = actionsEnabled && title.isNotBlank(),
                                 modifier = Modifier.testTag("web_bookmarks_save"),
                             ) { Text("Save") }
                         }
@@ -209,7 +326,7 @@ internal fun WebChatBookmarksDialog(
                                                 modifier = Modifier.fillMaxWidth())
                                         }
                                         IconButton(
-                                            onClick = { pendingDelete = bookmark }, enabled = !busy,
+                                            onClick = { pendingDelete = bookmark }, enabled = actionsEnabled,
                                             modifier = Modifier.testTag("web_bookmark_remove"),
                                         ) { Icon(Icons.Default.DeleteOutline,
                                             contentDescription = "Remove ${bookmark.title}") }
@@ -234,7 +351,7 @@ internal fun WebChatBookmarksDialog(
             text = { Text("Remove ${target.title} from Aistee? The provider chat stays intact.") },
             confirmButton = {
                 TextButton(
-                    enabled = !busy,
+                    enabled = actionsEnabled,
                     onClick = {
                         busy = true
                         scope.launch {
@@ -257,7 +374,7 @@ internal fun WebChatBookmarksDialog(
             text = { Text("Only Aistee bookmark references will be erased. This cannot be undone.") },
             confirmButton = {
                 TextButton(
-                    enabled = !busy,
+                    enabled = actionsEnabled,
                     onClick = {
                         busy = true
                         scope.launch {

@@ -238,6 +238,8 @@ fun WebChatScreen(
     var canGoForward by remember { mutableStateOf(false) }
     var showPromptHelperDialog by remember { mutableStateOf(false) }
     var showPromptVaultDialog by remember(selectedService, isActive) { mutableStateOf(false) }
+    var bookmarksServiceId by rememberSaveable { mutableStateOf<String?>(null) }
+    val bookmarkBackup = rememberWebChatBookmarkBackupActions(viewModel::showSnackbar)
     var showProviderDiagnosticsDialog by remember { mutableStateOf(false) }
     var showClearProviderSessionsDialog by remember { mutableStateOf(false) }
     var diagnosticsProbeResult by remember { mutableStateOf<ProviderDiagnosticsProbeResult?>(null) }
@@ -795,6 +797,9 @@ fun WebChatScreen(
     }
 
     val activeWebView = webViewMap[selectedService]
+    LaunchedEffect(isActive, selectedService) {
+        if (!isActive || bookmarksServiceId != selectedService.id) bookmarksServiceId = null
+    }
     LaunchedEffect(isActive, activeWebView) {
         if (findSession?.webView !== activeWebView) closeFindInPage()
         if (!isActive) {
@@ -1223,6 +1228,7 @@ fun WebChatScreen(
                                 showPromptVaultDialog = true
                             },
                             onStageDraft = { service, draft -> viewModel.stageVaultWebDraftReply(service, draft) },
+                            onShowBookmarks = { bookmarksServiceId = selectedService.id },
                             onShowDiagnostics = ::openProviderDiagnostics,
                             onShowSignInHelp = {
                                 preferredIdentityMethod = webPreferences.loadPreferredIdentityMethod()
@@ -1694,6 +1700,21 @@ fun WebChatScreen(
         )
     }
 
+    if (isActive && bookmarksServiceId == selectedService.id && activeWebView != null) {
+        key(activeWebView) {
+            val bookmarkPageUrl = remember(activeWebView, currentUrl) { activeWebView.url }
+            WebChatBookmarksDialog(
+                service = selectedService,
+                currentUrl = bookmarkPageUrl,
+                onOpen = { url ->
+                    if (webViewMap[selectedService] === activeWebView) activeWebView.loadUrl(url)
+                },
+                onDismiss = { bookmarksServiceId = null },
+                backup = bookmarkBackup,
+            )
+        }
+    }
+
     if (isActive && showPromptVaultDialog) {
         WebPromptVaultDialog(
             service = selectedService,
@@ -1826,6 +1847,7 @@ private fun WebChatToolbar(
     onApplyStudio: () -> Unit,
     onShowPromptHelper: () -> Unit,
     onShowPromptVault: () -> Unit,
+    onShowBookmarks: () -> Unit,
     onStageDraft: (WebAiService, String) -> Boolean,
     onShowDiagnostics: () -> Unit,
     onShowSignInHelp: () -> Unit,
@@ -1846,7 +1868,6 @@ private fun WebChatToolbar(
         mutableStateOf(turnPreferences.loadDisabledTurnNavigationServices())
     }
     var showTimeline by remember(selectedService, activeWebView, currentUrl) { mutableStateOf(false) }
-    var showBookmarks by remember(selectedService, activeWebView) { mutableStateOf(false) }
     var draftVaultServiceId by rememberSaveable { mutableStateOf<String?>(null) }
     val turnNavigationEnabled = webUserTurnNavigationEnabled(
         selectedService, disabledTurnNavigationServices
@@ -1860,17 +1881,6 @@ private fun WebChatToolbar(
             isRetainedWebView = { isRetainedWebView(activeWebView) },
             onDismiss = { showTimeline = false },
             onShowSnackbar = onShowSnackbar
-        )
-    }
-
-    if (showBookmarks) {
-        WebChatBookmarksDialog(
-            service = selectedService,
-            currentUrl = activeWebView?.url,
-            onOpen = { savedUrl ->
-                activeWebView?.loadUrl(savedUrl)
-            },
-            onDismiss = { showBookmarks = false },
         )
     }
 
@@ -2084,7 +2094,7 @@ private fun WebChatToolbar(
                             enabled = activeWebView != null,
                             onClick = {
                                 menuExpanded = false
-                                showBookmarks = true
+                                onShowBookmarks()
                             },
                             modifier = Modifier.testTag("btn_web_bookmarks")
                         )
