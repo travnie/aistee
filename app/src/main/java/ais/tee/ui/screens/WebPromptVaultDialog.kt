@@ -89,6 +89,9 @@ internal fun WebPromptVaultDialog(
     loadText: suspend (String) -> String?,
     onStage: (String) -> Boolean,
     onCopy: (String) -> Boolean,
+    onImport: () -> Unit,
+    onExport: (ProjectLibraryAsset) -> Unit,
+    transferBusy: Boolean,
     onDismiss: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -163,7 +166,7 @@ internal fun WebPromptVaultDialog(
                     } else if (filtered.isEmpty()) {
                         item(key = "empty") {
                             Text(
-                                if (files.isEmpty()) "No saved prompts yet. Create one in Project Library."
+                                if (files.isEmpty()) "No saved prompts yet. Import one or save a prompt to Project Library."
                                 else "No matching prompts.",
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -268,6 +271,13 @@ internal fun WebPromptVaultDialog(
                                 Text("Copy full prompt")
                             }
                         }
+                        item(key = "export") {
+                            OutlinedButton(
+                                onClick = { selected?.let(onExport) },
+                                enabled = !transferBusy,
+                                modifier = Modifier.fillMaxWidth().testTag("web_prompt_vault_export"),
+                            ) { Text("Export prompt as unencrypted JSON") }
+                        }
                     }
                 }
             }
@@ -279,6 +289,10 @@ internal fun WebPromptVaultDialog(
                     preview = null
                     error = null
                 }) { Text("Back") }
+            } else if (selected == null) {
+                TextButton(onClick = onImport, enabled = libraryReady && !transferBusy) {
+                    Text("Import prompt JSON")
+                }
             }
         },
         confirmButton = {

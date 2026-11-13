@@ -69,7 +69,8 @@ class WebPromptVaultScreenshotTest {
                         pendingDraft = false, draftBusy = false,
                         loadText = { id -> if (id == "p1") prompt else null },
                         onStage = { text -> stageCalls++; staged = text; true },
-                        onCopy = { false }, onDismiss = {},
+                        onCopy = { false }, onImport = {}, onExport = {},
+                        transferBusy = false, onDismiss = {},
                     )
                 }
             }
