@@ -22,12 +22,22 @@ internal fun WebUserTurnTimelineDialog(
     webView: WebView,
     service: WebAiService,
     isCurrentWebView: () -> Boolean,
+    isRetainedWebView: () -> Boolean,
     onDismiss: () -> Unit,
     onShowSnackbar: (String) -> Unit
 ) {
     val latestIsCurrent by rememberUpdatedState(isCurrentWebView)
+    val latestIsRetained by rememberUpdatedState(isRetainedWebView)
+    if (!isCurrentWebView()) {
+        LaunchedEffect(webView, service) { onDismiss() }
+        return
+    }
     val session = remember(webView, service) {
-        WebUserTurnTimelineSession(webView, service) { latestIsCurrent() }
+        WebUserTurnTimelineSession(
+            webView, service,
+            isCurrentWebView = { latestIsCurrent() },
+            isRetainedWebView = { latestIsRetained() }
+        )
     }
     var snapshot by remember(session) { mutableStateOf<WebUserTurnTimeline?>(null) }
     var loading by remember(session) { mutableStateOf(true) }

@@ -169,9 +169,11 @@ internal fun webTimelineLeaseValid(
 internal class WebUserTurnTimelineSession(
     private val webView: WebView,
     private val service: WebAiService,
-    private val isCurrentWebView: () -> Boolean
+    private val isCurrentWebView: () -> Boolean,
+    private val isRetainedWebView: () -> Boolean
 ) {
-    private val pageUrl = webView.url
+    // A released WebView cannot be safely queried, including during construction.
+    private val pageUrl = if (isCurrentWebView()) runCatching { webView.url }.getOrNull() else null
     private val token = UUID.randomUUID().toString()
     private var closed = false
     private var hasSnapshot = false
@@ -233,10 +235,10 @@ internal class WebUserTurnTimelineSession(
 
     fun close() {
         if (closed) return
-        val stillOwned = isCurrentWebView()
+        val stillRetained = isRetainedWebView()
         closed = true
-        // Never execute cleanup against an evicted or destroyed renderer.
-        if (!stillOwned) return
+        // Cleanup is allowed for a retained, inactive renderer, never an evicted one.
+        if (!stillRetained) return
         runCatching {
             webView.evaluateJavascript(
                 "(function(){var s=window.__aisteeTurnTimeline;" +
