@@ -1,5 +1,6 @@
 package ais.tee.ui.viewmodel
 
+import ais.tee.data.document.PortablePrompt
 import ais.tee.data.engine.ActiveSkillChatAnswer
 import ais.tee.data.engine.ActiveSkillChatStage
 import ais.tee.data.engine.AiChatService
@@ -1145,6 +1146,21 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         } ?: return null
         reloadProjectLibraryFromDisk()
         return asset
+    }
+
+    internal suspend fun importPortablePrompt(prompt: PortablePrompt): Boolean {
+        withContext(Dispatchers.IO) {
+            projectLibraryStore.saveTextAsset(
+                title = prompt.title,
+                mediaType = "text/plain",
+                extension = "txt",
+                text = prompt.text,
+                kind = ProjectLibraryAssetKind.PROMPT,
+                origin = ProjectLibraryAssetOrigin.IMPORTED,
+            )
+        } ?: return false
+        reloadProjectLibraryFromDisk()
+        return true
     }
 
     suspend fun loadProjectLibraryAsset(assetId: String): String? =

@@ -240,6 +240,7 @@ fun WebChatScreen(
     var showPromptVaultDialog by remember(selectedService, isActive) { mutableStateOf(false) }
     var bookmarksServiceId by rememberSaveable { mutableStateOf<String?>(null) }
     val bookmarkBackup = rememberWebChatBookmarkBackupActions(viewModel::showSnackbar)
+    val promptVaultTransfer = rememberWebPromptVaultTransfer(viewModel)
     var showProviderDiagnosticsDialog by remember { mutableStateOf(false) }
     var showClearProviderSessionsDialog by remember { mutableStateOf(false) }
     var diagnosticsProbeResult by remember { mutableStateOf<ProviderDiagnosticsProbeResult?>(null) }
@@ -1733,6 +1734,9 @@ fun WebChatScreen(
                 if (copied) viewModel.showSnackbar("Saved prompt copied. Review it before sending.")
                 copied
             },
+            onImport = promptVaultTransfer.importPrompt,
+            onExport = promptVaultTransfer.exportPrompt,
+            transferBusy = promptVaultTransfer.busy,
             onDismiss = { showPromptVaultDialog = false },
         )
     }
