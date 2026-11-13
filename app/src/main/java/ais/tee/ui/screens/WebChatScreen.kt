@@ -92,6 +92,7 @@ import ais.tee.web.setProviderGenerationTrackerSelected
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+private val comfortableWebWidth = 720.dp
 private const val WEB_ACTIVITY_POLL_MS = 1_200L
 private const val LRU_GENERATION_PROBE_TIMEOUT_MS = 500L
 private const val RENDERER_INACTIVITY_CONFIRM_DELAY_MS = 500L
@@ -228,6 +229,9 @@ fun WebChatScreen(
         WebChatPreferencesStore(context.applicationContext)
     }
     var preferredIdentityMethod by remember { mutableStateOf(webPreferences.loadPreferredIdentityMethod()) }
+    var comfortableWidth by remember(selectedService) {
+        mutableStateOf(webPreferences.loadComfortableWidth(selectedService))
+    }
     val browserLaunchFailure = stringResource(R.string.web_sign_in_browser_failure)
     val currentPendingWebShare by rememberUpdatedState(uiState.pendingWebShare)
     val currentPendingWebDraft by rememberUpdatedState(uiState.pendingWebDraft)
@@ -1256,6 +1260,12 @@ fun WebChatScreen(
                                     probeServiceActivity(service)
                                 }
                             },
+                            comfortableWidth = comfortableWidth,
+                            onToggleComfortableWidth = {
+                                val enabled = !comfortableWidth
+                                webPreferences.saveComfortableWidth(selectedService, enabled)
+                                comfortableWidth = enabled
+                            },
                             onShowSnackbar = viewModel::showSnackbar
                         )
                         findSession?.takeIf { it.webView === activeWebView }?.let {
@@ -1280,7 +1290,11 @@ fun WebChatScreen(
 
                     Box(
                         modifier = if (isCurrentService) {
-                            Modifier.fillMaxSize()
+                            if (comfortableWidth) {
+                                Modifier.align(Alignment.TopCenter).widthIn(max = comfortableWebWidth).fillMaxSize()
+                            } else {
+                                Modifier.fillMaxSize()
+                            }
                         } else {
                             // Do not chain size(0.dp) after fillMaxSize(): the exact full-size
                             // constraints win, leaving the inactive WebView visible on top.
@@ -1860,6 +1874,8 @@ private fun WebChatToolbar(
     onPreviousUserTurn: () -> Unit,
     onNextUserTurn: () -> Unit,
     onToggleDesktopMode: () -> Unit,
+    comfortableWidth: Boolean,
+    onToggleComfortableWidth: () -> Unit,
     onShowSnackbar: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -2170,6 +2186,15 @@ private fun WebChatToolbar(
                                     )
                                 }
                             }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Comfortable reading width") },
+                            trailingIcon = { Checkbox(checked = comfortableWidth, onCheckedChange = null) },
+                            onClick = {
+                                menuExpanded = false
+                                onToggleComfortableWidth()
+                            },
+                            modifier = Modifier.testTag("toggle_web_comfortable_width"),
                         )
                         DropdownMenuItem(
                             text = { Text("Open in browser") },

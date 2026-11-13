@@ -32,6 +32,7 @@ Delivered feature index, reviewed **29 October 2026** against the documented mai
 - Portable Web bookmark backups: explicit SAF JSON export/import across registered providers, strict bounded validation and merge-only restoration. Local encryption remains authoritative; exported files are plaintext and disclose bookmarked conversation links.
 - Web Prompt Vault reads existing Project Library prompt metadata; selected content is previewed locally and only staged into the provider-scoped, user-reviewed Web draft banner on explicit action. Oversized prompts offer explicit sensitive clipboard copy instead of silent truncation. No automatic provider send or second prompt store.
 - Prompt Vault imports and exports individual prompts as versioned, unencrypted JSON. Imported prompts create new assets in Project Library Inbox.
+- Web chats offer an opt-in reading width per provider. Aistee centers the existing WebView and caps its width at 720 dp where space allows.
 - Experimental **Web** previous/next navigation and numbered timeline picker for loaded user messages. At most 200 ephemeral renderer-local anchors; no message-text/ID extraction or persistence. Shared provider opt-out, stale-target checks and synthetic WebView smoke coverage. Candidate selectors still need signed-in provider verification; Web stars, rich previews and quote extraction remain unshipped.
 
 ## 📲 Android UI and system integration
