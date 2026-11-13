@@ -118,6 +118,21 @@ class WebChatBookmarkStoreTest {
     }
 
     @Test
+    fun legacyArchiveWithEquivalentUrlsRestoresOtherBookmarks() {
+        val old = FakePersistence(
+            """{"version":1,"bookmarks":[
+                {"id":"a","providerId":"chatgpt","url":"$address","title":"First","folder":""},
+                {"id":"b","providerId":"chatgpt","url":"https://CHATGPT.COM.:443/c/bookmark-123","title":"Second","folder":"Legacy"},
+                {"id":"c","providerId":"chatgpt","url":"https://chatgpt.com/c/other","title":"Other","folder":""}
+            ]}"""
+        )
+        val backup = requireNotNull(WebChatBookmarkStore(old).exportPortableArchive())
+        val restored = WebChatBookmarkStore(FakePersistence())
+        assertEquals(WebChatBookmarkImportResult.Imported(2, 1), restored.importPortableArchive(backup))
+        assertEquals(listOf("First", "Other"), restored.load().bookmarks.map { it.title })
+    }
+
+    @Test
     fun malformedOrUnsafeImportCannotReplaceEncryptedStorage() {
         val persistence = FakePersistence()
         val local = WebChatBookmarkStore(persistence)

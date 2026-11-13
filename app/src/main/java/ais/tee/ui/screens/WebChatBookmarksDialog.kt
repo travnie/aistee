@@ -106,7 +106,7 @@ internal fun rememberWebChatBookmarkBackupActions(
                 when (val result = WebChatBookmarkStore(context).importPortableArchive(raw)) {
                     is WebChatBookmarkImportResult.Imported -> {
                         val noun = if (result.added == 1) "bookmark" else "bookmarks"
-                        "Imported ${result.added} $noun; skipped ${result.skipped} existing."
+                        "Imported ${result.added} $noun; skipped ${result.skipped} duplicate entries."
                     }
                     is WebChatBookmarkImportResult.Rejected -> result.reason
                 }

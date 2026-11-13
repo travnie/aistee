@@ -154,14 +154,10 @@ internal class WebChatBookmarkStore(private val persistence: WebChatBookmarkPers
         if (!snapshot.readable) {
             return@synchronized WebChatBookmarkImportResult.Rejected("Encrypted bookmarks unavailable")
         }
-        val importedKeys = archive.bookmarks.map { webBookmarkIdentityKey(it.providerId, it.url) }
-        if (importedKeys.toSet().size != importedKeys.size) {
-            return@synchronized WebChatBookmarkImportResult.Rejected("Duplicate bookmark addresses")
-        }
-        val localKeys = snapshot.bookmarks.map { webBookmarkIdentityKey(it.providerId, it.url) }.toSet()
-        val additions = archive.bookmarks.filterNot {
-            webBookmarkIdentityKey(it.providerId, it.url) in localKeys
-        }
+        // Older stores could contain equivalent URL spellings. Keep the first
+        // archive entry for each address unless a local bookmark already owns it.
+        val seen = snapshot.bookmarks.mapTo(mutableSetOf()) { webBookmarkIdentityKey(it.providerId, it.url) }
+        val additions = archive.bookmarks.filter { seen.add(webBookmarkIdentityKey(it.providerId, it.url)) }
             .map { it.copy(id = UUID.randomUUID().toString()) }
         if (snapshot.bookmarks.size + additions.size > MAX_BOOKMARKS) {
             return@synchronized WebChatBookmarkImportResult.Rejected("Bookmark limit reached ($MAX_BOOKMARKS)")
