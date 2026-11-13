@@ -57,6 +57,13 @@ internal class WebChatPreferencesStore(context: Context) {
             .apply()
     }
 
+    fun loadComfortableWidth(service: WebAiService): Boolean =
+        preferences.getBoolean(COMFORTABLE_WIDTH_PREFIX + service.id, false)
+
+    fun saveComfortableWidth(service: WebAiService, enabled: Boolean) {
+        preferences.edit().putBoolean(COMFORTABLE_WIDTH_PREFIX + service.id, enabled).apply()
+    }
+
     fun loadPreferredIdentityMethod(): ProviderIdentityMethod? = resolvePreferredIdentityMethod(
         preferences.getString(PREFERRED_IDENTITY_METHOD_KEY, null)
     )
@@ -78,5 +85,6 @@ internal class WebChatPreferencesStore(context: Context) {
         const val FAVORITE_SERVICES_KEY = "favorite_services"
         const val PREFERRED_IDENTITY_METHOD_KEY = "preferred_identity_method"
         const val DISABLED_TURN_NAVIGATION_KEY = "disabled_turn_navigation_services"
+        const val COMFORTABLE_WIDTH_PREFIX = "comfortable_width_"
     }
 }

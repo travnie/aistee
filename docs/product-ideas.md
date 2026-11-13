@@ -236,7 +236,7 @@ Recent browser-extension projects around Gemini, Claude, ChatGPT and DeepSeek re
 - **Prompt Vault interoperability:** extend individual portable JSON import/export to bulk prompt backups and optional external prompt-vault format adapters. Project Library remains canonical.
 - **Web starred moments:** build on native stars and notes, but require stable provider-specific turn IDs; never copy remote message bodies just to bookmark them.
 - **Web quote reply:** stage user-reviewed excerpts only after a trustworthy provider-page text source exists. Native quote selection is implemented.
-- **Reading controls:** per-provider comfortable-width setting, optional collapsible composer for long reading sessions and a prevent-auto-scroll toggle where a provider's page repeatedly yanks the viewport.
+- **Reading controls:** optional collapsible composer for long reading sessions and a prevent-auto-scroll toggle where a provider's page repeatedly yanks the viewport.
 - **Default model helper:** where a provider exposes a stable, user-visible model selector, remember the user's preferred choice and offer a provider-scoped helper. Avoid brittle hidden endpoint calls or silent model switching.
 - **Chat export:** for locally owned chats, keep Markdown as the readable source-of-truth export and optionally add JSON/PDF packaging. For Web chats, only export content explicitly available in the loaded page and label the export as a captured snapshot rather than a complete provider archive.
 - **Additional copy formats:** native code, TeX and CSV actions already ship; add MathML copy only where reliable source extraction exists.
