@@ -6,15 +6,15 @@ import kotlinx.serialization.json.Json
 
 /** One local Library prompt. Project paths and provider data stay out of the archive. */
 @Serializable
-internal class PortablePrompt private constructor(val version: Int, val title: String, val text: String) {
+class PortablePrompt private constructor(val version: Int, val title: String, val text: String) {
     private fun isValid(): Boolean =
         version == 1 && title.isNotBlank() && title == title.trim() &&
-            title.length <= 120 && title.none(Char::isISOControl) && text.isNotBlank()
+            title.length <= 120 && title.none { it in '\u0000'..'\u001f' || it in '\u007f'..'\u009f' } && text.isNotBlank()
 
-    fun toDocument(): TextDocument? {
+    fun toDocument(maxUtf8Bytes: Int): TextDocument? {
         if (!isValid()) return null
         val raw = Json.encodeToString(this)
-        if (raw.encodeToByteArray().size > TextDocumentFileAccess.MAX_DOCUMENT_BYTES) return null
+        if (raw.encodeToByteArray().size > maxUtf8Bytes) return null
         return TextDocument(raw, hadUtf8Bom = false, lineEndings = TextDocumentCodec.detectLineEndings(raw))
     }
 

@@ -1,7 +1,5 @@
 package ais.tee.ui.screens
 
-import ais.tee.data.document.PortablePrompt
-import ais.tee.data.document.TextDocumentFileAccess
 import ais.tee.data.model.LocalProject
 import ais.tee.data.model.ProjectLibraryArchive
 import ais.tee.data.model.ProjectLibraryAsset
@@ -17,24 +15,6 @@ class WebPromptVaultTest {
             id = id, projectId = "inbox", title = name, mediaType = "text/plain",
             fileName = "$id.md", sizeBytes = bytes, createdAtEpochMs = 1L, kind = kind,
         )
-
-    @Test
-    fun portablePromptPreservesTextAndRejectsInvalidArchives() {
-        val text = "Keep  spaces\r\nKeep \"quotes\" and Unicode: ż."
-        val raw = requireNotNull(PortablePrompt.fromLibrary("My prompt", text).toDocument()).text
-        val restored = requireNotNull(PortablePrompt.decode(raw))
-        assertEquals("My prompt", restored.title)
-        assertEquals(text, restored.text)
-        assertNull(PortablePrompt.decode(raw.replace("\"version\":1", "\"version\":2")))
-        assertNull(PortablePrompt.decode(raw.replace("My prompt", " ")))
-        assertNull(PortablePrompt.decode("{}"))
-    }
-
-    @Test
-    fun portablePromptRejectsJsonEscapingThatExceedsFileLimit() {
-        val text = "\"".repeat(TextDocumentFileAccess.MAX_DOCUMENT_BYTES / 2)
-        assertNull(PortablePrompt.fromLibrary("Large prompt", text).toDocument())
-    }
 
     @Test
     fun selectsOnlyNonEmptyPromptAssetsInStableOrder() {

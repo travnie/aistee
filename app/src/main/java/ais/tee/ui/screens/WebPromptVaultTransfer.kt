@@ -73,7 +73,8 @@ internal fun rememberWebPromptVaultTransfer(viewModel: StudioViewModel): WebProm
             return null
         }
         return withContext(Dispatchers.Default) {
-            PortablePrompt.fromLibrary(asset.metadata.title, asset.text).toDocument()
+            PortablePrompt.fromLibrary(asset.metadata.title, asset.text)
+                .toDocument(TextDocumentFileAccess.MAX_DOCUMENT_BYTES)
         }
     }
 
