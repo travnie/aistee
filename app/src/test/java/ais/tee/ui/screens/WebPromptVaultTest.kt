@@ -101,6 +101,9 @@ class WebPromptVaultTest {
             promptBackupImportMessage(PromptImportResult(2, 1, complete = false)),
         )
         assertEquals("Exported 5 prompts as JSON.", promptBackupExportMessage(5, 0))
-        assertTrue(promptBackupExportMessage(5, 2).contains("2 unreadable or non-portable left out"))
+        assertEquals(
+            "Exported 5 prompts as JSON. 2 unreadable or non-portable left out.",
+            promptBackupExportMessage(5, 2),
+        )
     }
 }

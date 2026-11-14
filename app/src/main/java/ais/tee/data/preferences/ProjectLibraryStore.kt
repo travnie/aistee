@@ -126,23 +126,28 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
         saveTextAssetUnlocked(projectId, title, mediaType, extension, text, kind, origin, now)
     }
 
-    /** One index read; each prompt verified once. Null: prompts exceed [maxTotalBytes], nothing read. */
+    /** One index read; each prompt verified once. Null: readable prompts exceed [maxTotalBytes]. */
     fun loadPromptAssets(
         maxTotalBytes: Long,
         now: Long = System.currentTimeMillis(),
     ): LoadedPromptAssets? = synchronized(FILE_LOCK) {
         val prompts = promptAssets(loadUnlocked(now))
-        if (prompts.sumOf { it.sizeBytes.toLong() } > maxTotalBytes) return@synchronized null
-        val readable = prompts.mapNotNull { asset ->
+        var total = 0L
+        val readable = mutableListOf<LoadedProjectLibraryAsset>()
+        for (asset in prompts) {
             val text = readVerifiedAssetBytes(asset)
                 ?.let { runCatching { it.decodeToString(throwOnInvalidSequence = true) }.getOrNull() }
-            text?.let { LoadedProjectLibraryAsset(asset, it) }
+                ?: continue
+            // Budget counts readable content only; stop before holding more than the limit.
+            total += asset.sizeBytes
+            if (total > maxTotalBytes) return@synchronized null
+            readable += LoadedProjectLibraryAsset(asset, text)
         }
         LoadedPromptAssets(readable, prompts.size - readable.size)
     }
 
     private fun promptAssets(archive: ProjectLibraryArchive): List<ProjectLibraryAsset> =
-        archive.assets.filter { it.kind == ProjectLibraryAssetKind.PROMPT && it.sizeBytes > 0 }
+        archive.assets.filter { it.kind == ProjectLibraryAssetKind.PROMPT }
 
     /**
      * Merge-only into Inbox. Same title + content as a readable saved prompt = skipped, so re-import
