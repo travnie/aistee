@@ -91,8 +91,9 @@ internal fun webPromptSafetySummary(inspection: TextInspectionResult): String? {
     ).filter { it.first > 0 }.joinToString(", ") { "${it.first} ${it.second}" }
     val first = inspection.findings.firstOrNull()
         ?.let { " First: ${it.label} at line ${it.line}, column ${it.column}." }.orEmpty()
-    val count = if (inspection.truncated) "${inspection.detectedCount}+" else "${inspection.detectedCount}"
-    return "Safety check: $count suspicious pattern(s) ($severities).$first " +
+    // detectedCount is exact; severities only cover the retained findings.
+    val scope = if (inspection.truncated) "first ${inspection.findings.size}: $severities" else severities
+    return "Safety check: ${inspection.detectedCount} suspicious pattern(s) ($scope).$first " +
         "Review the text before sending; Aistee did not change it."
 }
 
