@@ -57,6 +57,10 @@ class PortablePromptTest {
     fun backupRejectsMoreThanTheDocumentedPromptCount() {
         val prompts = List(PortablePromptBackup.MAX_PROMPTS + 1) { PortablePrompt.fromLibrary("P$it", "t") }
         assertNull(PortablePromptBackup.of(prompts).toDocument(Int.MAX_VALUE))
+        val overLimit = prompts.joinToString(",") { "{\"version\":1,\"title\":\"${it.title}\",\"text\":\"t\"}" }
+        assertNull(
+            PortablePromptBackup.decode("{\"version\":1,\"kind\":\"${PortablePromptBackup.KIND}\",\"prompts\":[$overLimit]}")
+        )
         assertEquals(
             PortablePromptBackup.MAX_PROMPTS,
             requireNotNull(

@@ -212,7 +212,7 @@ internal fun WebPromptVaultDialog(
                                 onClick = onExportAll,
                                 enabled = !transferBusy,
                                 modifier = Modifier.fillMaxWidth().testTag("web_prompt_vault_export_all"),
-                            ) { Text("Back up all ${files.size} prompts as unencrypted JSON") }
+                            ) { Text("Back up saved prompts as unencrypted JSON") }
                         }
                     }
                 } else {

@@ -7,9 +7,11 @@ import ais.tee.data.document.TextDocumentFileAccess
 import ais.tee.data.model.ProjectLibraryAsset
 import ais.tee.data.model.ProjectLibraryAssetKind
 import ais.tee.data.preferences.PromptImportResult
+import ais.tee.ui.viewmodel.PortablePromptBackupDraft
 import ais.tee.ui.viewmodel.StudioViewModel
 import android.content.ActivityNotFoundException
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -53,6 +55,7 @@ internal fun rememberWebPromptVaultTransfer(viewModel: StudioViewModel): WebProm
     var exportAssetId by rememberSaveable { mutableStateOf<String?>(null) }
     var exportRevision by rememberSaveable { mutableStateOf<Long?>(null) }
     var exportAllPending by rememberSaveable { mutableStateOf(false) }
+    var pendingBackup by remember { mutableStateOf<PortablePromptBackupDraft?>(null) }
 
     fun transfer(fallback: String, operation: suspend () -> String?) {
         busy = true
@@ -123,11 +126,16 @@ internal fun rememberWebPromptVaultTransfer(viewModel: StudioViewModel): WebProm
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
         exportAllPending = false
+        val retained = pendingBackup
+        pendingBackup = null
         if (uri != null) {
             transfer("Could not export prompt backup.") {
-                // Fresh snapshot at write time; the picker can stay open for a long time.
-                val draft = viewModel.preparePortablePromptBackup(TextDocumentFileAccess.MAX_DOCUMENT_BYTES)
+                // Snapshot from the pre-check; rebuilt only after process recreation.
+                val draft = retained
+                    ?: viewModel.preparePortablePromptBackup(TextDocumentFileAccess.MAX_DOCUMENT_BYTES)
                 if (draft == null) {
+                    // Never leave the freshly created destination empty.
+                    runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }
                     "Prompts changed before export. Try again."
                 } else {
                     TextDocumentFileAccess.export(context, uri, draft.document)
@@ -175,16 +183,24 @@ internal fun rememberWebPromptVaultTransfer(viewModel: StudioViewModel): WebProm
             if (!busy && exportAssetId == null && !exportAllPending) {
                 transfer("Could not prepare prompt backup.") {
                     // Pre-check so a failed backup never leaves an empty file behind.
-                    if (viewModel.preparePortablePromptBackup(TextDocumentFileAccess.MAX_DOCUMENT_BYTES) == null) {
+                    val draft = viewModel.preparePortablePromptBackup(TextDocumentFileAccess.MAX_DOCUMENT_BYTES)
+                    if (draft == null) {
                         "No portable prompts, more than ${PortablePromptBackup.MAX_PROMPTS}, or over the JSON size limit."
                     } else {
+                        pendingBackup = draft
                         exportAllPending = true
+                        var pickerLaunched = false
                         try {
                             exportAllLauncher.launch("aistee-prompt-vault.json")
+                            pickerLaunched = true
                             null
                         } catch (_: ActivityNotFoundException) {
-                            exportAllPending = false
                             "No document picker is available."
+                        } finally {
+                            if (!pickerLaunched) {
+                                exportAllPending = false
+                                pendingBackup = null
+                            }
                         }
                     }
                 }
