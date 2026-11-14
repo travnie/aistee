@@ -30,6 +30,9 @@ internal data class LoadedProjectLibraryAsset(
         "LoadedProjectLibraryAsset(metadata=$metadata, text=<redacted>)"
 }
 
+/** [complete] false: a write failed; earlier prompts stay saved. */
+internal data class PromptImportResult(val imported: Int, val skipped: Int, val complete: Boolean)
+
 private data class PreparedTextAssetUpdate(
     val metadata: ProjectLibraryAsset,
     val previous: File,
@@ -118,6 +121,34 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
         now: Long = System.currentTimeMillis(),
     ): ProjectLibraryAsset? = synchronized(FILE_LOCK) {
         saveTextAssetUnlocked(projectId, title, mediaType, extension, text, kind, origin, now)
+    }
+
+    /** Merge-only into Inbox. Same title + content hash as a saved prompt = skipped, so re-import is idempotent. */
+    fun importPrompts(
+        prompts: List<Pair<String, String>>,
+        now: Long = System.currentTimeMillis(),
+    ): PromptImportResult = synchronized(FILE_LOCK) {
+        val known = loadUnlocked(now).assets
+            .filter { it.kind == ProjectLibraryAssetKind.PROMPT }
+            .mapNotNullTo(mutableSetOf()) { asset -> asset.contentSha256?.let { asset.title to it } }
+        var imported = 0
+        var skipped = 0
+        for ((title, text) in prompts) {
+            val hash = encodeText(text)?.sha256()
+                ?: return@synchronized PromptImportResult(imported, skipped, complete = false)
+            val key = title.trim().take(MAX_ASSET_TITLE_CHARS) to hash
+            if (key in known) {
+                skipped++
+                continue
+            }
+            saveTextAssetUnlocked(
+                DEFAULT_PROJECT_ID, title, "text/plain", "txt", text,
+                ProjectLibraryAssetKind.PROMPT, ProjectLibraryAssetOrigin.IMPORTED, now,
+            ) ?: return@synchronized PromptImportResult(imported, skipped, complete = false)
+            known += key
+            imported++
+        }
+        PromptImportResult(imported, skipped, complete = true)
     }
 
     private fun saveTextAssetUnlocked(

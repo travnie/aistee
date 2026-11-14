@@ -1,6 +1,8 @@
 package ais.tee.ui.viewmodel
 
 import ais.tee.data.document.PortablePrompt
+import ais.tee.data.document.PortablePromptBackup
+import ais.tee.data.document.TextDocument
 import ais.tee.data.engine.ActiveSkillChatAnswer
 import ais.tee.data.engine.ActiveSkillChatStage
 import ais.tee.data.engine.AiChatService
@@ -21,6 +23,7 @@ import ais.tee.data.preferences.AsyncProviderJobStore
 import ais.tee.data.preferences.NativeChatStore
 import ais.tee.data.preferences.NativeChatWriter
 import ais.tee.data.preferences.ProjectLibraryStore
+import ais.tee.data.preferences.PromptImportResult
 import ais.tee.data.preferences.StudioStateStore
 import ais.tee.data.preferences.StudioStateWriter
 import ais.tee.data.preferences.WebChatDraftStore
@@ -86,6 +89,9 @@ data class NativeChatNavigationRequest(
     val id: Long,
     val conversationId: String,
 )
+
+/** [omitted]: unreadable or non-portable prompts left out of [document]. */
+internal class PortablePromptBackupDraft(val document: TextDocument, val exported: Int, val omitted: Int)
 
 data class PendingWebDraft(
     val id: String,
@@ -1162,6 +1168,32 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         reloadProjectLibraryFromDisk()
         return true
     }
+
+    internal suspend fun importPortablePrompts(backup: PortablePromptBackup): PromptImportResult {
+        val result = withContext(Dispatchers.IO) {
+            projectLibraryStore.importPrompts(backup.prompts.map { it.title to it.text })
+        }
+        if (result.imported > 0) reloadProjectLibraryFromDisk()
+        return result
+    }
+
+    /** Snapshot of every readable saved prompt. Null: nothing portable or over [maxUtf8Bytes]. */
+    internal suspend fun preparePortablePromptBackup(maxUtf8Bytes: Int): PortablePromptBackupDraft? =
+        withContext(Dispatchers.IO) {
+            val assets = projectLibraryStore.load().assets
+                .filter { it.kind == ProjectLibraryAssetKind.PROMPT && it.sizeBytes > 0 }
+                .sortedWith(compareBy({ it.title.lowercase() }, { it.id }))
+            // Cheap bound before reading any prompt text.
+            if (assets.sumOf { it.sizeBytes.toLong() } > maxUtf8Bytes) return@withContext null
+            val prompts = assets.mapNotNull { asset ->
+                projectLibraryStore.loadTextAsset(asset.id)
+                    ?.let { PortablePrompt.fromLibrary(it.metadata.title, it.text) }
+            }
+            val backup = PortablePromptBackup.of(prompts)
+            backup.toDocument(maxUtf8Bytes)?.let {
+                PortablePromptBackupDraft(it, backup.prompts.size, assets.size - backup.prompts.size)
+            }
+        }
 
     suspend fun loadProjectLibraryAsset(assetId: String): String? =
         withContext(Dispatchers.IO) { projectLibraryStore.loadTextAsset(assetId)?.text }

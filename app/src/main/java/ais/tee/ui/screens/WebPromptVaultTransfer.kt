@@ -1,10 +1,12 @@
 package ais.tee.ui.screens
 
 import ais.tee.data.document.PortablePrompt
+import ais.tee.data.document.PortablePromptBackup
 import ais.tee.data.document.TextDocument
 import ais.tee.data.document.TextDocumentFileAccess
 import ais.tee.data.model.ProjectLibraryAsset
 import ais.tee.data.model.ProjectLibraryAssetKind
+import ais.tee.data.preferences.PromptImportResult
 import ais.tee.ui.viewmodel.StudioViewModel
 import android.content.ActivityNotFoundException
 import android.net.Uri
@@ -27,7 +29,21 @@ internal data class WebPromptVaultTransfer(
     val busy: Boolean,
     val importPrompt: () -> Unit,
     val exportPrompt: (ProjectLibraryAsset) -> Unit,
+    val exportAllPrompts: () -> Unit,
 )
+
+internal fun promptBackupImportMessage(result: PromptImportResult): String {
+    val skipped = if (result.skipped > 0) ", ${result.skipped} already saved" else ""
+    return when {
+        !result.complete -> "Import stopped: ${result.imported} imported$skipped. Storage write failed."
+        result.imported == 0 -> "Nothing new: all ${result.skipped} prompts are already saved."
+        else -> "Imported ${result.imported} prompts into Project Library Inbox$skipped."
+    }
+}
+
+internal fun promptBackupExportMessage(exported: Int, omitted: Int): String =
+    if (omitted == 0) "Exported $exported prompts as JSON."
+    else "Exported $exported prompts as JSON. $omitted unreadable or non-portable left out."
 
 @Composable
 internal fun rememberWebPromptVaultTransfer(viewModel: StudioViewModel): WebPromptVaultTransfer {
@@ -36,6 +52,7 @@ internal fun rememberWebPromptVaultTransfer(viewModel: StudioViewModel): WebProm
     var busy by remember { mutableStateOf(false) }
     var exportAssetId by rememberSaveable { mutableStateOf<String?>(null) }
     var exportRevision by rememberSaveable { mutableStateOf<Long?>(null) }
+    var exportAllPending by rememberSaveable { mutableStateOf(false) }
 
     fun transfer(fallback: String, operation: suspend () -> String?) {
         busy = true
@@ -57,8 +74,12 @@ internal fun rememberWebPromptVaultTransfer(viewModel: StudioViewModel): WebProm
         if (uri != null) {
             transfer("Could not import prompt JSON.") {
                 val raw = TextDocumentFileAccess.import(context, uri).document.text
-                val prompt = withContext(Dispatchers.Default) { PortablePrompt.decode(raw) }
+                val (prompt, backup) = withContext(Dispatchers.Default) {
+                    val single = PortablePrompt.decode(raw)
+                    single to if (single == null) PortablePromptBackup.decode(raw) else null
+                }
                 when {
+                    backup != null -> promptBackupImportMessage(viewModel.importPortablePrompts(backup))
                     prompt == null -> "Invalid or unsupported prompt JSON."
                     viewModel.importPortablePrompt(prompt) -> "Prompt imported into Project Library Inbox."
                     else -> "Could not save the imported prompt."
@@ -98,8 +119,26 @@ internal fun rememberWebPromptVaultTransfer(viewModel: StudioViewModel): WebProm
         }
     }
 
+    val exportAllLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        exportAllPending = false
+        if (uri != null) {
+            transfer("Could not export prompt backup.") {
+                // Fresh snapshot at write time; the picker can stay open for a long time.
+                val draft = viewModel.preparePortablePromptBackup(TextDocumentFileAccess.MAX_DOCUMENT_BYTES)
+                if (draft == null) {
+                    "Prompts changed before export. Try again."
+                } else {
+                    TextDocumentFileAccess.export(context, uri, draft.document)
+                    promptBackupExportMessage(draft.exported, draft.omitted)
+                }
+            }
+        }
+    }
+
     return WebPromptVaultTransfer(
-        busy = busy || exportAssetId != null,
+        busy = busy || exportAssetId != null || exportAllPending,
         importPrompt = {
             try {
                 importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
@@ -127,6 +166,25 @@ internal fun rememberWebPromptVaultTransfer(viewModel: StudioViewModel): WebProm
                                 exportAssetId = null
                                 exportRevision = null
                             }
+                        }
+                    }
+                }
+            }
+        },
+        exportAllPrompts = {
+            if (!busy && exportAssetId == null && !exportAllPending) {
+                transfer("Could not prepare prompt backup.") {
+                    // Pre-check so a failed backup never leaves an empty file behind.
+                    if (viewModel.preparePortablePromptBackup(TextDocumentFileAccess.MAX_DOCUMENT_BYTES) == null) {
+                        "No portable prompts, more than ${PortablePromptBackup.MAX_PROMPTS}, or over the JSON size limit."
+                    } else {
+                        exportAllPending = true
+                        try {
+                            exportAllLauncher.launch("aistee-prompt-vault.json")
+                            null
+                        } catch (_: ActivityNotFoundException) {
+                            exportAllPending = false
+                            "No document picker is available."
                         }
                     }
                 }

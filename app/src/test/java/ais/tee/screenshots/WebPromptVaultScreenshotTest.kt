@@ -59,6 +59,7 @@ class WebPromptVaultScreenshotTest {
             )
         )
         var stageCalls = 0
+        var exportAllCalls = 0
         var staged: String? = null
         compose.setContent {
             val density = LocalDensity.current
@@ -69,7 +70,7 @@ class WebPromptVaultScreenshotTest {
                         pendingDraft = false, draftBusy = false,
                         loadText = { id -> if (id == "p1") prompt else null },
                         onStage = { text -> stageCalls++; staged = text; true },
-                        onCopy = { false }, onImport = {}, onExport = {},
+                        onCopy = { false }, onImport = {}, onExport = {}, onExportAll = { exportAllCalls++ },
                         transferBusy = false, onDismiss = {},
                     )
                 }
@@ -80,6 +81,8 @@ class WebPromptVaultScreenshotTest {
         compose.onNodeWithTag("web_prompt_vault_dialog")
             .captureRoboImage("build/outputs/roborazzi/$name.png")
         assertEquals(0, stageCalls)
+        compose.onNodeWithTag("web_prompt_vault_export_all").performScrollTo().assertIsDisplayed().performClick()
+        assertEquals(1, exportAllCalls)
         compose.onNodeWithText("Source-aware writing").assertIsDisplayed().performClick()
         compose.waitUntil(5_000) {
             compose.onAllNodesWithText(prompt).fetchSemanticsNodes().isNotEmpty()
