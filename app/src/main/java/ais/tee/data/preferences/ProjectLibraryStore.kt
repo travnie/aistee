@@ -30,6 +30,12 @@ internal data class LoadedProjectLibraryAsset(
         "LoadedProjectLibraryAsset(metadata=$metadata, text=<redacted>)"
 }
 
+/** [complete] false: a write failed. [imported] counts only prompts that were kept. */
+internal data class PromptImportResult(val imported: Int, val skipped: Int, val complete: Boolean)
+
+/** [unreadable]: prompts whose content file is missing or fails its hash. */
+internal class LoadedPromptAssets(val readable: List<LoadedProjectLibraryAsset>, val unreadable: Int)
+
 private data class PreparedTextAssetUpdate(
     val metadata: ProjectLibraryAsset,
     val previous: File,
@@ -120,7 +126,97 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
         saveTextAssetUnlocked(projectId, title, mediaType, extension, text, kind, origin, now)
     }
 
+    /** One index read; each prompt verified once. Null: readable prompts exceed [maxTotalBytes]. */
+    fun loadPromptAssets(
+        maxTotalBytes: Long,
+        now: Long = System.currentTimeMillis(),
+    ): LoadedPromptAssets? = synchronized(FILE_LOCK) {
+        val prompts = promptAssets(loadUnlocked(now))
+        var total = 0L
+        val readable = mutableListOf<LoadedProjectLibraryAsset>()
+        for (asset in prompts) {
+            val text = readVerifiedAssetBytes(asset)
+                ?.let { runCatching { it.decodeToString(throwOnInvalidSequence = true) }.getOrNull() }
+                ?: continue
+            // Budget counts readable content only; stop before holding more than the limit.
+            total += asset.sizeBytes
+            if (total > maxTotalBytes) return@synchronized null
+            readable += LoadedProjectLibraryAsset(asset, text)
+        }
+        LoadedPromptAssets(readable, prompts.size - readable.size)
+    }
+
+    private fun promptAssets(archive: ProjectLibraryArchive): List<ProjectLibraryAsset> =
+        archive.assets.filter { it.kind == ProjectLibraryAssetKind.PROMPT }
+
+    /**
+     * Merge-only into Inbox. Same title + content as a readable saved prompt = skipped, so re-import
+     * is idempotent while a backup can still restore a prompt whose file went missing.
+     * One index write; nothing is kept when it fails.
+     */
+    fun importPrompts(
+        prompts: List<Pair<String, String>>,
+        now: Long = System.currentTimeMillis(),
+    ): PromptImportResult = synchronized(FILE_LOCK) {
+        val archive = loadUnlocked(now)
+        // Hash of bytes actually on disk; texts are not retained.
+        val known = promptAssets(archive)
+            .mapNotNullTo(mutableSetOf()) { asset -> readVerifiedAssetBytes(asset)?.let { asset.title to it.sha256() } }
+        val added = mutableListOf<ProjectLibraryAsset>()
+        var skipped = 0
+        var complete = true
+        for ((title, text) in prompts) {
+            val hash = encodeText(text)?.sha256()
+            if (hash == null) {
+                complete = false
+                break
+            }
+            val key = title.trim().take(MAX_ASSET_TITLE_CHARS) to hash
+            if (key in known) {
+                skipped++
+                continue
+            }
+            val asset = writeNewTextAsset(
+                archive, DEFAULT_PROJECT_ID, title, "text/plain", "txt", text,
+                ProjectLibraryAssetKind.PROMPT, ProjectLibraryAssetOrigin.IMPORTED, now,
+            )
+            if (asset == null) {
+                complete = false
+                break
+            }
+            known += key
+            added += asset
+        }
+        if (added.isNotEmpty() && !saveArchive(archive.copy(assets = archive.assets + added))) {
+            added.forEach { File(assetsDirectory, it.fileName).delete() }
+            return@synchronized PromptImportResult(0, skipped, complete = false)
+        }
+        PromptImportResult(added.size, skipped, complete)
+    }
+
     private fun saveTextAssetUnlocked(
+        projectId: String,
+        title: String,
+        mediaType: String,
+        extension: String,
+        text: String,
+        kind: ProjectLibraryAssetKind,
+        origin: ProjectLibraryAssetOrigin,
+        now: Long,
+    ): ProjectLibraryAsset? {
+        val archive = loadUnlocked(now)
+        val asset = writeNewTextAsset(archive, projectId, title, mediaType, extension, text, kind, origin, now)
+            ?: return null
+        if (!saveArchive(archive.copy(assets = archive.assets + asset))) {
+            File(assetsDirectory, asset.fileName).delete()
+            return null
+        }
+        return asset
+    }
+
+    /** Content file only; caller persists the index entry. */
+    private fun writeNewTextAsset(
+        archive: ProjectLibraryArchive,
         projectId: String,
         title: String,
         mediaType: String,
@@ -132,7 +228,6 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
     ): ProjectLibraryAsset? {
         val bytes = encodeText(text) ?: return null
         if (bytes.size > MAX_ASSET_BYTES) return null
-        val archive = loadUnlocked(now)
         if (archive.projects.none { it.id == projectId }) return null
         val normalizedTitle = title.trim().takeIf { it.isNotEmpty() }?.take(MAX_ASSET_TITLE_CHARS) ?: return null
         val normalizedType = mediaType.trim().lowercase().takeIf { it.isNotEmpty() } ?: return null
@@ -145,7 +240,7 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
         val temp = File(assetsDirectory, "$fileName.tmp")
         return try {
             if (!writeRevisionBytes(temp, target, bytes)) return null
-            val asset = ProjectLibraryAsset(
+            ProjectLibraryAsset(
                 id = id,
                 projectId = projectId,
                 title = normalizedTitle,
@@ -159,12 +254,6 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
                 kind = kind,
                 origin = origin,
             )
-            if (!saveArchive(archive.copy(assets = archive.assets + asset))) {
-                target.delete()
-                null
-            } else {
-                asset
-            }
         } catch (_: IOException) {
             temp.delete()
             target.delete()

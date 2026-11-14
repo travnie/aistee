@@ -187,4 +187,32 @@ class ProjectLibraryStoreTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun promptBackupImportIsMergeOnlyAndIdempotent() {
+        val root = testRoot()
+        try {
+            val store = ProjectLibraryStore(root)
+            val prompts = listOf("Review" to "Check the diff.", "Review" to "Other body.", "Review" to "Check the diff.")
+            assertEquals(PromptImportResult(2, 1, complete = true), store.importPrompts(prompts, now = 1))
+            assertEquals(PromptImportResult(0, 3, complete = true), store.importPrompts(prompts, now = 2))
+            val assets = store.load(now = 3).assets
+            assertEquals(2, assets.size)
+            assertTrue(assets.all { it.kind == ProjectLibraryAssetKind.PROMPT && it.projectId == DEFAULT_PROJECT_ID })
+            assertTrue(assets.all { it.origin == ProjectLibraryAssetOrigin.IMPORTED })
+            // Index entry without a readable file must not block restoring that prompt.
+            val lost = assets.first()
+            assertTrue(
+                File(File(root, ProjectLibraryStore.DIRECTORY_NAME), "$ASSETS_DIRECTORY/${lost.fileName}").delete(),
+            )
+            assertEquals(1, requireNotNull(store.loadPromptAssets(Long.MAX_VALUE, now = 4)).unreadable)
+            assertNull(store.loadPromptAssets(maxTotalBytes = 1, now = 4))
+            assertEquals(PromptImportResult(1, 2, complete = true), store.importPrompts(prompts, now = 5))
+            // Same title + bytes saved as a document is not a prompt duplicate.
+            store.saveTextAsset(title = "Doc", mediaType = TEXT_PLAIN, extension = TXT_EXTENSION, text = "Body")
+            assertEquals(PromptImportResult(1, 0, complete = true), store.importPrompts(listOf("Doc" to "Body")))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
 }

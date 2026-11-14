@@ -1750,6 +1750,7 @@ fun WebChatScreen(
             },
             onImport = promptVaultTransfer.importPrompt,
             onExport = promptVaultTransfer.exportPrompt,
+            onExportAll = promptVaultTransfer.exportAllPrompts,
             transferBusy = promptVaultTransfer.busy,
             onDismiss = { showPromptVaultDialog = false },
         )

@@ -91,6 +91,7 @@ internal fun WebPromptVaultDialog(
     onCopy: (String) -> Boolean,
     onImport: () -> Unit,
     onExport: (ProjectLibraryAsset) -> Unit,
+    onExportAll: () -> Unit,
     transferBusy: Boolean,
     onDismiss: () -> Unit,
 ) {
@@ -166,7 +167,7 @@ internal fun WebPromptVaultDialog(
                     } else if (filtered.isEmpty()) {
                         item(key = "empty") {
                             Text(
-                                if (files.isEmpty()) "No saved prompts yet. Import one or save a prompt to Project Library."
+                                if (files.isEmpty()) "No saved prompts yet. Import a prompt or backup, or save a prompt to Project Library."
                                 else "No matching prompts.",
                                 style = MaterialTheme.typography.bodySmall,
                             )
@@ -203,6 +204,15 @@ internal fun WebPromptVaultDialog(
                                         style = MaterialTheme.typography.labelSmall)
                                 }
                             }
+                        }
+                    }
+                    if (libraryReady && files.isNotEmpty()) {
+                        item(key = "export-all") {
+                            TextButton(
+                                onClick = onExportAll,
+                                enabled = !transferBusy,
+                                modifier = Modifier.fillMaxWidth().testTag("web_prompt_vault_export_all"),
+                            ) { Text("Back up saved prompts as unencrypted JSON") }
                         }
                     }
                 } else {

@@ -4,6 +4,7 @@ import ais.tee.data.model.LocalProject
 import ais.tee.data.model.ProjectLibraryArchive
 import ais.tee.data.model.ProjectLibraryAsset
 import ais.tee.data.model.ProjectLibraryAssetKind
+import ais.tee.data.preferences.PromptImportResult
 import java.io.IOException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
@@ -79,5 +80,30 @@ class WebPromptVaultTest {
         assertTrue(webPromptCanStage("A".repeat(4_000)))
         assertFalse(webPromptCanStage("A".repeat(4_001)))
         assertFalse(webPromptCanStage("界".repeat(4_000) + "A"))
+    }
+
+    @Test
+    fun backupMessagesReportSkippedAndPartialResultsHonestly() {
+        assertEquals(
+            "Imported 3 prompts into Project Library Inbox.",
+            promptBackupImportMessage(PromptImportResult(3, 0, complete = true)),
+        )
+        assertEquals(
+            "Imported 1 prompts into Project Library Inbox, 2 already saved.",
+            promptBackupImportMessage(PromptImportResult(1, 2, complete = true)),
+        )
+        assertEquals(
+            "Nothing new: all 4 prompts are already saved.",
+            promptBackupImportMessage(PromptImportResult(0, 4, complete = true)),
+        )
+        assertEquals(
+            "Import stopped: 2 imported, 1 already saved. Storage write failed.",
+            promptBackupImportMessage(PromptImportResult(2, 1, complete = false)),
+        )
+        assertEquals("Exported 5 prompts as JSON.", promptBackupExportMessage(5, 0))
+        assertEquals(
+            "Exported 5 prompts as JSON. 2 unreadable or non-portable left out.",
+            promptBackupExportMessage(5, 2),
+        )
     }
 }
