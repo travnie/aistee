@@ -200,6 +200,12 @@ class ProjectLibraryStoreTest {
             assertEquals(2, assets.size)
             assertTrue(assets.all { it.kind == ProjectLibraryAssetKind.PROMPT && it.projectId == DEFAULT_PROJECT_ID })
             assertTrue(assets.all { it.origin == ProjectLibraryAssetOrigin.IMPORTED })
+            // Index entry without a readable file must not block restoring that prompt.
+            val lost = assets.first()
+            assertTrue(java.io.File(root, "assets/${lost.fileName}").delete())
+            assertEquals(1, requireNotNull(store.loadPromptAssets(Long.MAX_VALUE, now = 4)).unreadable)
+            assertNull(store.loadPromptAssets(maxTotalBytes = 1, now = 4))
+            assertEquals(PromptImportResult(1, 2, complete = true), store.importPrompts(prompts, now = 5))
             // Same title + bytes saved as a document is not a prompt duplicate.
             store.saveTextAsset(title = "Doc", mediaType = TEXT_PLAIN, extension = TXT_EXTENSION, text = "Body")
             assertEquals(PromptImportResult(1, 0, complete = true), store.importPrompts(listOf("Doc" to "Body")))

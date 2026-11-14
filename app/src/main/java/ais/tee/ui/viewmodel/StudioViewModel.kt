@@ -1180,18 +1180,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     /** Snapshot of every readable saved prompt. Null: nothing portable or over [maxUtf8Bytes]. */
     internal suspend fun preparePortablePromptBackup(maxUtf8Bytes: Int): PortablePromptBackupDraft? =
         withContext(Dispatchers.IO) {
-            val assets = projectLibraryStore.load().assets
-                .filter { it.kind == ProjectLibraryAssetKind.PROMPT && it.sizeBytes > 0 }
-                .sortedWith(compareBy({ it.title.lowercase() }, { it.id }))
-            // Cheap bound before reading any prompt text.
-            if (assets.sumOf { it.sizeBytes.toLong() } > maxUtf8Bytes) return@withContext null
-            val prompts = assets.mapNotNull { asset ->
-                projectLibraryStore.loadTextAsset(asset.id)
-                    ?.let { PortablePrompt.fromLibrary(it.metadata.title, it.text) }
-            }
+            val loaded = projectLibraryStore.loadPromptAssets(maxUtf8Bytes.toLong())
+                ?: return@withContext null
+            val prompts = loaded.readable
+                .sortedWith(compareBy({ it.metadata.title.lowercase() }, { it.metadata.id }))
+                .map { PortablePrompt.fromLibrary(it.metadata.title, it.text) }
             val backup = PortablePromptBackup.of(prompts)
             backup.toDocument(maxUtf8Bytes)?.let {
-                PortablePromptBackupDraft(it, backup.prompts.size, assets.size - backup.prompts.size)
+                PortablePromptBackupDraft(
+                    it, backup.prompts.size, loaded.unreadable + prompts.size - backup.prompts.size,
+                )
             }
         }
 
