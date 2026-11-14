@@ -5,6 +5,8 @@ import ais.tee.data.model.ProjectLibraryAsset
 import ais.tee.data.model.ProjectLibraryAssetKind
 import ais.tee.data.model.WebAiService
 import ais.tee.data.preferences.WebChatDraftStore
+import ais.tee.data.security.TextInspectionResult
+import ais.tee.data.security.TextInspector
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,7 +24,9 @@ import androidx.compose.ui.unit.dp
 import java.io.IOException
 import java.text.BreakIterator
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Canonical Project Library remains the single prompt store. Metadata-only until selection. */
 internal fun webPromptVaultItems(archive: ProjectLibraryArchive): List<ProjectLibraryAsset> =
@@ -79,6 +83,19 @@ internal fun webPromptCanStage(text: String): Boolean =
     text.isNotBlank() && text.length <= WebChatDraftStore.MAX_DRAFT_CHARS &&
         text.toByteArray(Charsets.UTF_8).size <= WebChatDraftStore.MAX_DRAFT_UTF8_BYTES
 
+/** Labels and positions only; decoded payloads stay in the Bench Text Inspector. Null: nothing found. */
+internal fun webPromptSafetySummary(inspection: TextInspectionResult): String? {
+    if (!inspection.hasFindings) return null
+    val severities = listOf(
+        inspection.highCount to "high", inspection.mediumCount to "medium", inspection.lowCount to "low",
+    ).filter { it.first > 0 }.joinToString(", ") { "${it.first} ${it.second}" }
+    val first = inspection.findings.firstOrNull()
+        ?.let { " First: ${it.label} at line ${it.line}, column ${it.column}." }.orEmpty()
+    val count = if (inspection.truncated) "${inspection.detectedCount}+" else "${inspection.detectedCount}"
+    return "Safety check: $count suspicious pattern(s) ($severities).$first " +
+        "Review the text before sending; Aistee did not change it."
+}
+
 @Composable
 internal fun WebPromptVaultDialog(
     service: WebAiService,
@@ -104,6 +121,14 @@ internal fun WebPromptVaultDialog(
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val files = remember(archive) { webPromptVaultItems(archive) }
+    // Local pre-flight before a saved or imported prompt can reach a provider draft. Warns, never blocks.
+    val safetyWarning by produceState<String?>(null, preview) {
+        value = null
+        val text = preview
+        if (!text.isNullOrEmpty()) {
+            value = withContext(Dispatchers.Default) { webPromptSafetySummary(TextInspector.inspect(text)) }
+        }
+    }
     val previewChunks = remember(preview) { webPromptPreviewChunks(preview.orEmpty()) }
     val previewHasOversizedGrapheme = remember(preview) {
         webPromptHasOversizedGrapheme(preview.orEmpty())
@@ -231,6 +256,16 @@ internal fun WebPromptVaultDialog(
                                 else "Too large for a Web draft; copy it instead.",
                                 style = MaterialTheme.typography.bodySmall,
                             )
+                        }
+                        safetyWarning?.let { warning ->
+                            item(key = "safety") {
+                                Text(
+                                    warning,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.testTag("web_prompt_vault_safety"),
+                                )
+                            }
                         }
                         if (previewHasOversizedGrapheme) {
                             item(key = "unsafe-preview") {
