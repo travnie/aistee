@@ -202,7 +202,9 @@ class ProjectLibraryStoreTest {
             assertTrue(assets.all { it.origin == ProjectLibraryAssetOrigin.IMPORTED })
             // Index entry without a readable file must not block restoring that prompt.
             val lost = assets.first()
-            assertTrue(java.io.File(root, "assets/${lost.fileName}").delete())
+            assertTrue(
+                File(File(root, ProjectLibraryStore.DIRECTORY_NAME), "$ASSETS_DIRECTORY/${lost.fileName}").delete(),
+            )
             assertEquals(1, requireNotNull(store.loadPromptAssets(Long.MAX_VALUE, now = 4)).unreadable)
             assertNull(store.loadPromptAssets(maxTotalBytes = 1, now = 4))
             assertEquals(PromptImportResult(1, 2, complete = true), store.importPrompts(prompts, now = 5))
