@@ -122,11 +122,12 @@ internal fun WebPromptVaultDialog(
     var error by remember { mutableStateOf<String?>(null) }
     val files = remember(archive) { webPromptVaultItems(archive) }
     // Local pre-flight before a saved or imported prompt can reach a provider draft. Warns, never blocks.
-    val safetyWarning by produceState<String?>(null, preview) {
+    // Key = inspected text, so Stage/Copy stay off until the warning for this exact preview is known.
+    val safety by produceState<Pair<String, String?>?>(null, preview) {
         value = null
         val text = preview
         if (!text.isNullOrEmpty()) {
-            value = withContext(Dispatchers.Default) { webPromptSafetySummary(TextInspector.inspect(text)) }
+            value = text to withContext(Dispatchers.Default) { webPromptSafetySummary(TextInspector.inspect(text)) }
         }
     }
     val previewChunks = remember(preview) { webPromptPreviewChunks(preview.orEmpty()) }
@@ -257,7 +258,13 @@ internal fun WebPromptVaultDialog(
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
-                        safetyWarning?.let { warning ->
+                        val safetyReady = safety?.first == fullText
+                        if (!safetyReady) {
+                            item(key = "safety-pending") {
+                                Text("Checking prompt…", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        safety?.takeIf { safetyReady }?.second?.let { warning ->
                             item(key = "safety") {
                                 Text(
                                     warning,
@@ -297,7 +304,7 @@ internal fun WebPromptVaultDialog(
                                     if (onStage(fullText)) onDismiss()
                                     else error = "Could not stage this prompt"
                                 },
-                                enabled = webPromptCanStage(fullText) && !draftBusy,
+                                enabled = safetyReady && webPromptCanStage(fullText) && !draftBusy,
                                 modifier = Modifier.fillMaxWidth().testTag("web_prompt_vault_stage"),
                             ) {
                                 Text(if (pendingDraft) "Replace Web draft" else "Stage for ${service.shortName}")
@@ -309,6 +316,7 @@ internal fun WebPromptVaultDialog(
                                     if (onCopy(fullText)) onDismiss()
                                     else error = "Could not copy this prompt"
                                 },
+                                enabled = safetyReady,
                                 modifier = Modifier.fillMaxWidth().testTag("web_prompt_vault_copy"),
                             ) {
                                 Icon(Icons.Default.ContentCopy, contentDescription = null)
