@@ -48,8 +48,9 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
     private val root = File(noBackupRoot, DIRECTORY_NAME)
     private val assetsDirectory = File(root, ASSETS_DIRECTORY_NAME)
     private val indexFile = AtomicFile(File(root, INDEX_FILE_NAME))
-    // fileName -> (length, lastModified) already hash-verified by this instance. Guarded by FILE_LOCK.
-    private val verifiedFiles = HashMap<String, Pair<Long, Long>>()
+    // fileName -> (length, lastModified, expected hash) of the last verification by this instance.
+    // Guarded by FILE_LOCK.
+    private val verifiedFiles = HashMap<String, Triple<Long, Long, String?>>()
     private val json = Json {
         encodeDefaults = true
         ignoreUnknownKeys = true
@@ -443,10 +444,12 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
     /**
      * Every load used to re-read and re-hash the whole Library. A file whose size and mtime match
      * the last successful verification is trusted; reads still verify the bytes they return.
+     * The expected hash is part of the stamp: an index entry that names the same file with another
+     * hash is verified on its own.
      */
     private fun isVerifiedAssetAvailable(asset: ProjectLibraryAsset): Boolean {
         val file = File(assetsDirectory, asset.fileName)
-        val stamp = file.length() to file.lastModified()
+        val stamp = Triple(file.length(), file.lastModified(), asset.contentSha256)
         if (file.isFile && stamp.first == asset.sizeBytes.toLong() && verifiedFiles[asset.fileName] == stamp) {
             return true
         }

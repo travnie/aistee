@@ -255,4 +255,42 @@ class ProjectLibraryStoreTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun changedExpectedHashIsVerifiedAgainDespiteAnUnchangedFile() {
+        val root = testRoot()
+        try {
+            val store = ProjectLibraryStore(root)
+            val original = requireNotNull(
+                store.saveTextAsset(
+                    title = "Recovery",
+                    mediaType = TEXT_PLAIN,
+                    extension = TXT_EXTENSION,
+                    text = PRIVATE_CONTENT,
+                    now = 1,
+                ),
+            )
+            val updated = requireNotNull(
+                store.updateTextAsset(
+                    assetId = original.id,
+                    expectedRevision = original.revision,
+                    text = EDITED_PRIVATE_CONTENT,
+                    now = 2,
+                ),
+            )
+            val libraryRoot = File(root, ProjectLibraryStore.DIRECTORY_NAME)
+            File(File(libraryRoot, ASSETS_DIRECTORY), original.fileName).writeText(PRIVATE_CONTENT)
+            assertEquals(2L, store.load(now = 3).assets.single().revision)
+            val index = File(libraryRoot, INDEX_FILE)
+            val verifiedHash = requireNotNull(updated.contentSha256)
+            val forged = index.readText().replace(verifiedHash, "0".repeat(verifiedHash.length))
+            assertTrue(forged.contains("0".repeat(verifiedHash.length)))
+            index.writeText(forged)
+
+            // Same file, same size and mtime, different expected hash: the memo must not apply.
+            assertEquals(1L, store.load(now = 4).assets.single().revision)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
 }
