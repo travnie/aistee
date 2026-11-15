@@ -9,6 +9,7 @@ import ais.tee.data.model.ClaudeReasoningCapabilities
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.ProviderExecutionSource
 import ais.tee.data.model.ProviderInputBudgetPreflight
+import ais.tee.data.model.customEndpointTag
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -1411,6 +1412,59 @@ class AiChatServiceTest {
         assertNull(request.header("Authorization"))
         val sent = Buffer().also { requireNotNull(request.body).writeTo(it) }.readUtf8()
         assertEquals("fallback-model", Json.parseToJsonElement(sent).jsonObject["model"]?.jsonPrimitive?.content)
+        assertEquals(customEndpointTag("https://llm.example.com/v1"), reply.endpointTag)
+    }
+
+    @Test
+    fun customEndpointRequestLeavesOutTurnsFromAnotherEndpoint() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val service = customEndpointService(requests, """{"choices":[{"message":{"content":"pong"}}]}""")
+        fun reply(id: String, text: String, endpoint: String) = ModelChatMessage(
+            id = id,
+            sender = CHAT_ROLE_ASSISTANT,
+            provider = AiProvider.CUSTOM,
+            text = text,
+            endpointTag = customEndpointTag(endpoint),
+        )
+
+        service.generateResponse(
+            prompt = "third question",
+            provider = AiProvider.CUSTOM,
+            modelName = "m",
+            apiKeys = ApiKeyConfig(customEndpointUrl = "https://new.example.com/v1"),
+            systemInstruction = null,
+            profile = null,
+            conversationHistory = listOf(
+                ModelChatMessage(id = "u1", sender = CHAT_ROLE_USER, text = "first question"),
+                reply("a1", "old endpoint answer", "https://old.example.com/v1"),
+                ModelChatMessage(id = "u2", sender = CHAT_ROLE_USER, text = "second question"),
+                reply("a2", "new endpoint answer", "https://new.example.com/v1"),
+            ),
+            allowSimulationFallback = false,
+        )
+
+        val sent = Buffer().also { requireNotNull(requests.single().body).writeTo(it) }.readUtf8()
+        val contents = Json.parseToJsonElement(sent).jsonObject.getValue("messages").jsonArray
+            .map { it.jsonObject.getValue("content").jsonPrimitive.content }
+        assertEquals(listOf("second question", "new endpoint answer", "third question"), contents)
+    }
+
+    @Test
+    fun customEndpointCatalogLargerThanTheByteCapIsRefused() {
+        val requests = mutableListOf<Request>()
+        val oversized = """{"data":[{"id":"${"x".repeat(2 * 1024 * 1024)}"}]}"""
+        val service = customEndpointService(requests, oversized)
+
+        val result = runCatching {
+            runBlocking {
+                service.fetchGatewayModels(
+                    AiProvider.CUSTOM,
+                    ApiKeyConfig(customEndpointUrl = "https://llm.example.com/v1"),
+                )
+            }
+        }
+
+        assertTrue(result.exceptionOrNull() is java.io.IOException)
     }
 
     @Test
@@ -1455,5 +1509,16 @@ class AiChatServiceTest {
         val request = requests.single()
         assertEquals("https://llm.example.com/v1/models", request.url.toString())
         assertEquals("Bearer custom-secret", request.header("Authorization"))
+    }
+
+    @Test
+    fun customEndpointCatalogIsCappedBeforeItIsProcessed() {
+        val ids = (1..600).joinToString(",") { """{"id":"model-$it"}""" }
+
+        val entries = AiChatService().parseGatewayModelCatalog(AiProvider.CUSTOM, """{"data":[$ids]}""")
+
+        assertEquals(500, entries.size)
+        assertEquals("model-1", entries.first().id)
+        assertEquals("model-500", entries.last().id)
     }
 }

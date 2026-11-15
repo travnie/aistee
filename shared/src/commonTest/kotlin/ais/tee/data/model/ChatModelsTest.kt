@@ -205,9 +205,10 @@ class ChatModelsTest {
         )
         assertEquals(
             "https://llm.example.com:8443/v1",
-            normalizeCustomEndpointBaseUrl("https://llm.example.com:8443/v1/chat/completions")
+            customEndpointBaseUrlFromInput("https://llm.example.com:8443/v1/chat/completions")
         )
-        assertEquals("https://llm.example.com/v1", normalizeCustomEndpointBaseUrl("https://llm.example.com/v1/models"))
+        assertEquals("https://llm.example.com/v1", customEndpointBaseUrlFromInput("https://llm.example.com/v1/models"))
+        assertNull(customEndpointBaseUrlFromInput("http://llm.example.com/v1/models"))
         assertEquals("https://llm.example.com", normalizeCustomEndpointBaseUrl("https://llm.example.com"))
         assertEquals("https://[::1]:11434/v1", normalizeCustomEndpointBaseUrl("https://[::1]:11434/v1"))
 
@@ -231,6 +232,28 @@ class ChatModelsTest {
     }
 
     @Test
+    fun pastedEndpointSuffixIsStrippedOnceAndNeverFromTheStoredValue() {
+        val stored = customEndpointBaseUrlFromInput("https://llm.example.com/models/chat/completions")
+
+        assertEquals("https://llm.example.com/models", stored)
+        assertEquals(
+            "https://llm.example.com/models",
+            ApiKeyConfig(customEndpointUrl = requireNotNull(stored)).customEndpointBaseUrl()
+        )
+    }
+
+    @Test
+    fun customEndpointTagIsStableOpaqueAndPerEndpoint() {
+        val tag = customEndpointTag("https://llm.example.com/v1")
+
+        assertEquals(tag, ApiKeyConfig(customEndpointUrl = "https://LLM.example.com/v1/").customEndpointTag())
+        assertEquals(16, tag.length)
+        assertFalse("example" in tag)
+        assertFalse(tag == customEndpointTag("https://other.example.com/v1"))
+        assertNull(ApiKeyConfig().customEndpointTag())
+    }
+
+    @Test
     fun customEndpointIsConfiguredByItsUrlAndStaysOutOfDefaultCompare() {
         assertFalse(ApiKeyConfig(customEndpointKey = "key-without-endpoint").hasKeyFor(AiProvider.CUSTOM))
         assertFalse(
@@ -249,9 +272,10 @@ class ChatModelsTest {
         val catalog = listOf(
             GatewayModelCatalogEntry("qwen3", null, null, supportsTextOutput = true),
             GatewayModelCatalogEntry("llama4", null, null, supportsTextOutput = true),
-            GatewayModelCatalogEntry(" qwen3 ", null, null, supportsTextOutput = true)
+            GatewayModelCatalogEntry(" qwen3 ", null, null, supportsTextOutput = true),
+            GatewayModelCatalogEntry(" zeta", null, null, supportsTextOutput = true)
         )
 
-        assertEquals(listOf("llama4", "qwen3"), gatewayModelOptions(AiProvider.CUSTOM, catalog))
+        assertEquals(listOf("llama4", "qwen3", "zeta"), gatewayModelOptions(AiProvider.CUSTOM, catalog))
     }
 }

@@ -21763,6 +21763,7 @@ SPLais/tee/data/model/AiProvider;->getId()Ljava/lang/String;
 SPLais/tee/data/model/AiProvider;->getShortName()Ljava/lang/String;
 SPLais/tee/data/model/ApiKeyConfig;->getAiHubMixKey()Ljava/lang/String;
 SPLais/tee/data/model/ApiKeyConfig;->getClaudeKey()Ljava/lang/String;
+SPLais/tee/data/model/ApiKeyConfig;->getCustomEndpointUrl()Ljava/lang/String;
 SPLais/tee/data/model/ApiKeyConfig;->getDeepseekKey()Ljava/lang/String;
 SPLais/tee/data/model/ApiKeyConfig;->getGeminiKey()Ljava/lang/String;
 SPLais/tee/data/model/ApiKeyConfig;->getKimiKey()Ljava/lang/String;
@@ -22328,8 +22329,11 @@ SPLais/tee/web/ProviderWebToolbarShortcut;-><init>(Ljava/lang/String;Ljava/lang/
 PLais/tee/web/ProviderWebToolbarShortcut;->getId()Ljava/lang/String;
 SPLais/tee/web/ProviderWebToolbarShortcut;->getLabel()Ljava/lang/String;
 SPLais/tee/data/model/ModelChatMessage;-><init>(ILjava/lang/String;Ljava/lang/String;Lais/tee/data/model/AiProvider;Ljava/lang/String;Ljava/lang/String;JZZZZZLjava/lang/Long;Lais/tee/data/model/ProviderUsage;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Lkotlinx/serialization/internal/SerializationConstructorMarker;)V
+SPLais/tee/data/model/ModelChatMessage;-><init>(ILjava/lang/String;Ljava/lang/String;Lais/tee/data/model/AiProvider;Ljava/lang/String;Ljava/lang/String;JZZZZZLjava/lang/Long;Lais/tee/data/model/ProviderUsage;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Lkotlinx/serialization/internal/SerializationConstructorMarker;)V
 SPLais/tee/data/model/ModelChatMessage;-><init>(Ljava/lang/String;Ljava/lang/String;Lais/tee/data/model/AiProvider;Ljava/lang/String;Ljava/lang/String;JZZZZZLjava/lang/Long;Lais/tee/data/model/ProviderUsage;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/lang/String;)V
+SPLais/tee/data/model/ModelChatMessage;-><init>(Ljava/lang/String;Ljava/lang/String;Lais/tee/data/model/AiProvider;Ljava/lang/String;Ljava/lang/String;JZZZZZLjava/lang/Long;Lais/tee/data/model/ProviderUsage;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)V
 SPLais/tee/data/model/ModelChatMessage;-><init>(Ljava/lang/String;Ljava/lang/String;Lais/tee/data/model/AiProvider;Ljava/lang/String;Ljava/lang/String;JZZZZZLjava/lang/Long;Lais/tee/data/model/ProviderUsage;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+SPLais/tee/data/model/ModelChatMessage;-><init>(Ljava/lang/String;Ljava/lang/String;Lais/tee/data/model/AiProvider;Ljava/lang/String;Ljava/lang/String;JZZZZZLjava/lang/Long;Lais/tee/data/model/ProviderUsage;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 SPLais/tee/data/model/ModelChatMessage;->_childSerializers$_anonymous_$3()Lkotlinx/serialization/KSerializer;
 SPLais/tee/data/model/NativeChatConversation;-><init>(ILjava/lang/String;Ljava/lang/String;JJLjava/util/List;Ljava/lang/String;Ljava/util/List;Lais/tee/data/model/AiProvider;Ljava/lang/String;Lais/tee/data/model/ApiProcessingMode;ZLjava/lang/String;JLais/tee/data/model/NativeChatForkOrigin;Ljava/util/List;Ljava/util/Map;Lkotlinx/serialization/internal/SerializationConstructorMarker;)V
 SPLais/tee/data/model/NativeChatConversation;-><init>(Ljava/lang/String;Ljava/lang/String;JJLjava/util/List;Ljava/lang/String;Ljava/util/List;Lais/tee/data/model/AiProvider;Ljava/lang/String;Lais/tee/data/model/ApiProcessingMode;ZLjava/lang/String;JLais/tee/data/model/NativeChatForkOrigin;Ljava/util/List;Ljava/util/Map;)V

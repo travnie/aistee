@@ -26,6 +26,8 @@ import ais.tee.data.model.openAiResponsesRouteCapabilities
 import ais.tee.data.model.buildBoundedProviderTextTurns
 import ais.tee.data.model.gatewayModelOptions
 import ais.tee.data.model.Profile
+import ais.tee.data.model.customEndpointTag
+import ais.tee.data.model.scopedToCustomEndpoint
 import ais.tee.data.tokenizer.TokenArenaProviderPreflightRequest
 import ais.tee.data.tokenizer.TokenArenaProviderPreflightResult
 import ais.tee.data.tokenizer.withBudget
@@ -179,6 +181,7 @@ internal data class OpenAiBackgroundResponseSnapshot(
 // A custom endpoint's catalog is untrusted input for the model picker.
 private const val MAX_CUSTOM_ENDPOINT_MODELS = 500
 private const val MAX_CUSTOM_ENDPOINT_MODEL_ID_CHARS = 200
+private const val MAX_CUSTOM_ENDPOINT_CATALOG_BYTES = 2L * 1024 * 1024
 private const val GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 private const val GEMINI_BATCH_API_BASE_URL = GEMINI_API_BASE_URL
 /** Aistee Gemini batches hold one inline request, matched by this metadata key. */
@@ -323,10 +326,10 @@ class AiChatService(
         val responseBody = executeCancellableJson(
             request = requestBuilder.build(),
             httpErrorContext = "${provider.shortName} model catalog",
-            client = if (provider == AiProvider.CUSTOM) customEndpointHttpClient else httpClient
+            client = if (provider == AiProvider.CUSTOM) customEndpointHttpClient else httpClient,
+            maxResponseBytes = MAX_CUSTOM_ENDPOINT_CATALOG_BYTES.takeIf { provider == AiProvider.CUSTOM }
         )
         val models = gatewayModelOptions(provider, parseGatewayModelCatalog(provider, responseBody))
-            .let { if (provider == AiProvider.CUSTOM) it.take(MAX_CUSTOM_ENDPOINT_MODELS) else it }
         // A configured fallback model stays selectable even when the endpoint does not list it.
         val fallbackModel = apiKeys.customEndpointModel.trim()
             .takeIf { provider == AiProvider.CUSTOM && it.isNotEmpty() }
@@ -958,7 +961,9 @@ class AiChatService(
         val root = json.parseToJsonElement(rawJson).jsonObject
         val data = root["data"] as? JsonArray
             ?: error("Malformed ${provider.shortName} model catalog: missing data array")
-        return data.mapNotNull { element ->
+        // Capped before mapping, sorting and deduplication, so an oversized list costs nothing more.
+        val entries = if (provider == AiProvider.CUSTOM) data.take(MAX_CUSTOM_ENDPOINT_MODELS) else data
+        return entries.mapNotNull { element ->
             val model = element.jsonObject
             when (provider) {
                 AiProvider.OPENROUTER -> {
@@ -1156,6 +1161,7 @@ class AiChatService(
             AiProvider.CUSTOM -> Pair(apiKeys.customEndpointKey.trim(), apiKeys.hasKeyFor(AiProvider.CUSTOM))
             AiProvider.ALL -> Pair("", false)
         }
+        val customEndpointTag = apiKeys.customEndpointTag().takeIf { provider == AiProvider.CUSTOM }
 
         // If key is available, attempt real live REST call
         if (isKeyProvided) {
@@ -1238,16 +1244,22 @@ class AiChatService(
                             "No model selected. Pick one from the endpoint's list or set a default model in API Keys."
                         }
                         val config = checkNotNull(OpenAiCompatibleProtocol.configFor(provider, apiKeys))
+                        // Turns produced by a previous custom endpoint are not replayed to this one.
+                        val history = if (provider == AiProvider.CUSTOM) {
+                            conversationHistory.scopedToCustomEndpoint(customEndpointTag)
+                        } else {
+                            conversationHistory
+                        }
                         val result = if (onTextDelta != null) {
                             callOpenAiCompatibleStreamApi(
                                 config, prompt, effectiveModel, key, systemInstruction,
-                                conversationHistory, provider, onTextDelta,
+                                history, provider, onTextDelta,
                                 onResolvedModel = { resolvedModel = it }
                             )
                         } else {
                             callOpenAiCompatibleApi(
                                 config, prompt, effectiveModel, key, systemInstruction,
-                                conversationHistory, provider,
+                                history, provider,
                                 onResolvedModel = { resolvedModel = it }
                             )
                         }
@@ -1272,7 +1284,8 @@ class AiChatService(
                         latencyMs = latency,
                         usage = providerUsage,
                         activeProfileNotes = activeNotes,
-                        providerReplayState = providerReplayState
+                        providerReplayState = providerReplayState,
+                        endpointTag = customEndpointTag
                     )
                 }
             } catch (e: Exception) {
@@ -2987,7 +3000,8 @@ class AiChatService(
         request: Request,
         emptyResponseMessage: String = "Empty response from server",
         httpErrorContext: String? = null,
-        client: OkHttpClient = httpClient
+        client: OkHttpClient = httpClient,
+        maxResponseBytes: Long? = null
     ): String = suspendCancellableCoroutine { continuation ->
         val call = client.newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
@@ -2999,7 +3013,18 @@ class AiChatService(
             override fun onResponse(call: Call, response: Response) {
                 try {
                     response.use {
-                        val responseBody = response.body?.string() ?: throw IOException(emptyResponseMessage)
+                        val responseBody = response.body?.let { body ->
+                            if (maxResponseBytes == null) {
+                                body.string()
+                            } else {
+                                // Bounded before anything is decoded: the size is the server's choice.
+                                val source = body.source()
+                                if (source.request(maxResponseBytes + 1)) {
+                                    throw IOException("Response is larger than the allowed $maxResponseBytes bytes")
+                                }
+                                source.readUtf8()
+                            }
+                        } ?: throw IOException(emptyResponseMessage)
                         if (!response.isSuccessful) {
                             val fallbackError = httpErrorContext?.let { context ->
                                 "$context HTTP ${response.code}: ${responseBody.take(160)}"

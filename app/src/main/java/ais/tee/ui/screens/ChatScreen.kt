@@ -17,9 +17,9 @@ import ais.tee.data.model.canBeStarred
 import ais.tee.data.model.canInsertIntoDraft
 import ais.tee.data.model.canStartNativeChatFork
 import ais.tee.data.model.clipNativeStarNote
+import ais.tee.data.model.customEndpointBaseUrlFromInput
 import ais.tee.data.model.isCompletedAssistantResponse
 import ais.tee.data.model.nativeChatTimeline
-import ais.tee.data.model.normalizeCustomEndpointBaseUrl
 import ais.tee.data.model.quoteIntoNativeChatDraft
 import ais.tee.data.model.renderChatMarkdown
 import ais.tee.data.model.spreadTimelineOffsets
@@ -2347,7 +2347,7 @@ fun ApiKeySettingsDialog(
     var customEndpointKey by remember { mutableStateOf(currentKeys.customEndpointKey) }
     var customEndpointModel by remember { mutableStateOf(currentKeys.customEndpointModel) }
     val customEndpointUrlIsValid = customEndpointUrl.isBlank() ||
-        normalizeCustomEndpointBaseUrl(customEndpointUrl) != null
+        customEndpointBaseUrlFromInput(customEndpointUrl) != null
 
     AlertDialog(
         onDismissRequest = onDismiss,

@@ -337,8 +337,8 @@ private object CustomEndpointUrlRules {
  * Base URL (no trailing slash) of a custom OpenAI-compatible endpoint, or null when unusable.
  *
  * HTTPS only: prompts and the key never leave the device in cleartext. Userinfo, query and
- * fragment are refused, so the stored value cannot carry credentials or request state. A pasted
- * full `/chat/completions` or `/models` URL is reduced to its base.
+ * fragment are refused, so the stored value cannot carry credentials or request state. The path is
+ * kept as written: this also validates the stored value, where nothing may be stripped again.
  */
 fun normalizeCustomEndpointBaseUrl(raw: String): String? {
     val trimmed = raw.trim()
@@ -349,14 +349,40 @@ fun normalizeCustomEndpointBaseUrl(raw: String): String? {
     val match = CustomEndpointUrlRules.authority.matchEntire(authority) ?: return null
     val port = match.groupValues[4]
     if (port.isNotEmpty() && port.toInt() !in 1..MAX_PORT) return null
-    var path = rest.substring(authority.length).trimEnd('/')
+    val path = rest.substring(authority.length).trimEnd('/')
     if (!CustomEndpointUrlRules.path.matches(path)) return null
-    CustomEndpointUrlRules.pastedSuffixes.firstOrNull { path.endsWith(it, ignoreCase = true) }
-        ?.let { path = path.dropLast(it.length) }
     return CUSTOM_ENDPOINT_SCHEME + authority.lowercase() + path
 }
 
+/**
+ * [normalizeCustomEndpointBaseUrl] for what the user typed: a pasted full `/chat/completions` or
+ * `/models` URL is reduced to its base, once.
+ */
+fun customEndpointBaseUrlFromInput(raw: String): String? {
+    val base = normalizeCustomEndpointBaseUrl(raw) ?: return null
+    val pasted = CustomEndpointUrlRules.pastedSuffixes.firstOrNull { base.endsWith(it, ignoreCase = true) }
+    return if (pasted == null) base else base.dropLast(pasted.length)
+}
+
 fun ApiKeyConfig.customEndpointBaseUrl(): String? = normalizeCustomEndpointBaseUrl(customEndpointUrl)
+
+private const val FNV_OFFSET_BASIS = 0xcbf29ce484222325uL
+private const val FNV_PRIME = 0x100000001b3uL
+private const val CUSTOM_ENDPOINT_TAG_HEX_CHARS = 16
+
+/**
+ * Opaque, stable identity of a custom endpoint, stored on its replies to scope history replay.
+ * A fingerprint, never the URL: chats and exports must not carry the endpoint address.
+ */
+fun customEndpointTag(baseUrl: String): String {
+    var hash = FNV_OFFSET_BASIS
+    for (byte in baseUrl.encodeToByteArray()) {
+        hash = (hash xor byte.toUByte().toULong()) * FNV_PRIME
+    }
+    return hash.toString(radix = 16).padStart(CUSTOM_ENDPOINT_TAG_HEX_CHARS, '0')
+}
+
+fun ApiKeyConfig.customEndpointTag(): String? = customEndpointBaseUrl()?.let(::customEndpointTag)
 
 fun ApiKeyConfig.configuredDirectProviders(): List<AiProvider> =
     AiProvider.concreteProviders.filter { hasKeyFor(it) }
@@ -402,7 +428,7 @@ fun gatewayModelOptions(
             }.thenBy { it.id },
         )
         // The user's own endpoint: no price data, every listed model is theirs to pick.
-        AiProvider.CUSTOM -> textModels.sortedBy { it.id }
+        AiProvider.CUSTOM -> textModels.sortedBy { it.id.trim() }
         else -> textModels.filter { entry ->
             entry.inputPriceUsd == 0.0 && entry.outputPriceUsd == 0.0
         }
@@ -435,6 +461,8 @@ data class ModelChatMessage(
     /** Cards from skills the model called for this reply; shown only to the user. */
     val skillCards: List<ActiveSkillCard> = emptyList(),
     @Transient val providerReplayState: String? = null,
+    /** [customEndpointTag] of the custom endpoint that produced this reply; null for every other reply. */
+    val endpointTag: String? = null,
 ) {
     /** User text, identifiers, profile notes and opaque replay state are sensitive debug payloads. */
     override fun toString(): String =

@@ -328,4 +328,42 @@ class ConversationHistoryTest {
 
         assertEquals(listOf(ProviderTextTurn(CHAT_ROLE_USER, "next")), turns)
     }
+
+    @Test
+    fun customEndpointHistoryIsNotReplayedToAnotherEndpoint() {
+        val history = listOf(
+            ModelChatMessage(id = "u1", sender = CHAT_ROLE_USER, text = "asked endpoint A"),
+            ModelChatMessage(
+                id = "a1",
+                sender = CHAT_ROLE_ASSISTANT,
+                provider = AiProvider.CUSTOM,
+                text = "endpoint A answered",
+                endpointTag = "tag-a"
+            ),
+            ModelChatMessage(id = "u2", sender = CHAT_ROLE_USER, text = "asked endpoint B"),
+            ModelChatMessage(
+                id = "a2",
+                sender = CHAT_ROLE_ASSISTANT,
+                provider = AiProvider.CUSTOM,
+                text = "endpoint B answered",
+                endpointTag = "tag-b"
+            )
+        )
+
+        val turns = buildBoundedProviderTextTurns(
+            prompt = "next",
+            conversationHistory = history.scopedToCustomEndpoint("tag-b"),
+            provider = AiProvider.CUSTOM
+        )
+
+        assertEquals(listOf("asked endpoint B", "endpoint B answered", "next"), turns.map { it.text })
+        assertEquals(
+            listOf("next"),
+            buildBoundedProviderTextTurns(
+                prompt = "next",
+                conversationHistory = history.scopedToCustomEndpoint("tag-c"),
+                provider = AiProvider.CUSTOM
+            ).map { it.text }
+        )
+    }
 }
