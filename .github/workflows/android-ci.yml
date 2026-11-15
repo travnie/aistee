@@ -25,6 +25,8 @@ jobs:
 
       - name: Set up Android build
         uses: ./.github/actions/setup-android-build
+        with:
+          robolectric-cache: "true"
 
       - name: Build Android, test shared & lint
         # roborazzi.test.record: the unit-test run also writes JVM screenshots (ScreenshotTest).
