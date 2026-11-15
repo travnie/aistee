@@ -48,6 +48,7 @@ Delivered feature index, reviewed **29 October 2026** against the documented mai
 
 - Confirmed **Delete all local data** clears Aistee-owned data without claiming to delete provider-owned data or externally exported files.
 - App lock, Screen privacy (`FLAG_SECURE`) and reversible Quick privacy; separate opt-in widget/notification title/message previews, off by default.
+- API key entry is marked as sensitive content (Compose `sensitiveContent`), intended to hide it from screen sharing and projection on Android 15+ even when Screen privacy is off. Not yet verified on a device.
 - Sensitive clipboard treatment for chat/instructions/skills; Android Keystore AES-GCM native key storage and provider-owned browser sessions.
 
 For details and release gates, follow [Android performance](android-performance.md), [provider runtime](provider-runtime.md) and [skills runtime](skills-runtime.md).

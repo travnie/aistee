@@ -77,6 +77,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.sensitiveContent
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
@@ -2345,6 +2346,8 @@ fun ApiKeySettingsDialog(
         text = {
             Column(
                 modifier = Modifier
+                    // Android 15+: hidden from screen sharing even when Screen privacy is off.
+                    .sensitiveContent()
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .padding(vertical = 4.dp),
