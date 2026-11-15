@@ -15,6 +15,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
@@ -50,6 +51,7 @@ jobs:
   android-smoke:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
@@ -69,8 +71,7 @@ jobs:
             ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=ais.tee.TestExpandedWidth --stacktrace
             mkdir -p out
             adb pull /sdcard/Pictures/AisteeSmoke/timeline-smoke.png out/timeline-smoke.png
-            # A real emulator screenshot of synthetic Library source chips (no user-owned content).
-            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ais.tee.ProjectLibrarySourceChipsScreenshotTest --stacktrace
+            # Synthetic Library source chips (no user-owned content); written by the compact run above.
             adb pull /sdcard/Pictures/AisteeSmoke/library-sources-smoke.png out/library-sources-smoke.png
             ./gradlew :app:installDebug --stacktrace
             adb shell pm clear ais.tee
@@ -96,6 +97,7 @@ jobs:
 
   appfunctions-smoke:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:

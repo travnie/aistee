@@ -24,3 +24,22 @@ runs:
       uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       with:
         cache-disabled: ${{ inputs.gradle-cache-disabled }}
+
+    # Robolectric fetches ~250 MB of android-all runtimes from Maven Central at test time, outside
+    # the Gradle cache. Uncached, a registry hiccup (HTTP 403) fails every Robolectric test class.
+    # Follows the Gradle cache switch: release builds stay cache-free.
+    - name: Resolve Robolectric runtime cache key
+      id: robolectric
+      if: inputs.gradle-cache-disabled != 'true'
+      shell: bash
+      run: |
+        version="$(sed -n 's/^robolectric = "\(.*\)"/\1/p' gradle/libs.versions.toml)"
+        sdks="$(grep -rhoE 'sdk = \[[0-9, ]+\]' app/src/test app/src/testDebug 2>/dev/null | sort -u | sha256sum | cut -c1-12)"
+        echo "key=robolectric-android-all-${version:-unknown}-${sdks}" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Robolectric Android runtimes
+      if: inputs.gradle-cache-disabled != 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.m2/repository/org/robolectric
+        key: ${{ steps.robolectric.outputs.key }}

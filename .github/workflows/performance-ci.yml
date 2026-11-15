@@ -47,6 +47,8 @@ concurrency:
 jobs:
   benchmark-verify:
     runs-on: ubuntu-latest
+    # A hung emulator once held this job for the 6 h default.
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
