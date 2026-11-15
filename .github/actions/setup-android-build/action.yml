@@ -34,7 +34,8 @@ runs:
       shell: bash
       run: |
         version="$(sed -n 's/^robolectric = "\(.*\)"/\1/p' gradle/libs.versions.toml)"
-        sdks="$(grep -rhoE 'sdk = \[[0-9, ]+\]' app/src/test app/src/testDebug 2>/dev/null | sort -u | sha256sum | cut -c1-12)"
+        # No match or a missing directory must not fail setup (bash runs with -e -o pipefail).
+        sdks="$( (grep -rhoE 'sdk = \[[0-9, ]+\]' app/src/test app/src/testDebug 2>/dev/null || true) | sort -u | sha256sum | cut -c1-12)"
         echo "key=robolectric-android-all-${version:-unknown}-${sdks}" >> "$GITHUB_OUTPUT"
 
     - name: Cache Robolectric Android runtimes
