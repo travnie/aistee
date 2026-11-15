@@ -48,6 +48,9 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
     private val root = File(noBackupRoot, DIRECTORY_NAME)
     private val assetsDirectory = File(root, ASSETS_DIRECTORY_NAME)
     private val indexFile = AtomicFile(File(root, INDEX_FILE_NAME))
+    // fileName -> (length, lastModified, expected hash) of the last verification by this instance.
+    // Guarded by FILE_LOCK.
+    private val verifiedFiles = HashMap<String, Triple<Long, Long, String?>>()
     private val json = Json {
         encodeDefaults = true
         ignoreUnknownKeys = true
@@ -431,17 +434,37 @@ internal class ProjectLibraryStore(private val noBackupRoot: File) {
     }
 
     private fun readVerifiedAssetBytes(asset: ProjectLibraryAsset): ByteArray? {
-        val bytes = readVerifiedBytes(asset) ?: return null
-        if (asset.contentSha256 != null && asset.contentSha256 != bytes.sha256()) return null
+        val bytes = readVerifiedBytes(asset)
+            ?.takeIf { asset.contentSha256 == null || asset.contentSha256 == it.sha256() }
+        // A failed read voids the memo, so the next load re-verifies and can recover an older revision.
+        if (bytes == null) verifiedFiles.remove(asset.fileName)
         return bytes
+    }
+
+    /**
+     * Every load used to re-read and re-hash the whole Library. A file whose size and mtime match
+     * the last successful verification is trusted; reads still verify the bytes they return.
+     * The expected hash is part of the stamp: an index entry that names the same file with another
+     * hash is verified on its own.
+     */
+    private fun isVerifiedAssetAvailable(asset: ProjectLibraryAsset): Boolean {
+        val file = File(assetsDirectory, asset.fileName)
+        val stamp = Triple(file.length(), file.lastModified(), asset.contentSha256)
+        if (file.isFile && stamp.first == asset.sizeBytes.toLong() && verifiedFiles[asset.fileName] == stamp) {
+            return true
+        }
+        val available = readVerifiedAssetBytes(asset) != null
+        if (available) verifiedFiles[asset.fileName] = stamp else verifiedFiles.remove(asset.fileName)
+        return available
     }
 
     private fun recoverUnavailableAssetRevisions(
         archive: ProjectLibraryArchive,
     ): ProjectLibraryArchive {
         var changed = false
+        verifiedFiles.keys.retainAll(archive.assets.mapTo(HashSet()) { it.fileName })
         val assets = archive.assets.map { asset ->
-            if (readVerifiedAssetBytes(asset) != null) {
+            if (isVerifiedAssetAvailable(asset)) {
                 asset
             } else {
                 findRecoverableAssetRevision(asset)?.also { changed = true } ?: asset
