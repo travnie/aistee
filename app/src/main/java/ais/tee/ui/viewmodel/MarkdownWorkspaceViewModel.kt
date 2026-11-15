@@ -445,7 +445,6 @@ class MarkdownWorkspaceViewModel : ViewModel() {
             lifecycleOwner?.lifecycle?.removeObserver(recoveryLifecycleObserver)
             lifecycleOwner = null
         }
-        super.onCleared()
     }
 
     private fun scheduleRecovery(delayMs: Long = RECOVERY_DEBOUNCE_MS) {

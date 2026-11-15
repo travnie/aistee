@@ -2847,7 +2847,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         persistNativeChat()
         networkAvailability.stop()
-        super.onCleared()
     }
 
     fun showSnackbar(msg: String) {
