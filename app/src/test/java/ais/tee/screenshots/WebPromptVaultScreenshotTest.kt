@@ -11,6 +11,8 @@ import android.app.Application
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -88,6 +90,11 @@ class WebPromptVaultScreenshotTest {
             compose.onAllNodesWithText(prompt).fetchSemanticsNodes().isNotEmpty()
         }
         assertEquals(0, stageCalls)
+        // Stage stays off until the local safety check for this preview has finished.
+        compose.waitUntil(5_000) {
+            compose.onAllNodes(hasTestTag("web_prompt_vault_stage") and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("web_prompt_vault_safety").assertDoesNotExist()
         compose.onNodeWithTag("web_prompt_vault_stage").performScrollTo().assertIsDisplayed().performClick()
         assertEquals(1, stageCalls)
         assertEquals(prompt, staged)
