@@ -263,6 +263,15 @@ enum class AiProvider(
         description = "Vercel AI Gateway with a live text-model catalog and account budget controls",
         participatesInDefaultCompare = false,
     ),
+    CUSTOM(
+        id = "custom",
+        displayName = "Custom endpoint",
+        shortName = "Custom",
+        defaultModel = "",
+        availableModels = emptyList(),
+        description = "Your own OpenAI-compatible HTTPS endpoint; models come from its live catalog",
+        participatesInDefaultCompare = false,
+    ),
     ;
 
     companion object {
@@ -286,6 +295,12 @@ data class ApiKeyConfig(
     val openRouterKey: String = "",
     val aiHubMixKey: String = "",
     val vercelAiGatewayKey: String = "",
+    /** User's own OpenAI-compatible endpoint; usable only through [customEndpointBaseUrl]. */
+    val customEndpointUrl: String = "",
+    /** Optional: many self-hosted endpoints take no key. */
+    val customEndpointKey: String = "",
+    /** Fallback model id for endpoints that expose no `/models` catalog. */
+    val customEndpointModel: String = "",
 ) {
     /** API credentials must never appear in logs, crash breadcrumbs or debugger stringification. */
     override fun toString(): String = "ApiKeyConfig(<redacted>)"
@@ -300,8 +315,48 @@ fun ApiKeyConfig.hasKeyFor(provider: AiProvider): Boolean = when (provider) {
     AiProvider.OPENROUTER -> openRouterKey.isNotBlank()
     AiProvider.AIHUBMIX -> aiHubMixKey.isNotBlank()
     AiProvider.VERCEL -> vercelAiGatewayKey.isNotBlank()
+    // The endpoint is the credential here; its key is optional.
+    AiProvider.CUSTOM -> customEndpointBaseUrl() != null
     AiProvider.ALL -> false
 }
+
+private const val CUSTOM_ENDPOINT_SCHEME = "https://"
+private const val MAX_CUSTOM_ENDPOINT_URL_LENGTH = 512
+private const val MAX_PORT = 65535
+
+/** In an object, not top level: this file's class loads at startup and must not compile regexes then. */
+private object CustomEndpointUrlRules {
+    val authority = Regex(
+        """(\[[0-9A-Fa-f:.]+]|[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?)(:([0-9]{1,5}))?""",
+    )
+    val path = Regex("""(/[A-Za-z0-9._~!$&'()*+,;=:%-]+)*""")
+    val pastedSuffixes = listOf("/chat/completions", "/models")
+}
+
+/**
+ * Base URL (no trailing slash) of a custom OpenAI-compatible endpoint, or null when unusable.
+ *
+ * HTTPS only: prompts and the key never leave the device in cleartext. Userinfo, query and
+ * fragment are refused, so the stored value cannot carry credentials or request state. A pasted
+ * full `/chat/completions` or `/models` URL is reduced to its base.
+ */
+fun normalizeCustomEndpointBaseUrl(raw: String): String? {
+    val trimmed = raw.trim()
+    if (trimmed.length > MAX_CUSTOM_ENDPOINT_URL_LENGTH) return null
+    if (!trimmed.startsWith(CUSTOM_ENDPOINT_SCHEME, ignoreCase = true)) return null
+    val rest = trimmed.substring(CUSTOM_ENDPOINT_SCHEME.length)
+    val authority = rest.substringBefore('/')
+    val match = CustomEndpointUrlRules.authority.matchEntire(authority) ?: return null
+    val port = match.groupValues[4]
+    if (port.isNotEmpty() && port.toInt() !in 1..MAX_PORT) return null
+    var path = rest.substring(authority.length).trimEnd('/')
+    if (!CustomEndpointUrlRules.path.matches(path)) return null
+    CustomEndpointUrlRules.pastedSuffixes.firstOrNull { path.endsWith(it, ignoreCase = true) }
+        ?.let { path = path.dropLast(it.length) }
+    return CUSTOM_ENDPOINT_SCHEME + authority.lowercase() + path
+}
+
+fun ApiKeyConfig.customEndpointBaseUrl(): String? = normalizeCustomEndpointBaseUrl(customEndpointUrl)
 
 fun ApiKeyConfig.configuredDirectProviders(): List<AiProvider> =
     AiProvider.concreteProviders.filter { hasKeyFor(it) }
@@ -324,7 +379,8 @@ data class GatewayModelCatalogEntry(
 )
 
 fun AiProvider.usesLiveGatewayModelCatalog(): Boolean =
-    this == AiProvider.OPENROUTER || this == AiProvider.AIHUBMIX || this == AiProvider.VERCEL
+    this == AiProvider.OPENROUTER || this == AiProvider.AIHUBMIX || this == AiProvider.VERCEL ||
+        this == AiProvider.CUSTOM
 
 fun gatewayModelOptions(
     provider: AiProvider,
@@ -337,16 +393,17 @@ fun gatewayModelOptions(
         .filter { it.id.isNotBlank() }
         .distinctBy { it.id.trim() }
 
-    val eligibleModels = if (provider == AiProvider.VERCEL) {
-        textModels.sortedWith(
+    val eligibleModels = when (provider) {
+        AiProvider.VERCEL -> textModels.sortedWith(
             compareBy<GatewayModelCatalogEntry> { entry ->
                 val input = entry.inputPriceUsd ?: Double.POSITIVE_INFINITY
                 val output = entry.outputPriceUsd ?: Double.POSITIVE_INFINITY
                 input + output
             }.thenBy { it.id },
         )
-    } else {
-        textModels.filter { entry ->
+        // The user's own endpoint: no price data, every listed model is theirs to pick.
+        AiProvider.CUSTOM -> textModels.sortedBy { it.id }
+        else -> textModels.filter { entry ->
             entry.inputPriceUsd == 0.0 && entry.outputPriceUsd == 0.0
         }
     }

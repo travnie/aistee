@@ -287,8 +287,8 @@ SPLais/tee/data/model/AiProvider$Companion;->getConcreteProviders()Ljava/util/Li
 SPLais/tee/data/model/AiProvider$Companion;->serializer()Lkotlinx/serialization/KSerializer;
 Lais/tee/data/model/ApiKeyConfig;
 SPLais/tee/data/model/ApiKeyConfig;-><clinit>()V
-SPLais/tee/data/model/ApiKeyConfig;-><init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
-SPLais/tee/data/model/ApiKeyConfig;-><init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+SPLais/tee/data/model/ApiKeyConfig;-><init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+SPLais/tee/data/model/ApiKeyConfig;-><init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 SPLais/tee/data/model/ApiKeyConfig;->equals(Ljava/lang/Object;)Z
 Lais/tee/data/model/ApiKeyConfig$Companion;
 SPLais/tee/data/model/ApiKeyConfig$Companion;-><init>()V

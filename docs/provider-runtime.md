@@ -22,6 +22,9 @@ Portable provider/model/profile data lives in `shared`. Android currently owns H
 | OpenRouter | OpenAI-compatible chat completions | `system` message | SSE | bounded visible text replay |
 | AIHubMix | OpenAI-compatible chat completions | `system` message | SSE | bounded visible text replay |
 | Vercel AI Gateway | OpenAI-compatible chat completions | `system` message | SSE | bounded visible text replay |
+| Custom endpoint | OpenAI-compatible chat completions | `system` message | SSE | bounded visible text replay |
+
+The custom endpoint is the user's own base URL: HTTPS only, no query, fragment or userinfo. Chat goes to `<base>/chat/completions`, models come from `<base>/models` plus an optional configured fallback model. The key is optional and sent only when set. Requests to it never follow redirects. Capabilities are declared conservatively (text chat, streaming, no client tools) until they can be probed.
 
 Generation and gateway model-catalog requests are coroutine-cancellable: cancelling their coroutine cancels the underlying OkHttp call. SSE parsing is shared, accepts multi-line `data:` events, propagates provider error events, and stops at provider completion or `[DONE]` where applicable.
 

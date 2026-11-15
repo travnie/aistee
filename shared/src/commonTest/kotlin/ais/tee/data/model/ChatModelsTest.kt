@@ -3,6 +3,7 @@ package ais.tee.data.model
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ChatModelsTest {
@@ -81,6 +82,7 @@ class ChatModelsTest {
         assertFalse(AiProvider.OPENROUTER in AiProvider.concreteProviders)
         assertFalse(AiProvider.AIHUBMIX in AiProvider.concreteProviders)
         assertFalse(AiProvider.VERCEL in AiProvider.concreteProviders)
+        assertFalse(AiProvider.CUSTOM in AiProvider.concreteProviders)
         assertEquals(
             setOf(
                 AiProvider.CLAUDE,
@@ -195,4 +197,61 @@ class ChatModelsTest {
         assertTrue(config.configuredDirectProviders().isEmpty())
     }
 
+    @Test
+    fun customEndpointAcceptsOnlyPlainHttpsBaseUrls() {
+        assertEquals(
+            "https://llm.example.com/v1",
+            normalizeCustomEndpointBaseUrl("  HTTPS://LLM.Example.com/v1/  ")
+        )
+        assertEquals(
+            "https://llm.example.com:8443/v1",
+            normalizeCustomEndpointBaseUrl("https://llm.example.com:8443/v1/chat/completions")
+        )
+        assertEquals("https://llm.example.com/v1", normalizeCustomEndpointBaseUrl("https://llm.example.com/v1/models"))
+        assertEquals("https://llm.example.com", normalizeCustomEndpointBaseUrl("https://llm.example.com"))
+        assertEquals("https://[::1]:11434/v1", normalizeCustomEndpointBaseUrl("https://[::1]:11434/v1"))
+
+        listOf(
+            "",
+            "llm.example.com/v1",
+            "http://192.168.1.10:11434/v1",
+            "ftp://llm.example.com",
+            "https://",
+            "https://user:pass@llm.example.com/v1",
+            "https://llm.example.com/v1?key=1",
+            "https://llm.example.com/v1#frag",
+            "https://llm.example.com:0/v1",
+            "https://llm.example.com:70000/v1",
+            "https://llm example.com/v1",
+            "https://llm.example.com/a b",
+            "https://-bad.example.com",
+            "https://llm.example.com\\@evil.example/v1",
+            "https://" + "a".repeat(600) + ".example.com",
+        ).forEach { rejected -> assertNull(normalizeCustomEndpointBaseUrl(rejected), rejected) }
+    }
+
+    @Test
+    fun customEndpointIsConfiguredByItsUrlAndStaysOutOfDefaultCompare() {
+        assertFalse(ApiKeyConfig(customEndpointKey = "key-without-endpoint").hasKeyFor(AiProvider.CUSTOM))
+        assertFalse(
+            ApiKeyConfig(customEndpointUrl = "http://192.168.1.10:11434/v1").hasKeyFor(AiProvider.CUSTOM)
+        )
+
+        val config = ApiKeyConfig(customEndpointUrl = "https://llm.example.com/v1")
+
+        assertTrue(config.hasKeyFor(AiProvider.CUSTOM))
+        assertTrue(AiProvider.CUSTOM.usesLiveGatewayModelCatalog())
+        assertTrue(config.configuredDirectProviders().isEmpty())
+    }
+
+    @Test
+    fun customEndpointCatalogListsEveryModelSortedById() {
+        val catalog = listOf(
+            GatewayModelCatalogEntry("qwen3", null, null, supportsTextOutput = true),
+            GatewayModelCatalogEntry("llama4", null, null, supportsTextOutput = true),
+            GatewayModelCatalogEntry(" qwen3 ", null, null, supportsTextOutput = true)
+        )
+
+        assertEquals(listOf("llama4", "qwen3"), gatewayModelOptions(AiProvider.CUSTOM, catalog))
+    }
 }

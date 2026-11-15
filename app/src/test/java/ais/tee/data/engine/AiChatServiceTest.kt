@@ -1,6 +1,7 @@
 package ais.tee.data.engine
 
 import ais.tee.data.model.AiProvider
+import ais.tee.data.model.ApiKeyConfig
 import ais.tee.data.model.ApiProcessingMode
 import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
@@ -9,18 +10,22 @@ import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.ProviderExecutionSource
 import ais.tee.data.model.ProviderInputBudgetPreflight
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
+import okio.Buffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -1354,4 +1359,101 @@ class AiChatServiceTest {
         assertEquals("stopped", result.exceptionOrNull()?.message)
     }
 
+    private fun customEndpointService(
+        requests: MutableList<Request>,
+        responseJson: String,
+    ): AiChatService {
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            requests += chain.request()
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1)
+                .code(200).message("OK")
+                .body(responseJson.toResponseBody("application/json".toMediaType()))
+                .build()
+        }.build()
+        return AiChatService(client)
+    }
+
+    @Test
+    fun customEndpointClientNeverFollowsRedirects() {
+        val client = buildCustomEndpointHttpClient(OkHttpClient())
+
+        assertFalse(client.followRedirects)
+        assertFalse(client.followSslRedirects)
+    }
+
+    @Test
+    fun customEndpointRepliesFromTheConfiguredHostWithoutAKeyHeader() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val service = customEndpointService(
+            requests,
+            """{"model":"served-model","choices":[{"message":{"content":"pong"}}]}""",
+        )
+
+        val reply = service.generateResponse(
+            prompt = "ping",
+            provider = AiProvider.CUSTOM,
+            modelName = "",
+            apiKeys = ApiKeyConfig(
+                customEndpointUrl = "https://llm.example.com/v1",
+                customEndpointModel = "fallback-model",
+            ),
+            systemInstruction = null,
+            profile = null,
+            allowSimulationFallback = false,
+        )
+
+        assertFalse(reply.isError)
+        assertFalse(reply.isSimulated)
+        assertEquals("pong", reply.text)
+        assertEquals("served-model", reply.modelName)
+        val request = requests.single()
+        assertEquals("https://llm.example.com/v1/chat/completions", request.url.toString())
+        assertNull(request.header("Authorization"))
+        val sent = Buffer().also { requireNotNull(request.body).writeTo(it) }.readUtf8()
+        assertEquals("fallback-model", Json.parseToJsonElement(sent).jsonObject["model"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun customEndpointWithoutAnyModelFailsBeforeTheNetwork() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val service = customEndpointService(requests, "{}")
+
+        val reply = service.generateResponse(
+            prompt = "ping",
+            provider = AiProvider.CUSTOM,
+            modelName = "",
+            apiKeys = ApiKeyConfig(customEndpointUrl = "https://llm.example.com/v1"),
+            systemInstruction = null,
+            profile = null,
+            allowSimulationFallback = false,
+        )
+
+        assertTrue(reply.isError)
+        assertFalse(reply.isSimulated)
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun customEndpointCatalogSendsTheKeyAndKeepsTheFallbackModelFirst() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val service = customEndpointService(
+            requests,
+            """{"object":"list","data":[{"id":"zeta"},{"id":"alpha"},{"id":"pinned"},{"object":"model"},""" +
+                """{"id":"${"x".repeat(201)}"}]}""",
+        )
+
+        val models = service.fetchGatewayModels(
+            AiProvider.CUSTOM,
+            ApiKeyConfig(
+                customEndpointUrl = "https://llm.example.com/v1",
+                customEndpointKey = "custom-secret",
+                customEndpointModel = "pinned",
+            ),
+        )
+
+        assertEquals(listOf("pinned", "alpha", "zeta"), models)
+        val request = requests.single()
+        assertEquals("https://llm.example.com/v1/models", request.url.toString())
+        assertEquals("Bearer custom-secret", request.header("Authorization"))
+    }
 }

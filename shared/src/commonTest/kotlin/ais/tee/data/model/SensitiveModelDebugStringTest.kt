@@ -15,7 +15,10 @@ class SensitiveModelDebugStringTest {
             "kimi-secret-demo",
             "openrouter-secret-demo",
             "aihubmix-secret-demo",
-            "vercel-secret-demo"
+            "vercel-secret-demo",
+            "https://private-llm.example.com/v1",
+            "custom-endpoint-secret-demo",
+            "private-model-name"
         )
         val config = ApiKeyConfig(
             geminiKey = secrets[0],
@@ -25,7 +28,10 @@ class SensitiveModelDebugStringTest {
             kimiKey = secrets[4],
             openRouterKey = secrets[5],
             aiHubMixKey = secrets[6],
-            vercelAiGatewayKey = secrets[7]
+            vercelAiGatewayKey = secrets[7],
+            customEndpointUrl = secrets[8],
+            customEndpointKey = secrets[9],
+            customEndpointModel = secrets[10]
         )
 
         val debug = config.toString()

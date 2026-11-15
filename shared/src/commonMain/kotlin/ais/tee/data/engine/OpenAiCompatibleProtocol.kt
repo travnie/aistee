@@ -1,8 +1,10 @@
 package ais.tee.data.engine
 
 import ais.tee.data.model.AiProvider
+import ais.tee.data.model.ApiKeyConfig
 import ais.tee.data.model.ModelChatMessage
 import ais.tee.data.model.buildBoundedProviderTextTurns
+import ais.tee.data.model.customEndpointBaseUrl
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -49,6 +51,19 @@ object OpenAiCompatibleProtocol {
     )
 
     fun configFor(provider: AiProvider): OpenAiCompatibleProviderConfig? = providerConfigs[provider]
+
+    /** As [configFor], plus the user's own endpoint, which exists only in [apiKeys]. */
+    fun configFor(provider: AiProvider, apiKeys: ApiKeyConfig): OpenAiCompatibleProviderConfig? =
+        if (provider == AiProvider.CUSTOM) {
+            apiKeys.customEndpointBaseUrl()?.let { baseUrl ->
+                OpenAiCompatibleProviderConfig(
+                    endpointUrl = "$baseUrl/chat/completions",
+                    modelCatalogUrl = "$baseUrl/models"
+                )
+            }
+        } else {
+            configFor(provider)
+        }
 
     fun buildMessages(
         prompt: String,

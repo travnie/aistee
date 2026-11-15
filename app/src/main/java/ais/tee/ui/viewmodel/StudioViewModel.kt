@@ -19,6 +19,8 @@ import ais.tee.data.engine.executeNativeChatSend
 import ais.tee.data.model.*
 import ais.tee.data.model.appendToNativeChatDraft
 import ais.tee.data.model.canInsertIntoDraft
+import ais.tee.data.model.hasKeyFor
+import ais.tee.data.model.normalizeCustomEndpointBaseUrl
 import ais.tee.data.preferences.AsyncProviderJobStore
 import ais.tee.data.preferences.NativeChatStore
 import ais.tee.data.preferences.NativeChatWriter
@@ -249,7 +251,13 @@ data class StudioUiState(
     fun chatModelOptions(provider: AiProvider): List<String> =
         chatGptPlanClientId?.takeIf { provider == AiProvider.CHATGPT }?.let(chatGptPlanModels::get)
             ?: gatewayModelOptions[provider]
-            ?: provider.availableModels
+            ?: provider.availableModels.ifEmpty {
+                // Custom endpoint before (or without) a catalog: only its configured fallback model.
+                listOfNotNull(
+                    apiKeyConfig.customEndpointModel.trim()
+                        .takeIf { provider == AiProvider.CUSTOM && it.isNotEmpty() },
+                )
+            }
 }
 
 enum class NavigationTab {
@@ -1721,6 +1729,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun refreshGatewayModelCatalog(provider: AiProvider) {
         if (!provider.usesLiveGatewayModelCatalog()) return
         val state = _uiState.value
+        // No endpoint yet: nothing to ask, and no failure to report.
+        if (provider == AiProvider.CUSTOM && !state.apiKeyConfig.hasKeyFor(provider)) return
         if (provider in state.refreshingGatewayCatalogs) {
             pendingGatewayCatalogRefreshes += provider
             return
@@ -1792,7 +1802,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         openRouterKey: String = "",
         aiHubMixKey: String = "",
         vercelAiGatewayKey: String = "",
+        customEndpointUrl: String = "",
+        customEndpointKey: String = "",
+        customEndpointModel: String = "",
     ) {
+        val previous = _uiState.value.apiKeyConfig
         val config = ApiKeyConfig(
             geminiKey = geminiKey.trim(),
             openAiKey = openAiKey.trim(),
@@ -1802,12 +1816,25 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             openRouterKey = openRouterKey.trim(),
             aiHubMixKey = aiHubMixKey.trim(),
             vercelAiGatewayKey = vercelAiGatewayKey.trim(),
+            // Stored normalized; anything that is not a usable HTTPS base URL is dropped.
+            customEndpointUrl = normalizeCustomEndpointBaseUrl(customEndpointUrl).orEmpty(),
+            customEndpointKey = customEndpointKey.trim(),
+            customEndpointModel = customEndpointModel.trim(),
         )
         val stored = apiKeyStore.save(config)
+        val customEndpointChanged = config.customEndpointUrl != previous.customEndpointUrl ||
+            config.customEndpointKey != previous.customEndpointKey ||
+            config.customEndpointModel != previous.customEndpointModel
         _uiState.update {
             it.copy(
                 apiKeyConfig = config,
                 showApiKeyDialog = false,
+                // Another endpoint, another catalog: never offer the previous server's models.
+                gatewayModelOptions = if (customEndpointChanged) {
+                    it.gatewayModelOptions - AiProvider.CUSTOM
+                } else {
+                    it.gatewayModelOptions
+                },
             )
         }
         showSnackbar(if (stored) "API keys stored securely on device." else "API keys updated for this session only.")

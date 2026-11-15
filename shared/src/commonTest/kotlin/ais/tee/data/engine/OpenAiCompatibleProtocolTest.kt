@@ -1,6 +1,7 @@
 package ais.tee.data.engine
 
 import ais.tee.data.model.AiProvider
+import ais.tee.data.model.ApiKeyConfig
 import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
 import ais.tee.data.model.ModelChatMessage
@@ -28,6 +29,31 @@ class OpenAiCompatibleProtocolTest {
         assertEquals("https://ai-gateway.vercel.sh/v1/chat/completions", vercel.endpointUrl)
         assertEquals("https://ai-gateway.vercel.sh/v1/models", vercel.modelCatalogUrl)
         assertNull(OpenAiCompatibleProtocol.configFor(AiProvider.GEMINI))
+    }
+
+    @Test
+    fun customEndpointConfigComesOnlyFromAValidatedBaseUrl() {
+        val config = requireNotNull(
+            OpenAiCompatibleProtocol.configFor(
+                AiProvider.CUSTOM,
+                ApiKeyConfig(customEndpointUrl = "https://llm.example.com/v1/")
+            )
+        )
+
+        assertEquals("https://llm.example.com/v1/chat/completions", config.endpointUrl)
+        assertEquals("https://llm.example.com/v1/models", config.modelCatalogUrl)
+        assertTrue(config.extraHeaders.isEmpty())
+        assertNull(OpenAiCompatibleProtocol.configFor(AiProvider.CUSTOM))
+        assertNull(
+            OpenAiCompatibleProtocol.configFor(
+                AiProvider.CUSTOM,
+                ApiKeyConfig(customEndpointUrl = "http://llm.example.com/v1")
+            )
+        )
+        assertEquals(
+            OpenAiCompatibleProtocol.configFor(AiProvider.VERCEL),
+            OpenAiCompatibleProtocol.configFor(AiProvider.VERCEL, ApiKeyConfig())
+        )
     }
 
     @Test
