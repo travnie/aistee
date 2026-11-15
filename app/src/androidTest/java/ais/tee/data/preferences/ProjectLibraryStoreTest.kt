@@ -215,4 +215,44 @@ class ProjectLibraryStoreTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun tamperedFileWithUnchangedSizeAndTimeFailsItsReadThenRecovers() {
+        val root = testRoot()
+        try {
+            val store = ProjectLibraryStore(root)
+            val original = requireNotNull(
+                store.saveTextAsset(
+                    title = "Recovery",
+                    mediaType = TEXT_PLAIN,
+                    extension = TXT_EXTENSION,
+                    text = PRIVATE_CONTENT,
+                    now = 1,
+                ),
+            )
+            val updated = requireNotNull(
+                store.updateTextAsset(
+                    assetId = original.id,
+                    expectedRevision = original.revision,
+                    text = EDITED_PRIVATE_CONTENT,
+                    now = 2,
+                ),
+            )
+            val assets = File(File(root, ProjectLibraryStore.DIRECTORY_NAME), ASSETS_DIRECTORY)
+            File(assets, original.fileName).writeText(PRIVATE_CONTENT)
+            // Verified once; later loads trust size + mtime instead of re-hashing the Library.
+            assertEquals(2L, store.load(now = 3).assets.single().revision)
+            val current = File(assets, updated.fileName)
+            val modified = current.lastModified()
+            current.writeText("x".repeat(current.length().toInt()))
+            assertTrue(current.setLastModified(modified))
+
+            assertEquals(2L, store.load(now = 4).assets.single().revision)
+            assertNull(store.loadTextAsset(original.id, now = 5))
+            assertEquals(PRIVATE_CONTENT, requireNotNull(store.loadTextAsset(original.id, now = 6)).text)
+            assertEquals(1L, store.load(now = 7).assets.single().revision)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
 }
