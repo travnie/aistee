@@ -1176,6 +1176,9 @@ SPLais/tee/ui/screens/WebChatScreenKt$createConfiguredWebView$webView$1$4;->onPa
 SPLais/tee/ui/screens/WebChatScreenKt$createConfiguredWebView$webView$1$4;->shouldOverrideUrlLoading(Landroid/webkit/WebView;Landroid/webkit/WebResourceRequest;)Z
 Lais/tee/ui/screens/WebFindInPageSession;
 Lais/tee/ui/screens/WebNavigationSafetyKt;
+SPLais/tee/ui/screens/WebChatScreenKt$createConfiguredWebView$webView$1$4;->shouldInterceptRequest(Landroid/webkit/WebView;Landroid/webkit/WebResourceRequest;)Landroid/webkit/WebResourceResponse;
+SPLais/tee/ui/screens/WebNavigationSafetyKt;->blockedCleartextWebResponse(Ljava/lang/String;)Landroid/webkit/WebResourceResponse;
+SPLais/tee/ui/screens/WebNavigationSafetyKt;->isCleartextWebScheme(Ljava/lang/String;)Z
 SPLais/tee/ui/screens/WebNavigationSafetyKt;->handleMainFrameNavigation(Landroid/content/Context;Lais/tee/data/model/WebAiService;Landroid/webkit/WebResourceRequest;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;)Z
 Lais/tee/ui/screens/WebRendererPolicyKt;
 SPLais/tee/ui/screens/WebRendererPolicyKt;->providerWebViewVisibility(Z)I

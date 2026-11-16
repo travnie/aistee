@@ -2609,6 +2609,11 @@ private fun createConfiguredWebView(
         }
 
         webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?,
+            ): WebResourceResponse? = blockedCleartextWebResponse(request?.url?.scheme)
+
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                 url?.let(onUrlChanged)
                 onNavStateChanged(view?.canGoBack() ?: false, view?.canGoForward() ?: false)

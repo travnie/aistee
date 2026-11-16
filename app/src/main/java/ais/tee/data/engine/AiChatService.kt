@@ -222,40 +222,37 @@ internal data class ClaudeBatchResult(
 
 /**
  * The user's own endpoint: a redirect must not carry the prompt or key to another host. Loopback
- * (the only cleartext target) stays on the device: never through a proxy, never via DNS.
+ * (the only cleartext target) stays on the device: never through a proxy, never via DNS. Every
+ * other host keeps the base client's proxy and DNS policy.
  */
 internal fun buildCustomEndpointHttpClient(baseClient: OkHttpClient): OkHttpClient =
     baseClient.newBuilder()
         .followRedirects(false)
         .followSslRedirects(false)
-        .proxySelector(LoopbackDirectProxySelector)
+        // A fixed proxy would win over the selector, loopback included; the selector re-applies it.
+        .proxy(null)
+        .proxySelector(LoopbackDirectProxySelector(baseClient))
         .dns { host ->
-            if (isCustomEndpointLoopbackHost(host)) {
-                LOOPBACK_ADDRESSES
-            } else {
-                Dns.SYSTEM.lookup(host)
-            }
+            if (host.equals(LOOPBACK_HOST_NAME, ignoreCase = true)) loopbackAddresses() else baseClient.dns.lookup(host)
         }
         .build()
 
-/** IPv4 first: local model servers usually bind 127.0.0.1 only; Android's own loopback is ::1. */
-private val LOOPBACK_ADDRESSES: List<InetAddress> by lazy {
-    listOf(
-        InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)),
-        InetAddress.getByAddress(ByteArray(16).also { it[it.lastIndex] = 1 }),
-    )
-}
+private const val LOOPBACK_HOST_NAME = "localhost"
 
-private object LoopbackDirectProxySelector : ProxySelector() {
-    override fun select(uri: URI?): List<Proxy> =
-        if (uri?.host?.let(::isCustomEndpointLoopbackHost) == true) {
-            listOf(Proxy.NO_PROXY)
-        } else {
-            getDefault()?.select(uri) ?: listOf(Proxy.NO_PROXY)
-        }
+/** IPv4 first: local model servers usually bind 127.0.0.1 only; Android's own loopback is ::1. */
+private fun loopbackAddresses(): List<InetAddress> = listOf(
+    InetAddress.getByAddress(LOOPBACK_HOST_NAME, byteArrayOf(127, 0, 0, 1)),
+    InetAddress.getByAddress(LOOPBACK_HOST_NAME, ByteArray(16).also { it[it.lastIndex] = 1 }),
+)
+
+private class LoopbackDirectProxySelector(private val base: OkHttpClient) : ProxySelector() {
+    override fun select(uri: URI?): List<Proxy> = when {
+        uri?.host?.let(::isCustomEndpointLoopbackHost) == true -> listOf(Proxy.NO_PROXY)
+        else -> base.proxy?.let(::listOf) ?: base.proxySelector.select(uri)
+    }
 
     override fun connectFailed(uri: URI?, address: SocketAddress?, failure: IOException?) {
-        getDefault()?.connectFailed(uri, address, failure)
+        base.proxySelector.connectFailed(uri, address, failure)
     }
 }
 

@@ -1383,16 +1383,29 @@ class AiChatServiceTest {
     }
 
     @Test
-    fun customEndpointLoopbackNeverUsesAProxyOrDns() {
-        val client = buildCustomEndpointHttpClient(OkHttpClient())
-
-        listOf("http://localhost:11434/v1", "http://127.0.0.1:1234/v1").forEach { url ->
-            assertEquals(listOf(java.net.Proxy.NO_PROXY), client.proxySelector.select(java.net.URI(url)))
+    fun customEndpointLoopbackBypassesTheBaseProxyAndDnsWhileOtherHostsKeepThem() {
+        val proxy = java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress.createUnresolved("proxy.test", 8080))
+        val elsewhere = java.net.InetAddress.getByAddress("llm.example.com", byteArrayOf(10, 0, 0, 9))
+        val selector = object : java.net.ProxySelector() {
+            override fun select(uri: java.net.URI?) = listOf(proxy)
+            override fun connectFailed(uri: java.net.URI?, sa: java.net.SocketAddress?, ioe: java.io.IOException?) = Unit
         }
-        val loopback = client.dns.lookup("localhost")
-        assertEquals(listOf("127.0.0.1", "0:0:0:0:0:0:0:1"), loopback.map { it.hostAddress })
-        assertTrue(loopback.all { it.isLoopbackAddress })
-        assertEquals(loopback, client.dns.lookup("LOCALHOST"))
+        fun routed(base: OkHttpClient) = buildCustomEndpointHttpClient(base)
+
+        listOf(
+            routed(OkHttpClient.Builder().proxySelector(selector).dns { listOf(elsewhere) }.build()),
+            routed(OkHttpClient.Builder().proxy(proxy).dns { listOf(elsewhere) }.build()),
+        ).forEach { client ->
+            assertNull(client.proxy)
+            listOf("http://localhost:11434/v1", "http://127.0.0.1:1234/v1").forEach { url ->
+                assertEquals(listOf(java.net.Proxy.NO_PROXY), client.proxySelector.select(java.net.URI(url)))
+            }
+            assertEquals(listOf(proxy), client.proxySelector.select(java.net.URI("https://llm.example.com/v1")))
+            val loopback = client.dns.lookup("LOCALHOST")
+            assertEquals(listOf("127.0.0.1", "0:0:0:0:0:0:0:1"), loopback.map { it.hostAddress })
+            assertTrue(loopback.all { it.isLoopbackAddress })
+            assertEquals(listOf(elsewhere), client.dns.lookup("llm.example.com"))
+        }
     }
 
     @Test

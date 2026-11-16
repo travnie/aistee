@@ -83,7 +83,7 @@ Android also accepts shared text, images and application files. Web content is s
 | OpenRouter Free | Native gateway | API key | N/A | Native request state | `openrouter/free`; excluded from default All Models compare |
 | AIHubMix Free | Native gateway | API key | N/A | Native request state | Zero-cost text models; excluded from default All Models compare |
 | Vercel AI Gateway | Native gateway | API key | N/A | Native request state | Live compatible text-model catalog; account/key budgets remain the spend boundary |
-| Custom endpoint | Native gateway | Your HTTPS base URL (or `http://localhost` on the device), optional key | N/A | Native request state | Any OpenAI-compatible server; live `/models` catalog; excluded from default All Models compare |
+| Custom endpoint | Native gateway | Your HTTPS base URL (or `http://localhost` / `http://127.0.0.1` on the device), optional key | N/A | Native request state | Any OpenAI-compatible server; live `/models` catalog; excluded from default All Models compare |
 
 Direct Gemini, OpenAI and Claude chats use provider-scoped history and cancellable streaming. Gateway catalogs refresh live; All Models uses direct providers only, avoiding duplicate aggregator routes.
 

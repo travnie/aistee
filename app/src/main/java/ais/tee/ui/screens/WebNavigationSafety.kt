@@ -6,8 +6,10 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import ais.tee.data.model.WebAiService
 import ais.tee.web.shouldLoadHttpsInProviderWebView
+import java.io.ByteArrayInputStream
 
 internal const val WEBVIEW_LOG_TAG = "AisteeWeb"
 
@@ -51,6 +53,20 @@ internal fun handleMainFrameNavigation(
         else -> true
     }
 }
+
+/**
+ * Refuses every cleartext request from provider web content, subresources and forms included.
+ * The app's only cleartext allowance (loopback, for the native custom endpoint) is not for pages:
+ * they must not reach services on this device.
+ */
+internal fun blockedCleartextWebResponse(scheme: String?): WebResourceResponse? =
+    if (isCleartextWebScheme(scheme)) {
+        WebResourceResponse("text/plain", "utf-8", 403, "Forbidden", emptyMap(), ByteArrayInputStream(ByteArray(0)))
+    } else {
+        null
+    }
+
+internal fun isCleartextWebScheme(scheme: String?): Boolean = scheme.equals("http", ignoreCase = true)
 
 internal fun reportExternalNavigationLaunch(
     launched: Boolean,

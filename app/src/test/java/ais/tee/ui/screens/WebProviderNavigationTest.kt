@@ -19,4 +19,10 @@ class WebProviderNavigationTest {
         assertTrue(webProviderNavigationIsPersistent(NavigationSuiteType.WideNavigationRailCollapsed))
         assertTrue(webProviderNavigationIsPersistent(NavigationSuiteType.WideNavigationRailExpanded))
     }
+
+    @Test
+    fun providerPagesGetNoCleartextNotEvenToLoopback() {
+        listOf("http", "HTTP").forEach { assertTrue(isCleartextWebScheme(it)) }
+        listOf("https", "blob", "data", "ws", null).forEach { assertFalse(isCleartextWebScheme(it)) }
+    }
 }
