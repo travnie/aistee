@@ -55,9 +55,10 @@ internal fun handleMainFrameNavigation(
 }
 
 /**
- * Refuses every cleartext request from provider web content, subresources and forms included.
- * The app's only cleartext allowance (loopback, for the native custom endpoint) is not for pages:
- * they must not reach services on this device.
+ * Refuses the http:// requests this hook sees from provider web content, subresources and forms
+ * included: the app's cleartext allowance (loopback, for the native custom endpoint) is not for
+ * pages. Partial: ws:// handshakes and redirect hops never reach the hook; see
+ * docs/provider-runtime.md.
  */
 internal fun blockedCleartextWebResponse(scheme: String?): WebResourceResponse? =
     if (isCleartextWebScheme(scheme)) {

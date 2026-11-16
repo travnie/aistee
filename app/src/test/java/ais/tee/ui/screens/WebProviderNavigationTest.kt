@@ -21,7 +21,7 @@ class WebProviderNavigationTest {
     }
 
     @Test
-    fun providerPagesGetNoCleartextNotEvenToLoopback() {
+    fun cleartextSchemePredicateMatchesHttpOnly() {
         listOf("http", "HTTP").forEach { assertTrue(isCleartextWebScheme(it)) }
         listOf("https", "blob", "data", "ws", null).forEach { assertFalse(isCleartextWebScheme(it)) }
     }
