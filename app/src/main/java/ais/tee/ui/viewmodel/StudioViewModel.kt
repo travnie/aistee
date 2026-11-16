@@ -19,7 +19,6 @@ import ais.tee.data.engine.executeNativeChatSend
 import ais.tee.data.model.*
 import ais.tee.data.model.appendToNativeChatDraft
 import ais.tee.data.model.canInsertIntoDraft
-import ais.tee.data.model.customEndpointBaseUrlFromInput
 import ais.tee.data.model.hasKeyFor
 import ais.tee.data.preferences.AsyncProviderJobStore
 import ais.tee.data.preferences.NativeChatStore
@@ -1823,7 +1822,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             aiHubMixKey = aiHubMixKey.trim(),
             vercelAiGatewayKey = vercelAiGatewayKey.trim(),
             // Stored normalized; anything that is not a usable HTTPS base URL is dropped.
-            customEndpointUrl = customEndpointBaseUrlFromInput(customEndpointUrl).orEmpty(),
+            // The prefilled stored value passes through untouched: no second suffix strip.
+            customEndpointUrl = customEndpointUrlForSave(customEndpointUrl, previous.customEndpointUrl),
             customEndpointKey = customEndpointKey.trim(),
             customEndpointModel = customEndpointModel.trim(),
         )
@@ -1839,11 +1839,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 } else {
                     it.gatewayModelOptions
                 },
-                // ...or send its model name to the new one while the catalog reloads or fails.
-                nativeChat = if (customEndpointChanged && it.selectedChatProvider == AiProvider.CUSTOM) {
-                    it.nativeChat.updateActiveConversation { conversation ->
-                        conversation.copy(selectedModel = config.customEndpointModel)
-                    }
+                // ...or send its model name to the new one from any conversation, active or not.
+                nativeChat = if (customEndpointChanged) {
+                    it.nativeChat.withCustomEndpointModel(config.customEndpointModel)
                 } else {
                     it.nativeChat
                 },

@@ -243,6 +243,20 @@ class ChatModelsTest {
     }
 
     @Test
+    fun resavingTheStoredEndpointUrlKeepsItWhileNewInputIsCleaned() {
+        val stored = "https://llm.example.com/models"
+
+        assertEquals(stored, customEndpointUrlForSave(" $stored ", stored))
+        assertEquals("https://llm.example.com", customEndpointUrlForSave(stored, storedUrl = ""))
+        assertEquals(
+            "https://other.example.com/v1",
+            customEndpointUrlForSave("https://other.example.com/v1/chat/completions", stored)
+        )
+        assertEquals("", customEndpointUrlForSave("http://llm.example.com", stored))
+        assertEquals("", customEndpointUrlForSave("", stored))
+    }
+
+    @Test
     fun customEndpointTagIsStableOpaqueAndPerEndpoint() {
         val tag = customEndpointTag("https://llm.example.com/v1")
 

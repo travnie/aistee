@@ -364,6 +364,12 @@ fun customEndpointBaseUrlFromInput(raw: String): String? {
     return if (pasted == null) base else base.dropLast(pasted.length)
 }
 
+/** Value to store on save: the untouched stored URL as is, new input cleaned; "" when unusable. */
+fun customEndpointUrlForSave(input: String, storedUrl: String): String {
+    val trimmed = input.trim()
+    return if (trimmed == storedUrl) storedUrl else customEndpointBaseUrlFromInput(trimmed).orEmpty()
+}
+
 fun ApiKeyConfig.customEndpointBaseUrl(): String? = normalizeCustomEndpointBaseUrl(customEndpointUrl)
 
 private const val FNV_OFFSET_BASIS = 0xcbf29ce484222325uL

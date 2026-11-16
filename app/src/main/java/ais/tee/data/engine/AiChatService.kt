@@ -1142,7 +1142,7 @@ class AiChatService(
         val startTime = System.currentTimeMillis()
         // Only the custom endpoint has no bundled default; it falls back to the configured model.
         val effectiveModel = resolveEffectiveModel(provider, modelName)
-            .ifEmpty { apiKeys.customEndpointModel.trim() }
+            .ifEmpty { if (provider == AiProvider.CUSTOM) apiKeys.customEndpointModel.trim() else "" }
         var resolvedModel = effectiveModel
         var providerReplayState: String? = null
         var providerUsage: ProviderUsage? = null
