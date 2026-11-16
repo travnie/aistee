@@ -1389,8 +1389,10 @@ class AiChatServiceTest {
         listOf("http://localhost:11434/v1", "http://127.0.0.1:1234/v1").forEach { url ->
             assertEquals(listOf(java.net.Proxy.NO_PROXY), client.proxySelector.select(java.net.URI(url)))
         }
-        assertEquals(listOf(java.net.InetAddress.getLoopbackAddress()), client.dns.lookup("localhost"))
-        assertEquals(listOf(java.net.InetAddress.getLoopbackAddress()), client.dns.lookup("LOCALHOST"))
+        val loopback = client.dns.lookup("localhost")
+        assertEquals(listOf("127.0.0.1", "0:0:0:0:0:0:0:1"), loopback.map { it.hostAddress })
+        assertTrue(loopback.all { it.isLoopbackAddress })
+        assertEquals(loopback, client.dns.lookup("LOCALHOST"))
     }
 
     @Test

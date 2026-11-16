@@ -231,12 +231,20 @@ internal fun buildCustomEndpointHttpClient(baseClient: OkHttpClient): OkHttpClie
         .proxySelector(LoopbackDirectProxySelector)
         .dns { host ->
             if (isCustomEndpointLoopbackHost(host)) {
-                listOf(InetAddress.getLoopbackAddress())
+                LOOPBACK_ADDRESSES
             } else {
                 Dns.SYSTEM.lookup(host)
             }
         }
         .build()
+
+/** IPv4 first: local model servers usually bind 127.0.0.1 only; Android's own loopback is ::1. */
+private val LOOPBACK_ADDRESSES: List<InetAddress> by lazy {
+    listOf(
+        InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1)),
+        InetAddress.getByAddress(ByteArray(16).also { it[it.lastIndex] = 1 }),
+    )
+}
 
 private object LoopbackDirectProxySelector : ProxySelector() {
     override fun select(uri: URI?): List<Proxy> =
