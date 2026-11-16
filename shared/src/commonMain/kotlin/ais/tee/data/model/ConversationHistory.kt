@@ -41,6 +41,18 @@ private fun ModelChatMessage.isReplayableAssistantFor(provider: AiProvider): Boo
         !isPartial
 
 /**
+ * Custom-endpoint replies are scoped to the endpoint that produced them, as replies are scoped to
+ * a provider: after the endpoint changes, earlier replies stay on screen but are dropped here, and
+ * [buildBoundedProviderTextTurns] then leaves their prompts out too.
+ */
+fun List<ModelChatMessage>.scopedToCustomEndpoint(endpointTag: String?): List<ModelChatMessage> =
+    filterNot { message ->
+        message.sender == CHAT_ROLE_ASSISTANT &&
+            message.provider == AiProvider.CUSTOM &&
+            message.endpointTag != endpointTag
+    }
+
+/**
  * Builds a provider-scoped conversation suffix for stateless chat APIs.
  *
  * Real assistant responses from the selected provider are replayed. Explicitly imported assistant

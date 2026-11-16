@@ -290,6 +290,17 @@ fun NativeChatArchive.updateActiveConversation(
     )
 }
 
+/** Another custom endpoint, another catalog: no conversation keeps the previous server's model name. */
+fun NativeChatArchive.withCustomEndpointModel(model: String): NativeChatArchive = copy(
+    conversations = conversations.map { conversation ->
+        if (conversation.selectedProvider == AiProvider.CUSTOM && conversation.selectedModel != model) {
+            conversation.copy(selectedModel = model)
+        } else {
+            conversation
+        }
+    },
+)
+
 object NativeChatArchiveCodec {
     private val json = Json {
         encodeDefaults = true

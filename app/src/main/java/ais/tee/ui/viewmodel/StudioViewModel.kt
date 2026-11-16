@@ -19,6 +19,7 @@ import ais.tee.data.engine.executeNativeChatSend
 import ais.tee.data.model.*
 import ais.tee.data.model.appendToNativeChatDraft
 import ais.tee.data.model.canInsertIntoDraft
+import ais.tee.data.model.hasKeyFor
 import ais.tee.data.preferences.AsyncProviderJobStore
 import ais.tee.data.preferences.NativeChatStore
 import ais.tee.data.preferences.NativeChatWriter
@@ -249,7 +250,13 @@ data class StudioUiState(
     fun chatModelOptions(provider: AiProvider): List<String> =
         chatGptPlanClientId?.takeIf { provider == AiProvider.CHATGPT }?.let(chatGptPlanModels::get)
             ?: gatewayModelOptions[provider]
-            ?: provider.availableModels
+            ?: provider.availableModels.ifEmpty {
+                // Custom endpoint before (or without) a catalog: only its configured fallback model.
+                listOfNotNull(
+                    apiKeyConfig.customEndpointModel.trim()
+                        .takeIf { provider == AiProvider.CUSTOM && it.isNotEmpty() },
+                )
+            }
 }
 
 enum class NavigationTab {
@@ -1721,6 +1728,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun refreshGatewayModelCatalog(provider: AiProvider) {
         if (!provider.usesLiveGatewayModelCatalog()) return
         val state = _uiState.value
+        // No endpoint yet: nothing to ask, and no failure to report.
+        if (provider == AiProvider.CUSTOM && !state.apiKeyConfig.hasKeyFor(provider)) return
         if (provider in state.refreshingGatewayCatalogs) {
             pendingGatewayCatalogRefreshes += provider
             return
@@ -1733,7 +1742,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 val models = aiChatService.fetchGatewayModels(provider, apiKeys)
+                var applied = true
                 _uiState.update { current ->
+                    // The endpoint changed while this was in flight: these are another server's models.
+                    applied = provider != AiProvider.CUSTOM ||
+                        current.apiKeyConfig.hasSameCustomEndpointAs(apiKeys)
+                    if (!applied) return@update current
                     val selectedModel = if (current.selectedChatProvider == provider) {
                         when {
                             current.selectedChatModel in models -> current.selectedChatModel
@@ -1755,6 +1769,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         nativeChat = nativeChat,
                     )
                 }
+                if (!applied) return@launch
                 persistNativeChat()
                 if (models.isEmpty()) {
                     showSnackbar("No compatible text models are currently available for ${provider.shortName}.")
@@ -1792,7 +1807,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         openRouterKey: String = "",
         aiHubMixKey: String = "",
         vercelAiGatewayKey: String = "",
+        customEndpointUrl: String = "",
+        customEndpointKey: String = "",
+        customEndpointModel: String = "",
     ) {
+        val previous = _uiState.value.apiKeyConfig
         val config = ApiKeyConfig(
             geminiKey = geminiKey.trim(),
             openAiKey = openAiKey.trim(),
@@ -1802,14 +1821,33 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             openRouterKey = openRouterKey.trim(),
             aiHubMixKey = aiHubMixKey.trim(),
             vercelAiGatewayKey = vercelAiGatewayKey.trim(),
+            // Stored normalized; anything that is not a usable HTTPS base URL is dropped.
+            // The prefilled stored value passes through untouched: no second suffix strip.
+            customEndpointUrl = customEndpointUrlForSave(customEndpointUrl, previous.customEndpointUrl),
+            customEndpointKey = customEndpointKey.trim(),
+            customEndpointModel = customEndpointModel.trim(),
         )
         val stored = apiKeyStore.save(config)
+        val customEndpointChanged = !config.hasSameCustomEndpointAs(previous)
         _uiState.update {
             it.copy(
                 apiKeyConfig = config,
                 showApiKeyDialog = false,
+                // Another endpoint, another catalog: never offer the previous server's models...
+                gatewayModelOptions = if (customEndpointChanged) {
+                    it.gatewayModelOptions - AiProvider.CUSTOM
+                } else {
+                    it.gatewayModelOptions
+                },
+                // ...or send its model name to the new one from any conversation, active or not.
+                nativeChat = if (customEndpointChanged) {
+                    it.nativeChat.withCustomEndpointModel(config.customEndpointModel)
+                } else {
+                    it.nativeChat
+                },
             )
         }
+        if (customEndpointChanged) persistNativeChat()
         showSnackbar(if (stored) "API keys stored securely on device." else "API keys updated for this session only.")
         val selectedProvider = _uiState.value.selectedChatProvider
         if (selectedProvider.usesLiveGatewayModelCatalog()) {
@@ -2893,3 +2931,8 @@ private data class PendingNativeChatShare(
 
 internal fun stageSharedTextInDraft(draft: String, sharedText: String): String =
     if (draft.isBlank()) sharedText else draft.trimEnd() + "\n\n" + sharedText
+
+private fun ApiKeyConfig.hasSameCustomEndpointAs(other: ApiKeyConfig): Boolean =
+    customEndpointUrl == other.customEndpointUrl &&
+        customEndpointKey == other.customEndpointKey &&
+        customEndpointModel == other.customEndpointModel

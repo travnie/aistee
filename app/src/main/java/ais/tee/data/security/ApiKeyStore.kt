@@ -22,7 +22,10 @@ internal class ApiKeyStore(context: Context) {
             kimiKey = json.optString("kimi"),
             openRouterKey = json.optString("openrouter"),
             aiHubMixKey = json.optString("aihubmix"),
-            vercelAiGatewayKey = json.optString("vercel_ai_gateway")
+            vercelAiGatewayKey = json.optString("vercel_ai_gateway"),
+            customEndpointUrl = json.optString("custom_endpoint_url"),
+            customEndpointKey = json.optString("custom_endpoint_key"),
+            customEndpointModel = json.optString("custom_endpoint_model")
         )
     }.getOrDefault(ApiKeyConfig())
 
@@ -36,6 +39,9 @@ internal class ApiKeyStore(context: Context) {
             .put("openrouter", config.openRouterKey)
             .put("aihubmix", config.aiHubMixKey)
             .put("vercel_ai_gateway", config.vercelAiGatewayKey)
+            .put("custom_endpoint_url", config.customEndpointUrl)
+            .put("custom_endpoint_key", config.customEndpointKey)
+            .put("custom_endpoint_model", config.customEndpointModel)
             .toString()
         return encryptedStore.write(plaintext)
     }

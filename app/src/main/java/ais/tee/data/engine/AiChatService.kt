@@ -11,6 +11,7 @@ import ais.tee.data.model.ClaudeReasoningCapabilities
 import ais.tee.data.model.parseClaudeReasoningCapabilities
 import ais.tee.data.model.resolveClaudeThinkingBudget
 import ais.tee.data.model.GatewayModelCatalogEntry
+import ais.tee.data.model.hasKeyFor
 import ais.tee.data.model.ClientToolCallingStrategy
 import ais.tee.data.model.MAX_NATIVE_TOOL_ROUNDS
 import ais.tee.data.model.ModelChatMessage
@@ -25,6 +26,8 @@ import ais.tee.data.model.openAiResponsesRouteCapabilities
 import ais.tee.data.model.buildBoundedProviderTextTurns
 import ais.tee.data.model.gatewayModelOptions
 import ais.tee.data.model.Profile
+import ais.tee.data.model.customEndpointTag
+import ais.tee.data.model.scopedToCustomEndpoint
 import ais.tee.data.tokenizer.TokenArenaProviderPreflightRequest
 import ais.tee.data.tokenizer.TokenArenaProviderPreflightResult
 import ais.tee.data.tokenizer.withBudget
@@ -175,6 +178,10 @@ internal data class OpenAiBackgroundResponseSnapshot(
     val errorMessage: String?,
 )
 
+// A custom endpoint's catalog is untrusted input for the model picker.
+private const val MAX_CUSTOM_ENDPOINT_MODELS = 500
+private const val MAX_CUSTOM_ENDPOINT_MODEL_ID_CHARS = 200
+private const val MAX_CUSTOM_ENDPOINT_CATALOG_BYTES = 2L * 1024 * 1024
 private const val GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 private const val GEMINI_BATCH_API_BASE_URL = GEMINI_API_BASE_URL
 /** Aistee Gemini batches hold one inline request, matched by this metadata key. */
@@ -205,6 +212,13 @@ internal data class ClaudeBatchResult(
     val outputText: String?,
     val errorMessage: String?,
 )
+
+/** The user's own endpoint: a redirect must not carry the prompt or key to another host. */
+internal fun buildCustomEndpointHttpClient(baseClient: OkHttpClient): OkHttpClient =
+    baseClient.newBuilder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .build()
 
 internal fun buildClaudeMetadataHttpClient(baseClient: OkHttpClient): OkHttpClient =
     baseClient.newBuilder()
@@ -270,6 +284,13 @@ class AiChatService(
         .readTimeout(OPENAI_FLEX_TIMEOUT_MINUTES, TimeUnit.MINUTES)
         .build()
     private val claudeMetadataHttpClient: OkHttpClient = buildClaudeMetadataHttpClient(httpClient)
+    // Lazy: this service is built at app start; most installs never configure a custom endpoint.
+    private val customEndpointHttpClient: OkHttpClient by lazy { buildCustomEndpointHttpClient(httpClient) }
+    private val customEndpointStreamingHttpClient: OkHttpClient by lazy {
+        customEndpointHttpClient.newBuilder()
+            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .build()
+    }
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -283,7 +304,7 @@ class AiChatService(
         provider: AiProvider,
         apiKeys: ApiKeyConfig
     ): List<String> = withContext(Dispatchers.IO) {
-        val config = requireNotNull(OpenAiCompatibleProtocol.configFor(provider)) {
+        val config = requireNotNull(OpenAiCompatibleProtocol.configFor(provider, apiKeys)) {
             "No OpenAI-compatible provider config for ${provider.id}"
         }
         val catalogUrl = requireNotNull(config.modelCatalogUrl) {
@@ -294,6 +315,7 @@ class AiChatService(
             AiProvider.OPENROUTER -> apiKeys.openRouterKey
             AiProvider.AIHUBMIX -> apiKeys.aiHubMixKey
             AiProvider.VERCEL -> apiKeys.vercelAiGatewayKey
+            AiProvider.CUSTOM -> apiKeys.customEndpointKey
             else -> ""
         }.trim()
         if (apiKey.isNotBlank()) {
@@ -303,9 +325,15 @@ class AiChatService(
 
         val responseBody = executeCancellableJson(
             request = requestBuilder.build(),
-            httpErrorContext = "${provider.shortName} model catalog"
+            httpErrorContext = "${provider.shortName} model catalog",
+            client = if (provider == AiProvider.CUSTOM) customEndpointHttpClient else httpClient,
+            maxResponseBytes = MAX_CUSTOM_ENDPOINT_CATALOG_BYTES.takeIf { provider == AiProvider.CUSTOM }
         )
-        gatewayModelOptions(provider, parseGatewayModelCatalog(provider, responseBody))
+        val models = gatewayModelOptions(provider, parseGatewayModelCatalog(provider, responseBody))
+        // A configured fallback model stays selectable even when the endpoint does not list it.
+        val fallbackModel = apiKeys.customEndpointModel.trim()
+            .takeIf { provider == AiProvider.CUSTOM && it.isNotEmpty() }
+        (listOfNotNull(fallbackModel) + models).distinct()
     }
 
     /**
@@ -933,7 +961,9 @@ class AiChatService(
         val root = json.parseToJsonElement(rawJson).jsonObject
         val data = root["data"] as? JsonArray
             ?: error("Malformed ${provider.shortName} model catalog: missing data array")
-        return data.mapNotNull { element ->
+        // Capped before mapping, sorting and deduplication, so an oversized list costs nothing more.
+        val entries = if (provider == AiProvider.CUSTOM) data.take(MAX_CUSTOM_ENDPOINT_MODELS) else data
+        return entries.mapNotNull { element ->
             val model = element.jsonObject
             when (provider) {
                 AiProvider.OPENROUTER -> {
@@ -974,6 +1004,18 @@ class AiChatService(
                         supportsTextOutput =
                             model["type"]?.jsonPrimitive?.contentOrNull?.equals("language", ignoreCase = true) == true &&
                                 supportsText
+                    )
+                }
+                // Plain OpenAI `/models`: ids only, no modality or price metadata to filter on.
+                AiProvider.CUSTOM -> {
+                    val id = model["id"]?.jsonPrimitive?.contentOrNull
+                        ?.takeIf { it.length <= MAX_CUSTOM_ENDPOINT_MODEL_ID_CHARS }
+                        ?: return@mapNotNull null
+                    GatewayModelCatalogEntry(
+                        id = id,
+                        inputPriceUsd = null,
+                        outputPriceUsd = null,
+                        supportsTextOutput = true
                     )
                 }
                 else -> return@mapNotNull null
@@ -1098,7 +1140,9 @@ class AiChatService(
             }
         }
         val startTime = System.currentTimeMillis()
+        // Only the custom endpoint has no bundled default; it falls back to the configured model.
         val effectiveModel = resolveEffectiveModel(provider, modelName)
+            .ifEmpty { if (provider == AiProvider.CUSTOM) apiKeys.customEndpointModel.trim() else "" }
         var resolvedModel = effectiveModel
         var providerReplayState: String? = null
         var providerUsage: ProviderUsage? = null
@@ -1113,8 +1157,11 @@ class AiChatService(
             AiProvider.OPENROUTER -> Pair(apiKeys.openRouterKey.trim(), apiKeys.openRouterKey.isNotBlank())
             AiProvider.AIHUBMIX -> Pair(apiKeys.aiHubMixKey.trim(), apiKeys.aiHubMixKey.isNotBlank())
             AiProvider.VERCEL -> Pair(apiKeys.vercelAiGatewayKey.trim(), apiKeys.vercelAiGatewayKey.isNotBlank())
+            // Configured by its URL; the key is optional.
+            AiProvider.CUSTOM -> Pair(apiKeys.customEndpointKey.trim(), apiKeys.hasKeyFor(AiProvider.CUSTOM))
             AiProvider.ALL -> Pair("", false)
         }
+        val customEndpointTag = apiKeys.customEndpointTag().takeIf { provider == AiProvider.CUSTOM }
 
         // If key is available, attempt real live REST call
         if (isKeyProvided) {
@@ -1191,18 +1238,28 @@ class AiChatService(
                         providerUsage = result.usage
                         result.text
                     }
-                    AiProvider.DEEPSEEK, AiProvider.KIMI, AiProvider.OPENROUTER, AiProvider.AIHUBMIX, AiProvider.VERCEL -> {
-                        val config = checkNotNull(OpenAiCompatibleProtocol.configFor(provider))
+                    AiProvider.DEEPSEEK, AiProvider.KIMI, AiProvider.OPENROUTER, AiProvider.AIHUBMIX, AiProvider.VERCEL,
+                    AiProvider.CUSTOM -> {
+                        check(effectiveModel.isNotEmpty()) {
+                            "No model selected. Pick one from the endpoint's list or set a default model in API Keys."
+                        }
+                        val config = checkNotNull(OpenAiCompatibleProtocol.configFor(provider, apiKeys))
+                        // Turns produced by a previous custom endpoint are not replayed to this one.
+                        val history = if (provider == AiProvider.CUSTOM) {
+                            conversationHistory.scopedToCustomEndpoint(customEndpointTag)
+                        } else {
+                            conversationHistory
+                        }
                         val result = if (onTextDelta != null) {
                             callOpenAiCompatibleStreamApi(
                                 config, prompt, effectiveModel, key, systemInstruction,
-                                conversationHistory, provider, onTextDelta,
+                                history, provider, onTextDelta,
                                 onResolvedModel = { resolvedModel = it }
                             )
                         } else {
                             callOpenAiCompatibleApi(
                                 config, prompt, effectiveModel, key, systemInstruction,
-                                conversationHistory, provider,
+                                history, provider,
                                 onResolvedModel = { resolvedModel = it }
                             )
                         }
@@ -1227,7 +1284,8 @@ class AiChatService(
                         latencyMs = latency,
                         usage = providerUsage,
                         activeProfileNotes = activeNotes,
-                        providerReplayState = providerReplayState
+                        providerReplayState = providerReplayState,
+                        endpointTag = customEndpointTag
                     )
                 }
             } catch (e: Exception) {
@@ -2779,9 +2837,10 @@ class AiChatService(
         isComplete: (JsonObject) -> Boolean,
         onTextDelta: (String) -> Unit,
         completeOnDoneSentinel: Boolean = false,
-        onEvent: ((JsonObject) -> Unit)? = null
+        onEvent: ((JsonObject) -> Unit)? = null,
+        client: OkHttpClient = streamingHttpClient
     ): String = suspendCancellableCoroutine { continuation ->
-        val call = streamingHttpClient.newCall(request)
+        val call = client.newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
         call.enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
@@ -2941,7 +3000,8 @@ class AiChatService(
         request: Request,
         emptyResponseMessage: String = "Empty response from server",
         httpErrorContext: String? = null,
-        client: OkHttpClient = httpClient
+        client: OkHttpClient = httpClient,
+        maxResponseBytes: Long? = null
     ): String = suspendCancellableCoroutine { continuation ->
         val call = client.newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
@@ -2953,7 +3013,18 @@ class AiChatService(
             override fun onResponse(call: Call, response: Response) {
                 try {
                     response.use {
-                        val responseBody = response.body?.string() ?: throw IOException(emptyResponseMessage)
+                        val responseBody = response.body?.let { body ->
+                            if (maxResponseBytes == null) {
+                                body.string()
+                            } else {
+                                // Bounded before anything is decoded: the size is the server's choice.
+                                val source = body.source()
+                                if (source.request(maxResponseBytes + 1)) {
+                                    throw IOException("Response is larger than the allowed $maxResponseBytes bytes")
+                                }
+                                source.readUtf8()
+                            }
+                        } ?: throw IOException(emptyResponseMessage)
                         if (!response.isSuccessful) {
                             val fallbackError = httpErrorContext?.let { context ->
                                 "$context HTTP ${response.code}: ${responseBody.take(160)}"
@@ -2989,8 +3060,9 @@ class AiChatService(
             stream = true
         )
         val requestBuilder = Request.Builder().url(config.endpointUrl)
-            .addHeader(HEADER_AUTHORIZATION, bearerToken(apiKey))
             .addHeader(HEADER_CONTENT_TYPE, JSON_MEDIA_TYPE)
+        // Keyless only for a custom endpoint; every bundled provider requires a key to get here.
+        if (apiKey.isNotEmpty()) requestBuilder.addHeader(HEADER_AUTHORIZATION, bearerToken(apiKey))
         config.extraHeaders.forEach { (name, value) -> requestBuilder.addHeader(name, value) }
         val request = requestBuilder.post(
             requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType())
@@ -3007,7 +3079,8 @@ class AiChatService(
             onEvent = { event ->
                 extractOpenAiCompatibleModel(event)?.let(onResolvedModel)
                 usage = mergeProviderUsage(usage, extractOpenAiCompatibleUsage(event))
-            }
+            },
+            client = if (provider == AiProvider.CUSTOM) customEndpointStreamingHttpClient else streamingHttpClient
         ).ifEmpty { "Received empty message content." }
         return OpenAiCompatibleGenerationResult(text = text, usage = usage)
     }
@@ -3039,12 +3112,15 @@ class AiChatService(
         val body = requestPayload.toString().toRequestBody(JSON_MEDIA_TYPE.toMediaType())
         val requestBuilder = Request.Builder()
             .url(config.endpointUrl)
-            .addHeader(HEADER_AUTHORIZATION, bearerToken(apiKey))
             .addHeader(HEADER_CONTENT_TYPE, JSON_MEDIA_TYPE)
+        if (apiKey.isNotEmpty()) requestBuilder.addHeader(HEADER_AUTHORIZATION, bearerToken(apiKey))
         config.extraHeaders.forEach { (name, value) -> requestBuilder.addHeader(name, value) }
         val request = requestBuilder.post(body).build()
 
-        val responseBody = executeCancellableJson(request)
+        val responseBody = executeCancellableJson(
+            request,
+            client = if (provider == AiProvider.CUSTOM) customEndpointHttpClient else httpClient
+        )
         val parsed = json.parseToJsonElement(responseBody).jsonObject
         extractOpenAiCompatibleModel(parsed)?.let(onResolvedModel)
         val choices = parsed[JSON_CHOICES_KEY]?.jsonArray
@@ -3347,6 +3423,10 @@ class AiChatService(
 
             AiProvider.VERCEL -> {
                 "**Vercel AI Gateway ($model)**: Gateway simulation for '$prompt'. Add a Vercel AI Gateway key to use the live model catalog while keeping gateway traffic outside the default multi-provider compare."
+            }
+
+            AiProvider.CUSTOM -> {
+                "**Custom endpoint ($model)**: Simulation for '$prompt'. Add an HTTPS OpenAI-compatible endpoint in API Keys to send this to your own server; it stays outside the default multi-provider compare."
             }
 
             AiProvider.ALL -> "Multi-provider dispatch."

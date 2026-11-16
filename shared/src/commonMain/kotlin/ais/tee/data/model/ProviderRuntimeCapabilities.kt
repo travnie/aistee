@@ -236,7 +236,9 @@ fun AiProvider.runtimeCapabilities(): ProviderRuntimeCapabilities = when (this) 
     AiProvider.KIMI,
     AiProvider.OPENROUTER,
     AiProvider.AIHUBMIX,
-    AiProvider.VERCEL -> ProviderRuntimeCapabilities(
+    AiProvider.VERCEL,
+    // Declared conservatively: a custom endpoint gets text chat only until capabilities are probed.
+    AiProvider.CUSTOM -> ProviderRuntimeCapabilities(
         transport = NativeChatTransport.OPENAI_COMPATIBLE_CHAT_COMPLETIONS,
         systemInstructionPlacement = SystemInstructionPlacement.SYSTEM_MESSAGE,
         conversationStateStrategy = ConversationStateStrategy.BOUNDED_PROVIDER_TEXT_REPLAY,

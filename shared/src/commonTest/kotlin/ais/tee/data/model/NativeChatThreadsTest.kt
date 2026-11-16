@@ -130,4 +130,33 @@ class NativeChatThreadsTest {
 
         assertNull(NativeChatArchiveCodec.decode(NativeChatArchiveCodec.encode(archive)))
     }
+
+    @Test
+    fun changedCustomEndpointResetsItsModelInEveryConversationAndNoOtherProvider() {
+        val archive = NativeChatArchive(
+            activeConversationId = "claude",
+            conversations = listOf(
+                NativeChatConversation(
+                    id = "custom",
+                    createdAtEpochMs = 1,
+                    selectedProvider = AiProvider.CUSTOM,
+                    selectedModel = "model-a"
+                ),
+                NativeChatConversation(
+                    id = "claude",
+                    createdAtEpochMs = 2,
+                    selectedProvider = AiProvider.CLAUDE,
+                    selectedModel = "claude-model"
+                )
+            )
+        )
+
+        val reset = archive.withCustomEndpointModel("fallback")
+
+        assertEquals("claude", reset.activeConversationId)
+        assertEquals("fallback", reset.conversations.first { it.id == "custom" }.selectedModel)
+        assertEquals(1, reset.conversations.first { it.id == "custom" }.updatedAtEpochMs)
+        assertEquals("claude-model", reset.conversations.first { it.id == "claude" }.selectedModel)
+        assertEquals("", archive.withCustomEndpointModel("").conversations.first { it.id == "custom" }.selectedModel)
+    }
 }

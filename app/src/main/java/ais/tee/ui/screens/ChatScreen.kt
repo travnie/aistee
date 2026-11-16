@@ -17,6 +17,7 @@ import ais.tee.data.model.canBeStarred
 import ais.tee.data.model.canInsertIntoDraft
 import ais.tee.data.model.canStartNativeChatFork
 import ais.tee.data.model.clipNativeStarNote
+import ais.tee.data.model.customEndpointBaseUrlFromInput
 import ais.tee.data.model.isCompletedAssistantResponse
 import ais.tee.data.model.nativeChatTimeline
 import ais.tee.data.model.quoteIntoNativeChatDraft
@@ -60,6 +61,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -106,6 +108,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
@@ -828,7 +831,8 @@ private fun NativeChatDetailPane(
                                             uiState.apiKeyConfig.kimiKey.isNotBlank() ||
                                             uiState.apiKeyConfig.openRouterKey.isNotBlank() ||
                                             uiState.apiKeyConfig.aiHubMixKey.isNotBlank() ||
-                                            uiState.apiKeyConfig.vercelAiGatewayKey.isNotBlank()
+                                            uiState.apiKeyConfig.vercelAiGatewayKey.isNotBlank() ||
+                                            uiState.apiKeyConfig.customEndpointUrl.isNotBlank()
                                         if (hasAnyKey) {
                                             Badge(
                                                 containerColor = AccentEmerald,
@@ -1362,6 +1366,7 @@ private fun NativeChatDetailPane(
                                     AiProvider.OPENROUTER -> "Ask a free OpenRouter model..."
                                     AiProvider.AIHUBMIX -> "Ask a free AIHubMix model..."
                                     AiProvider.VERCEL -> "Ask via Vercel AI Gateway..."
+                                    AiProvider.CUSTOM -> "Ask your custom endpoint..."
                                 }
                                 Text(
                                     text = destination,
@@ -1644,8 +1649,12 @@ private fun NativeChatDetailPane(
         ApiKeySettingsDialog(
             currentKeys = uiState.apiKeyConfig,
             onDismiss = { viewModel.setShowApiKeyDialog(false) },
-            onSave = { gemini, openAi, claude, deepseek, kimi, openRouter, aiHubMix, vercel ->
-                viewModel.saveApiKeys(gemini, openAi, claude, deepseek, kimi, openRouter, aiHubMix, vercel)
+            onSave = { gemini, openAi, claude, deepseek, kimi, openRouter, aiHubMix, vercel,
+                customUrl, customKey, customModel ->
+                viewModel.saveApiKeys(
+                    gemini, openAi, claude, deepseek, kimi, openRouter, aiHubMix, vercel,
+                    customUrl, customKey, customModel,
+                )
             },
         )
     }
@@ -2321,6 +2330,9 @@ fun ApiKeySettingsDialog(
         openRouter: String,
         aiHubMix: String,
         vercel: String,
+        customEndpointUrl: String,
+        customEndpointKey: String,
+        customEndpointModel: String,
     ) -> Unit,
 ) {
     var geminiKey by remember { mutableStateOf(currentKeys.geminiKey) }
@@ -2331,6 +2343,11 @@ fun ApiKeySettingsDialog(
     var openRouterKey by remember { mutableStateOf(currentKeys.openRouterKey) }
     var aiHubMixKey by remember { mutableStateOf(currentKeys.aiHubMixKey) }
     var vercelAiGatewayKey by remember { mutableStateOf(currentKeys.vercelAiGatewayKey) }
+    var customEndpointUrl by remember { mutableStateOf(currentKeys.customEndpointUrl) }
+    var customEndpointKey by remember { mutableStateOf(currentKeys.customEndpointKey) }
+    var customEndpointModel by remember { mutableStateOf(currentKeys.customEndpointModel) }
+    val customEndpointUrlIsValid = customEndpointUrl.isBlank() ||
+        customEndpointBaseUrlFromInput(customEndpointUrl) != null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2480,11 +2497,70 @@ fun ApiKeySettingsDialog(
                         .fillMaxWidth()
                         .testTag("input_vercel_ai_gateway_key"),
                 )
+
+                Text(
+                    text = "Custom OpenAI-compatible endpoint. HTTPS only; for a local server " +
+                        "(Ollama, LM Studio, llama.cpp) put it behind an HTTPS tunnel or proxy.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                OutlinedTextField(
+                    value = customEndpointUrl,
+                    onValueChange = { customEndpointUrl = it },
+                    label = { Text("Custom endpoint base URL") },
+                    placeholder = { Text("https://host/v1") },
+                    singleLine = true,
+                    isError = !customEndpointUrlIsValid,
+                    supportingText = if (customEndpointUrlIsValid) {
+                        null
+                    } else {
+                        { Text("Use an https:// base URL without query, fragment or credentials.") }
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    leadingIcon = {
+                        Icon(Icons.Default.Dns, contentDescription = null, tint = Color(0xFF0F766E))
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_custom_endpoint_url"),
+                )
+
+                OutlinedTextField(
+                    value = customEndpointKey,
+                    onValueChange = { customEndpointKey = it },
+                    label = { Text("Custom endpoint key (optional)") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    leadingIcon = {
+                        Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFF0F766E))
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_custom_endpoint_key"),
+                )
+
+                OutlinedTextField(
+                    value = customEndpointModel,
+                    onValueChange = { customEndpointModel = it },
+                    label = { Text("Custom endpoint model (optional)") },
+                    placeholder = { Text("Needed only if the endpoint lists no models") },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_custom_endpoint_model"),
+                )
             }
         },
         confirmButton = {
             Button(
-                onClick = { onSave(geminiKey, openAiKey, claudeKey, deepseekKey, kimiKey, openRouterKey, aiHubMixKey, vercelAiGatewayKey) },
+                onClick = {
+                    onSave(
+                        geminiKey, openAiKey, claudeKey, deepseekKey, kimiKey, openRouterKey, aiHubMixKey,
+                        vercelAiGatewayKey, customEndpointUrl, customEndpointKey, customEndpointModel,
+                    )
+                },
+                enabled = customEndpointUrlIsValid,
                 colors = ButtonDefaults.buttonColors(containerColor = AccentEmerald),
                 modifier = Modifier.testTag("btn_save_api_keys"),
             ) {
@@ -2515,6 +2591,7 @@ fun getProviderColor(provider: AiProvider): Color {
         AiProvider.OPENROUTER -> Color(0xFF6366F1)
         AiProvider.AIHUBMIX -> Color(0xFF14B8A6)
         AiProvider.VERCEL -> Color(0xFF334155)
+        AiProvider.CUSTOM -> Color(0xFF0F766E)
         AiProvider.ALL -> Color(0xFF8B5CF6)
     }
 }
@@ -2529,6 +2606,7 @@ fun getProviderIcon(provider: AiProvider): ImageVector {
         AiProvider.OPENROUTER -> Icons.Default.Route
         AiProvider.AIHUBMIX -> Icons.Default.Cloud
         AiProvider.VERCEL -> Icons.Default.Cloud
+        AiProvider.CUSTOM -> Icons.Default.Dns
         AiProvider.ALL -> Icons.Default.Hub
     }
 }
