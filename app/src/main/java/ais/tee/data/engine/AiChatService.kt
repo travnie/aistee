@@ -233,7 +233,12 @@ internal fun buildCustomEndpointHttpClient(baseClient: OkHttpClient): OkHttpClie
         .proxy(null)
         .proxySelector(LoopbackDirectProxySelector(baseClient))
         .dns { host ->
-            if (host.equals(LOOPBACK_HOST_NAME, ignoreCase = true)) loopbackAddresses() else baseClient.dns.lookup(host)
+            when {
+                host.equals(LOOPBACK_HOST_NAME, ignoreCase = true) -> loopbackAddresses()
+                // The IPv4 literal stays IPv4 and never reaches a resolver either.
+                isCustomEndpointLoopbackHost(host) -> loopbackAddresses().take(1)
+                else -> baseClient.dns.lookup(host)
+            }
         }
         .build()
 

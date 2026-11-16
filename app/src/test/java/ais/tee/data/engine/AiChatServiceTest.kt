@@ -1404,6 +1404,7 @@ class AiChatServiceTest {
             val loopback = client.dns.lookup("LOCALHOST")
             assertEquals(listOf("127.0.0.1", "0:0:0:0:0:0:0:1"), loopback.map { it.hostAddress })
             assertTrue(loopback.all { it.isLoopbackAddress })
+            assertEquals(listOf("127.0.0.1"), client.dns.lookup("127.0.0.1").map { it.hostAddress })
             assertEquals(listOf(elsewhere), client.dns.lookup("llm.example.com"))
         }
     }
