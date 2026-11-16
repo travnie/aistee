@@ -2499,8 +2499,9 @@ fun ApiKeySettingsDialog(
                 )
 
                 Text(
-                    text = "Custom OpenAI-compatible endpoint. HTTPS only; for a local server " +
-                        "(Ollama, LM Studio, llama.cpp) put it behind an HTTPS tunnel or proxy.",
+                    text = "Custom OpenAI-compatible endpoint. HTTPS, or http://localhost for a server " +
+                        "running on this device. A server on another machine (Ollama, LM Studio, " +
+                        "llama.cpp) needs HTTPS in front.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -2515,7 +2516,7 @@ fun ApiKeySettingsDialog(
                     supportingText = if (customEndpointUrlIsValid) {
                         null
                     } else {
-                        { Text("Use an https:// base URL without query, fragment or credentials.") }
+                        { Text("Use an https:// (or http://localhost) base URL without query, fragment or credentials.") }
                     },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     leadingIcon = {

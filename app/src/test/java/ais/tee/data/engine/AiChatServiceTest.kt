@@ -1383,6 +1383,17 @@ class AiChatServiceTest {
     }
 
     @Test
+    fun customEndpointLoopbackNeverUsesAProxyOrDns() {
+        val client = buildCustomEndpointHttpClient(OkHttpClient())
+
+        listOf("http://localhost:11434/v1", "http://127.0.0.1:1234/v1").forEach { url ->
+            assertEquals(listOf(java.net.Proxy.NO_PROXY), client.proxySelector.select(java.net.URI(url)))
+        }
+        assertEquals(listOf(java.net.InetAddress.getLoopbackAddress()), client.dns.lookup("localhost"))
+        assertEquals(listOf(java.net.InetAddress.getLoopbackAddress()), client.dns.lookup("LOCALHOST"))
+    }
+
+    @Test
     fun customEndpointRepliesFromTheConfiguredHostWithoutAKeyHeader() = runBlocking {
         val requests = mutableListOf<Request>()
         val service = customEndpointService(

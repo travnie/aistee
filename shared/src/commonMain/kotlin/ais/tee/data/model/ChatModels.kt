@@ -269,7 +269,7 @@ enum class AiProvider(
         shortName = "Custom",
         defaultModel = "",
         availableModels = emptyList(),
-        description = "Your own OpenAI-compatible HTTPS endpoint; models come from its live catalog",
+        description = "Your own OpenAI-compatible endpoint (HTTPS, or HTTP on this device); models come from its live catalog",
         participatesInDefaultCompare = false,
     ),
     ;
@@ -321,6 +321,7 @@ fun ApiKeyConfig.hasKeyFor(provider: AiProvider): Boolean = when (provider) {
 }
 
 private const val CUSTOM_ENDPOINT_SCHEME = "https://"
+private const val CUSTOM_ENDPOINT_LOOPBACK_SCHEME = "http://"
 private const val MAX_CUSTOM_ENDPOINT_URL_LENGTH = 512
 private const val MAX_PORT = 65535
 
@@ -331,27 +332,38 @@ private object CustomEndpointUrlRules {
     )
     val path = Regex("""(/[A-Za-z0-9._~!$&'()*+,;=:%-]+)*""")
     val pastedSuffixes = listOf("/chat/completions", "/models")
+
+    /** Hosts the Android network security config opens to cleartext; keep both lists in step. */
+    val loopbackHosts = setOf("localhost", "127.0.0.1")
 }
+
+/** Host the custom endpoint may reach in cleartext: this device's own loopback. */
+fun isCustomEndpointLoopbackHost(host: String): Boolean =
+    host.lowercase() in CustomEndpointUrlRules.loopbackHosts
 
 /**
  * Base URL (no trailing slash) of a custom OpenAI-compatible endpoint, or null when unusable.
  *
- * HTTPS only: prompts and the key never leave the device in cleartext. Userinfo, query and
- * fragment are refused, so the stored value cannot carry credentials or request state. The path is
- * kept as written: this also validates the stored value, where nothing may be stripped again.
+ * HTTPS, or plain HTTP to this device's own loopback only (a model server running on the phone):
+ * prompts and the key never cross a network in cleartext. Userinfo, query and fragment are
+ * refused, so the stored value cannot carry credentials or request state. The path is kept as
+ * written: this also validates the stored value, where nothing may be stripped again.
  */
 fun normalizeCustomEndpointBaseUrl(raw: String): String? {
     val trimmed = raw.trim()
     if (trimmed.length > MAX_CUSTOM_ENDPOINT_URL_LENGTH) return null
-    if (!trimmed.startsWith(CUSTOM_ENDPOINT_SCHEME, ignoreCase = true)) return null
-    val rest = trimmed.substring(CUSTOM_ENDPOINT_SCHEME.length)
+    val scheme = listOf(CUSTOM_ENDPOINT_SCHEME, CUSTOM_ENDPOINT_LOOPBACK_SCHEME)
+        .firstOrNull { trimmed.startsWith(it, ignoreCase = true) } ?: return null
+    val rest = trimmed.substring(scheme.length)
     val authority = rest.substringBefore('/')
     val match = CustomEndpointUrlRules.authority.matchEntire(authority) ?: return null
+    val cleartext = scheme == CUSTOM_ENDPOINT_LOOPBACK_SCHEME
+    if (cleartext && !isCustomEndpointLoopbackHost(match.groupValues[1])) return null
     val port = match.groupValues[4]
     if (port.isNotEmpty() && port.toInt() !in 1..MAX_PORT) return null
     val path = rest.substring(authority.length).trimEnd('/')
     if (!CustomEndpointUrlRules.path.matches(path)) return null
-    return CUSTOM_ENDPOINT_SCHEME + authority.lowercase() + path
+    return scheme + authority.lowercase() + path
 }
 
 /**

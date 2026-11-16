@@ -6,6 +6,7 @@ import ais.tee.data.model.ApiProcessingMode
 import ais.tee.data.model.AsyncProviderJobState
 import ais.tee.data.model.CHAT_ROLE_ASSISTANT
 import ais.tee.data.model.CHAT_ROLE_USER
+import ais.tee.data.model.isCustomEndpointLoopbackHost
 import ais.tee.data.model.ChatGptPlanModel
 import ais.tee.data.model.ClaudeReasoningCapabilities
 import ais.tee.data.model.parseClaudeReasoningCapabilities
@@ -45,12 +46,18 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.RequestBody.Companion.toRequestBody
 import okio.BufferedSource
 import java.io.IOException
+import java.net.InetAddress
+import java.net.Proxy
+import java.net.ProxySelector
+import java.net.SocketAddress
+import java.net.URI
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -213,12 +220,36 @@ internal data class ClaudeBatchResult(
     val errorMessage: String?,
 )
 
-/** The user's own endpoint: a redirect must not carry the prompt or key to another host. */
+/**
+ * The user's own endpoint: a redirect must not carry the prompt or key to another host. Loopback
+ * (the only cleartext target) stays on the device: never through a proxy, never via DNS.
+ */
 internal fun buildCustomEndpointHttpClient(baseClient: OkHttpClient): OkHttpClient =
     baseClient.newBuilder()
         .followRedirects(false)
         .followSslRedirects(false)
+        .proxySelector(LoopbackDirectProxySelector)
+        .dns { host ->
+            if (isCustomEndpointLoopbackHost(host)) {
+                listOf(InetAddress.getLoopbackAddress())
+            } else {
+                Dns.SYSTEM.lookup(host)
+            }
+        }
         .build()
+
+private object LoopbackDirectProxySelector : ProxySelector() {
+    override fun select(uri: URI?): List<Proxy> =
+        if (uri?.host?.let(::isCustomEndpointLoopbackHost) == true) {
+            listOf(Proxy.NO_PROXY)
+        } else {
+            getDefault()?.select(uri) ?: listOf(Proxy.NO_PROXY)
+        }
+
+    override fun connectFailed(uri: URI?, address: SocketAddress?, failure: IOException?) {
+        getDefault()?.connectFailed(uri, address, failure)
+    }
+}
 
 internal fun buildClaudeMetadataHttpClient(baseClient: OkHttpClient): OkHttpClient =
     baseClient.newBuilder()
@@ -3426,7 +3457,7 @@ class AiChatService(
             }
 
             AiProvider.CUSTOM -> {
-                "**Custom endpoint ($model)**: Simulation for '$prompt'. Add an HTTPS OpenAI-compatible endpoint in API Keys to send this to your own server; it stays outside the default multi-provider compare."
+                "**Custom endpoint ($model)**: Simulation for '$prompt'. Add an OpenAI-compatible endpoint (HTTPS, or HTTP on this device) in API Keys to send this to your own server; it stays outside the default multi-provider compare."
             }
 
             AiProvider.ALL -> "Multi-provider dispatch."

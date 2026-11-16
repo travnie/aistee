@@ -216,6 +216,13 @@ class ChatModelsTest {
             "",
             "llm.example.com/v1",
             "http://192.168.1.10:11434/v1",
+            "http://10.0.2.2:11434/v1",
+            "http://[::1]:11434/v1",
+            "http://localhost.example.com/v1",
+            "http://127.0.0.1.example.com/v1",
+            "http://127.0.0.2:11434/v1",
+            "http://user@localhost:11434/v1",
+            "http://localhost:11434@evil.example/v1",
             "ftp://llm.example.com",
             "https://",
             "https://user:pass@llm.example.com/v1",
@@ -229,6 +236,17 @@ class ChatModelsTest {
             "https://llm.example.com\\@evil.example/v1",
             "https://" + "a".repeat(600) + ".example.com",
         ).forEach { rejected -> assertNull(normalizeCustomEndpointBaseUrl(rejected), rejected) }
+    }
+
+    @Test
+    fun cleartextIsAcceptedOnlyForThisDevicesLoopback() {
+        assertEquals("http://localhost:11434/v1", normalizeCustomEndpointBaseUrl(" HTTP://LocalHost:11434/v1/ "))
+        assertEquals("http://127.0.0.1:1234/v1", customEndpointBaseUrlFromInput("http://127.0.0.1:1234/v1/models"))
+        assertEquals("http://localhost", normalizeCustomEndpointBaseUrl("http://localhost"))
+        assertTrue(ApiKeyConfig(customEndpointUrl = "http://localhost:11434/v1").hasKeyFor(AiProvider.CUSTOM))
+        assertFalse(
+            customEndpointTag("http://localhost:11434/v1") == customEndpointTag("https://localhost:11434/v1")
+        )
     }
 
     @Test
