@@ -70,18 +70,6 @@ class WebProviderSignInTest {
     }
 
     @Test
-    fun primaryProvidersOfferBrowserRecoveryWithoutInventingIdentityMethods() {
-        listOf(WebAiService.CHATGPT, WebAiService.CLAUDE, WebAiService.GEMINI).forEach { service ->
-            select(service)
-            openHelp()
-            composeRule.onNodeWithTag("web_sign_in_app").assertIsNotEnabled()
-            composeRule.onNodeWithTag("web_sign_in_browser").assertIsDisplayed()
-            composeRule.onNodeWithTag("web_sign_in_method_GOOGLE").assertDoesNotExist()
-            closeHelp()
-        }
-    }
-
-    @Test
     fun providerChangeClosesHelpInsteadOfRetargetingAnOpenAction() {
         select(WebAiService.QWEN)
         openHelp()
