@@ -29,7 +29,7 @@ class ProviderOnboardingTest {
             }
 
         WebAiService.entries.filterNot { it in onboardingV2Providers }.forEach {
-            assertNull(it.onboardingCapabilities().signInUrl)
+            assertEquals(it.url, it.onboardingCapabilities().signInUrl, it.name)
         }
     }
 
