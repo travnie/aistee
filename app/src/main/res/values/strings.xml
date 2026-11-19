@@ -67,7 +67,7 @@
     <string name="web_sign_in_google_hint">Google sign-in may block embedded browsers. Use the browser option to continue there.</string>
     <string name="web_sign_in_app_hint">Open the provider’s entry page in this tab. Unsent text on the current page may be lost. Embedded sign-in has not been verified for this provider.</string>
     <string name="web_sign_in_app">Open in Aistee</string>
-    <string name="web_sign_in_browser_hint">Continue in your browser using its own session. Signing in there will not sign in this Aistee tab.</string>
+    <string name="web_sign_in_browser_hint">Try the provider website in your browser or supported app. Its session is separate from this Aistee tab; sign-in availability depends on the provider.</string>
     <string name="web_sign_in_browser">Open in browser</string>
     <string name="web_sign_in_close">Close</string>
     <string name="web_sign_in_browser_failure">Could not launch external browser</string>

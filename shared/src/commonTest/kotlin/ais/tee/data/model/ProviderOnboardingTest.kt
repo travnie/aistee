@@ -131,6 +131,13 @@ class ProviderOnboardingTest {
     }
 
     @Test
+    fun manualGoogleAdviceIsProviderScoped() {
+        WebAiService.entries.forEach { service ->
+            assertEquals(service == WebAiService.GEMINI, service.onboardingCapabilities().googleBrowserAdvice)
+        }
+    }
+
+    @Test
     fun providerMethodsDoNotClaimEmbeddedSessionHandoff() {
         onboardingV2Providers.forEach { service ->
             val capabilities = service.onboardingCapabilities()

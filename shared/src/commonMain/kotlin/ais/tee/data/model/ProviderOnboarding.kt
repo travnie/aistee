@@ -28,7 +28,8 @@ data class ProviderOnboardingCapabilities(
     val preferredIdentityMethods: List<ProviderIdentityMethod> = emptyList(),
     val embeddedSessionHandoff: EmbeddedSessionHandoff = EmbeddedSessionHandoff.UNVERIFIED,
     /** Provider-owned entry page; never a constructed identity-provider OAuth request. */
-    val signInUrl: String? = null
+    val signInUrl: String? = null,
+    val googleBrowserAdvice: Boolean = false
 ) {
     val hasIdentityAssistedPath: Boolean
         get() = preferredIdentityMethods.isNotEmpty()
@@ -93,6 +94,11 @@ fun WebAiService.onboardingCapabilities(): ProviderOnboardingCapabilities = when
     WebAiService.META_AI -> ProviderOnboardingCapabilities(
         preferredIdentityMethods = listOf(ProviderIdentityMethod.META_ACCOUNT),
         signInUrl = url
+    )
+    WebAiService.GEMINI -> ProviderOnboardingCapabilities(
+        embeddedSessionHandoff = EmbeddedSessionHandoff.UNSUPPORTED,
+        signInUrl = url,
+        googleBrowserAdvice = true
     )
     else -> ProviderOnboardingCapabilities(
         embeddedSessionHandoff = EmbeddedSessionHandoff.UNSUPPORTED,

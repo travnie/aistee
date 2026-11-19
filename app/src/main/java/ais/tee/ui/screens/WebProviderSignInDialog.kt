@@ -32,7 +32,8 @@ internal fun WebProviderSignInDialog(
     onOpenInBrowser: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val methods = service.onboardingCapabilities().preferredIdentityMethods
+    val capabilities = service.onboardingCapabilities()
+    val methods = capabilities.preferredIdentityMethods
     val selected = service.resolveOnboardingIdentityMethod(preferredMethod)
     AlertDialog(
         modifier = Modifier.testTag("web_sign_in_dialog"),
@@ -59,10 +60,12 @@ internal fun WebProviderSignInDialog(
                 if (selected != null) {
                     Text(stringResource(R.string.web_sign_in_instruction, identityMethodLabel(selected)))
                 }
-                if (selected == ProviderIdentityMethod.GOOGLE || service == WebAiService.GEMINI) {
+                if (selected == ProviderIdentityMethod.GOOGLE || capabilities.googleBrowserAdvice) {
                     Text(stringResource(R.string.web_sign_in_google_hint))
                 }
-                Text(stringResource(R.string.web_sign_in_app_hint))
+                if (canOpenInApp) {
+                    Text(stringResource(R.string.web_sign_in_app_hint))
+                }
                 Button(
                     onClick = onOpenInApp,
                     enabled = canOpenInApp,
