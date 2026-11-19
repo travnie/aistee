@@ -95,7 +95,8 @@ fun WebAiService.onboardingCapabilities(): ProviderOnboardingCapabilities = when
         signInUrl = url
     )
     else -> ProviderOnboardingCapabilities(
-        embeddedSessionHandoff = EmbeddedSessionHandoff.UNSUPPORTED
+        embeddedSessionHandoff = EmbeddedSessionHandoff.UNSUPPORTED,
+        signInUrl = url
     )
 }
 

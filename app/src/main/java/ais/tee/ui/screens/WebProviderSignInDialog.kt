@@ -43,7 +43,11 @@ internal fun WebProviderSignInDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(stringResource(R.string.web_sign_in_preference))
+                if (methods.isEmpty()) {
+                    Text(stringResource(R.string.web_sign_in_manual_hint))
+                } else {
+                    Text(stringResource(R.string.web_sign_in_preference))
+                }
                 methods.forEach { method ->
                     FilterChip(
                         selected = method == selected,
@@ -55,7 +59,7 @@ internal fun WebProviderSignInDialog(
                 if (selected != null) {
                     Text(stringResource(R.string.web_sign_in_instruction, identityMethodLabel(selected)))
                 }
-                if (selected == ProviderIdentityMethod.GOOGLE) {
+                if (selected == ProviderIdentityMethod.GOOGLE || service == WebAiService.GEMINI) {
                     Text(stringResource(R.string.web_sign_in_google_hint))
                 }
                 Text(stringResource(R.string.web_sign_in_app_hint))
