@@ -40,12 +40,21 @@ class WebProviderSignInTest {
         override fun before() {
             assumeTrue(WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE))
             val ready = CountDownLatch(1)
-            ProxyController.getInstance().setProxyOverride(
-                ProxyConfig.Builder().addProxyRule("127.0.0.1:9").build(),
-                executor,
-                { ready.countDown() },
-            )
-            assertTrue("WebView proxy not applied", ready.await(10, TimeUnit.SECONDS))
+            try {
+                ProxyController.getInstance().setProxyOverride(
+                    ProxyConfig.Builder().addProxyRule("127.0.0.1:9").build(),
+                    executor,
+                    { ready.countDown() },
+                )
+                assertTrue("WebView proxy not applied", ready.await(10, TimeUnit.SECONDS))
+            } catch (failure: Throwable) {
+                try {
+                    after()
+                } catch (cleanup: Throwable) {
+                    failure.addSuppressed(cleanup)
+                }
+                throw failure
+            }
         }
 
         override fun after() {
@@ -102,13 +111,19 @@ class WebProviderSignInTest {
     }
 
     @Test
-    fun primaryProvidersExposeSignInHelpFromHub() {
-        listOf(WebAiService.CHATGPT, WebAiService.CLAUDE, WebAiService.GEMINI).forEach { service ->
-            select(service)
-            openHelp()
-            composeRule.onNodeWithTag("web_sign_in_browser").performScrollTo().assertIsDisplayed()
-            closeHelp()
-        }
+    fun chatGptExposesSignInHelpFromHub() = verifySignInHelp(WebAiService.CHATGPT)
+
+    @Test
+    fun claudeExposesSignInHelpFromHub() = verifySignInHelp(WebAiService.CLAUDE)
+
+    @Test
+    fun geminiExposesSignInHelpFromHub() = verifySignInHelp(WebAiService.GEMINI)
+
+    private fun verifySignInHelp(service: WebAiService) {
+        select(service)
+        openHelp()
+        composeRule.onNodeWithTag("web_sign_in_browser").performScrollTo().assertIsDisplayed()
+        closeHelp()
     }
 
     @Test
@@ -131,7 +146,8 @@ class WebProviderSignInTest {
 
     private fun openHelp() {
         composeRule.onNodeWithTag("btn_web_more").performClick()
-        composeRule.onNodeWithTag("btn_web_sign_in_help").performClick()
+        // Primary providers have additional turn-navigation items above sign-in help.
+        composeRule.onNodeWithTag("btn_web_sign_in_help").performScrollTo().performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag("web_sign_in_dialog").fetchSemanticsNodes().isNotEmpty() &&
                 composeRule.onAllNodesWithTag("web_sign_in_close").fetchSemanticsNodes().isNotEmpty()
