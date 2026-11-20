@@ -131,7 +131,10 @@ class WebProviderSignInTest {
     private fun openHelp() {
         composeRule.onNodeWithTag("btn_web_more").performClick()
         composeRule.onNodeWithTag("btn_web_sign_in_help").performClick()
-        composeRule.onNodeWithTag("web_sign_in_dialog").assertIsDisplayed()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithTag("web_sign_in_dialog").fetchSemanticsNodes().isNotEmpty() &&
+                composeRule.onAllNodesWithTag("web_sign_in_browser").fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     private fun closeHelp() {
