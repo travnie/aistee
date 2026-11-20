@@ -19,6 +19,18 @@ class ChatModelsTest {
     }
 
     @Test
+    fun providerSearchPreservesSectionsAndSupportsBrandNames() {
+        val sections = webChatSections(setOf(WebAiService.CHATGPT, WebAiService.QWEN))
+        val openAi = filterWebChatSections(sections, " OPENAI ")
+        assertEquals(listOf(WebAiService.CHATGPT), openAi.favorites)
+        assertEquals(openAi.favorites, openAi.all)
+        assertEquals(listOf(WebAiService.VIBE), filterWebChatSections(sections, "mistral").primary)
+        assertEquals(listOf(WebAiService.GROK), filterWebChatSections(sections, "xAI").additional)
+        assertEquals(sections, filterWebChatSections(sections, "  "))
+        assertTrue(filterWebChatSections(sections, "missing-provider").all.isEmpty())
+    }
+
+    @Test
     fun webChatGroupsCoverEveryAccountBackedProviderExactlyOnce() {
         assertEquals(
             listOf(

@@ -152,6 +152,21 @@ fun webChatSections(favorites: Set<WebAiService>): WebChatSections = WebChatSect
     additional = WebAiService.additionalChats.filterNot(favorites::contains),
 )
 
+fun filterWebChatSections(sections: WebChatSections, query: String): WebChatSections {
+    val term = query.trim()
+    if (term.isEmpty()) return sections
+    fun matches(service: WebAiService): Boolean =
+        service.id.contains(term, ignoreCase = true) ||
+            service.shortName.contains(term, ignoreCase = true) ||
+            service.displayName.contains(term, ignoreCase = true) ||
+            service.description.contains(term, ignoreCase = true)
+    return WebChatSections(
+        favorites = sections.favorites.filter(::matches),
+        primary = sections.primary.filter(::matches),
+        additional = sections.additional.filter(::matches),
+    )
+}
+
 @Serializable
 enum class AiProvider(
     val id: String,

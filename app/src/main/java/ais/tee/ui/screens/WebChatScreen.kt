@@ -61,6 +61,7 @@ import ais.tee.data.model.onboardingCapabilities
 import ais.tee.data.preferences.WebChatPreferencesStore
 import ais.tee.R
 import ais.tee.data.model.webChatSections
+import ais.tee.data.model.filterWebChatSections
 import ais.tee.data.model.WebChatActivityStatus
 import ais.tee.data.model.WebChatGenerationObservation
 import ais.tee.data.model.markWebChatActivityRead
@@ -2236,7 +2237,7 @@ private fun WebChatToolbar(
 }
 
 @Composable
-private fun WebProviderDrawer(
+internal fun WebProviderDrawer(
     persistent: Boolean,
     selectedService: WebAiService,
     activityStatuses: Map<WebAiService, WebChatActivityStatus>,
@@ -2247,7 +2248,18 @@ private fun WebProviderDrawer(
     onOpenNativeCompare: () -> Unit,
     onOpenStudio: () -> Unit
 ) {
-    val sections = webChatSections(favoriteServices)
+    var query by remember { mutableStateOf("") }
+    val sections = remember(favoriteServices, query) {
+        filterWebChatSections(webChatSections(favoriteServices), query)
+    }
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    fun chooseProvider(service: WebAiService) {
+        focusManager.clearFocus()
+        keyboard?.hide()
+        query = ""
+        onSelectService(service)
+    }
     val drawerContent: @Composable () -> Unit = {
         Column(
             modifier = Modifier
@@ -2260,6 +2272,32 @@ private fun WebProviderDrawer(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 12.dp)
             )
+
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = { Text(stringResource(R.string.web_provider_search)) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = if (query.isNotEmpty()) {
+                    {
+                        IconButton(onClick = { query = "" }, modifier = Modifier.testTag("btn_clear_web_provider_search")) {
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.web_provider_search_clear))
+                        }
+                    }
+                } else null,
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
+                    .testTag("web_provider_search")
+            )
+
+            if (sections.all.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.web_provider_search_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
+                )
+            }
 
             if (sections.favorites.isNotEmpty()) {
                 Text(
@@ -2276,7 +2314,7 @@ private fun WebProviderDrawer(
                         activityStatus = activityStatuses[service] ?: WebChatActivityStatus.IDLE,
                         favicon = providerFavicons[service],
                         onToggleFavorite = { onToggleFavorite(service) },
-                        onSelect = { onSelectService(service) }
+                        onSelect = { chooseProvider(service) }
                     )
                 }
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
@@ -2290,7 +2328,7 @@ private fun WebProviderDrawer(
                     activityStatus = activityStatuses[service] ?: WebChatActivityStatus.IDLE,
                     favicon = providerFavicons[service],
                     onToggleFavorite = { onToggleFavorite(service) },
-                    onSelect = { onSelectService(service) }
+                    onSelect = { chooseProvider(service) }
                 )
             }
 
@@ -2309,7 +2347,7 @@ private fun WebProviderDrawer(
                         activityStatus = activityStatuses[service] ?: WebChatActivityStatus.IDLE,
                         favicon = providerFavicons[service],
                         onToggleFavorite = { onToggleFavorite(service) },
-                        onSelect = { onSelectService(service) }
+                        onSelect = { chooseProvider(service) }
                     )
                 }
             }
