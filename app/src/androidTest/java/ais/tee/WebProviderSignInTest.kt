@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.webkit.ProxyConfig
@@ -105,7 +106,7 @@ class WebProviderSignInTest {
         listOf(WebAiService.CHATGPT, WebAiService.CLAUDE, WebAiService.GEMINI).forEach { service ->
             select(service)
             openHelp()
-            composeRule.onNodeWithTag("web_sign_in_browser").assertExists()
+            composeRule.onNodeWithTag("web_sign_in_browser").performScrollTo().assertIsDisplayed()
             closeHelp()
         }
     }
@@ -133,8 +134,10 @@ class WebProviderSignInTest {
         composeRule.onNodeWithTag("btn_web_sign_in_help").performClick()
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodesWithTag("web_sign_in_dialog").fetchSemanticsNodes().isNotEmpty() &&
-                composeRule.onAllNodesWithTag("web_sign_in_browser").fetchSemanticsNodes().isNotEmpty()
+                composeRule.onAllNodesWithTag("web_sign_in_close").fetchSemanticsNodes().isNotEmpty()
         }
+        // Assert visible dialog content, not the displaced container semantics during transitions.
+        composeRule.onNodeWithTag("web_sign_in_close").assertIsDisplayed()
     }
 
     private fun closeHelp() {
