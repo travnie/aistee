@@ -51,6 +51,9 @@
     <string name="notification_reply_sending">Sending reply…</string>
     <string name="notification_reply_failed">Reply failed. Open Aistee to retry.</string>
     <string name="notification_system_disabled">Notifications are disabled for Aistee in Android settings.</string>
+    <string name="web_provider_search">Find provider</string>
+    <string name="web_provider_search_clear">Clear provider search</string>
+    <string name="web_provider_search_empty">No matching providers</string>
     <string name="web_find_title">Find in page</string>
     <string name="web_find_close">Close search</string>
     <string name="web_find_loaded_text">Search text loaded on this page</string>
