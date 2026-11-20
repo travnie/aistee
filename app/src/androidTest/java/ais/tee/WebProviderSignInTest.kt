@@ -9,21 +9,52 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.webkit.ProxyConfig
+import androidx.webkit.ProxyController
+import androidx.webkit.WebViewFeature
 import ais.tee.data.model.ProviderIdentityMethod
 import ais.tee.data.model.WebAiService
 import ais.tee.data.preferences.WebChatPreferencesStore
 import ais.tee.ui.viewmodel.StudioViewModel
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executor
+import java.util.concurrent.TimeUnit
 import org.junit.After
+import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.rules.ExternalResource
 
 @RunWith(AndroidJUnit4::class)
 class WebProviderSignInTest {
-    @get:Rule
+    // Apply before Activity creation; provider navigation stays offline.
+    @get:Rule(order = 0)
+    val offlineWeb = object : ExternalResource() {
+        private val executor = Executor { it.run() }
+
+        override fun before() {
+            assumeTrue(WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE))
+            val ready = CountDownLatch(1)
+            ProxyController.getInstance().setProxyOverride(
+                ProxyConfig.Builder().addProxyRule("127.0.0.1:9").build(),
+                executor,
+                { ready.countDown() },
+            )
+            assertTrue("WebView proxy not applied", ready.await(10, TimeUnit.SECONDS))
+        }
+
+        override fun after() {
+            val ready = CountDownLatch(1)
+            ProxyController.getInstance().clearProxyOverride(executor) { ready.countDown() }
+            assertTrue("WebView proxy not cleared", ready.await(10, TimeUnit.SECONDS))
+        }
+    }
+
+    @get:Rule(order = 1)
     val composeRule = createAndroidComposeRule<MainActivity>()
     private lateinit var preferences: WebChatPreferencesStore
     private var originalPreference: ProviderIdentityMethod? = null
@@ -67,6 +98,16 @@ class WebProviderSignInTest {
         openHelp()
         composeRule.onNodeWithTag("web_sign_in_app").assertIsNotEnabled()
         assertTrue(composeRule.onAllNodesWithTag("web_sign_in_browser").fetchSemanticsNodes().isNotEmpty())
+    }
+
+    @Test
+    fun primaryProvidersExposeSignInHelpFromHub() {
+        listOf(WebAiService.CHATGPT, WebAiService.CLAUDE, WebAiService.GEMINI).forEach { service ->
+            select(service)
+            openHelp()
+            composeRule.onNodeWithTag("web_sign_in_browser").assertExists()
+            closeHelp()
+        }
     }
 
     @Test
