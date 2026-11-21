@@ -47,6 +47,54 @@ class AdaptiveWebProviderSearchScreenshotTest {
     @Config(qualifiers = "w900dp-h1000dp-xxhdpi")
     fun expandedPersistent() = capture("web_provider_search_expanded", true)
 
+    @Test
+    @Config(qualifiers = "w400dp-h800dp-xxhdpi")
+    fun compactRecentShortcutsLargeText() =
+        captureRecent("web_recent_providers_compact_font150", false, 1.5f)
+
+    @Test
+    @Config(qualifiers = "w900dp-h1000dp-xxhdpi")
+    fun expandedRecentShortcuts() = captureRecent("web_recent_providers_expanded", true)
+
+    private fun captureRecent(name: String, persistent: Boolean, fontScale: Float = 1f) {
+        val selections = mutableListOf<WebAiService>()
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
+                AisteeTheme {
+                    val drawer: @androidx.compose.runtime.Composable () -> Unit = {
+                        WebProviderDrawer(
+                            persistent = persistent,
+                            selectedService = WebAiService.CHATGPT,
+                            activityStatuses = emptyMap(),
+                            providerFavicons = emptyMap(),
+                            favoriteServices = setOf(WebAiService.GEMINI),
+                            recentServices = listOf(
+                                WebAiService.CHATGPT, WebAiService.CLAUDE,
+                                WebAiService.GEMINI, WebAiService.GROK
+                            ),
+                            onToggleFavorite = {},
+                            onSelectService = { selections.add(it) },
+                            onOpenNativeCompare = {},
+                            onOpenStudio = {},
+                        )
+                    }
+                    if (persistent) drawer()
+                    else ModalNavigationDrawer(
+                        drawerState = rememberDrawerState(DrawerValue.Open),
+                        drawerContent = drawer,
+                    ) { Box(Modifier.fillMaxSize()) }
+                }
+            }
+        }
+        compose.onNodeWithTag("btn_recent_web_service_chatgpt").assertDoesNotExist()
+        compose.onNodeWithTag("btn_recent_web_service_gemini").assertDoesNotExist()
+        compose.onNodeWithTag("btn_recent_web_service_claude").assertIsDisplayed()
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
+        compose.onNodeWithTag("btn_recent_web_service_claude").performClick()
+        compose.runOnIdle { assertEquals(listOf(WebAiService.CLAUDE), selections) }
+    }
+
     private fun capture(name: String, persistent: Boolean, fontScale: Float = 1f) {
         val selections = mutableListOf<WebAiService>()
         compose.setContent {
