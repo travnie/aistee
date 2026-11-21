@@ -15,6 +15,25 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34], application = Application::class)
 class WebChatRecentStoreTest {
     @Test
+    fun upgradeSeedsTheLastSelectedProviderWithoutInventingHistory() {
+        val app = RuntimeEnvironment.getApplication()
+        val preferences = app.getSharedPreferences("web_chat_preferences", Context.MODE_PRIVATE)
+        preferences.edit().clear().putString("selected_service", "CHATGPT").commit()
+        try {
+            val store = WebChatPreferencesStore(app)
+            assertEquals(emptyList<WebAiService>(), store.loadRecentWebServices())
+            store.saveSelectedService(WebAiService.CLAUDE)
+            assertEquals(
+                listOf(WebAiService.CLAUDE, WebAiService.CHATGPT),
+                WebChatPreferencesStore(app).loadRecentWebServices()
+            )
+            assertEquals(setOf("selected_service", "recent_web_services"), preferences.all.keys)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
+    @Test
     fun selectionOrderSurvivesStoreRecreationWithoutSavingConversationData() {
         val app = RuntimeEnvironment.getApplication()
         val preferences = app.getSharedPreferences("web_chat_preferences", Context.MODE_PRIVATE)
@@ -35,6 +54,7 @@ class WebChatRecentStoreTest {
             val stored = preferences.getString("recent_web_services", "").orEmpty()
             assertEquals("qwen,grok,claude,gemini", stored)
             assertFalse(stored.contains("https://"))
+            assertEquals(setOf("selected_service", "recent_web_services"), preferences.all.keys)
         } finally {
             preferences.edit().clear().commit()
         }
