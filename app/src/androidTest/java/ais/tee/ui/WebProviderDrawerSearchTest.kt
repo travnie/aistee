@@ -20,6 +20,36 @@ class WebProviderDrawerSearchTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun recentShortcutsExcludeFavoritesAndCurrentProvider() {
+        val selections = mutableListOf<WebAiService>()
+        composeRule.setContent {
+            AisteeTheme {
+                WebProviderDrawer(
+                    persistent = true,
+                    selectedService = WebAiService.GEMINI,
+                    activityStatuses = emptyMap(),
+                    providerFavicons = emptyMap(),
+                    favoriteServices = setOf(WebAiService.CHATGPT),
+                    recentServices = listOf(
+                        WebAiService.GEMINI, WebAiService.CLAUDE,
+                        WebAiService.CHATGPT, WebAiService.GROK
+                    ),
+                    onToggleFavorite = {},
+                    onSelectService = { selections.add(it) },
+                    onOpenNativeCompare = {},
+                    onOpenStudio = {},
+                )
+            }
+        }
+        composeRule.onNodeWithTag("btn_recent_web_service_gemini").assertDoesNotExist()
+        composeRule.onNodeWithTag("btn_recent_web_service_chatgpt").assertDoesNotExist()
+        composeRule.onNodeWithTag("btn_recent_web_service_claude").assertExists()
+        composeRule.onNodeWithTag("btn_recent_web_service_grok").assertExists()
+        composeRule.onNodeWithTag("btn_recent_web_service_claude").performClick()
+        composeRule.runOnIdle { assertEquals(listOf(WebAiService.CLAUDE), selections) }
+    }
+
+    @Test
     fun filterAndClearDoNotSwitchProviderUntilSelection() {
         val selections = mutableListOf<WebAiService>()
         composeRule.setContent {
