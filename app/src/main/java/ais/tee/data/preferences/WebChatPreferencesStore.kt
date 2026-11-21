@@ -50,12 +50,8 @@ internal class WebChatPreferencesStore(context: Context) {
     )
 
     fun saveSelectedService(service: WebAiService) {
-        // Upgrade path: retain the last selected provider when the recent list is first created.
-        val previous = loadRecentWebServices().ifEmpty {
-            listOfNotNull(preferences.getString(SELECTED_SERVICE_KEY, null)?.let { id ->
-                WebAiService.entries.firstOrNull { it.id.equals(id, ignoreCase = true) }
-            })
-        }
+        // First run and upgrades: retain the previous selection, including default Claude.
+        val previous = loadRecentWebServices().ifEmpty { listOf(loadSelectedService()) }
         val recent = recentWebServicesAfterSelection(previous, service)
         preferences.edit()
             .putString(SELECTED_SERVICE_KEY, service.id)

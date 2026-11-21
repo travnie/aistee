@@ -34,6 +34,25 @@ class WebChatRecentStoreTest {
     }
 
     @Test
+    fun firstSelectionKeepsDefaultProviderAvailableAsShortcut() {
+        val app = RuntimeEnvironment.getApplication()
+        val preferences = app.getSharedPreferences("web_chat_preferences", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            val store = WebChatPreferencesStore(app)
+            assertEquals(WebAiService.CLAUDE, store.loadSelectedService())
+            store.saveSelectedService(WebAiService.CHATGPT)
+            assertEquals(
+                listOf(WebAiService.CHATGPT, WebAiService.CLAUDE),
+                WebChatPreferencesStore(app).loadRecentWebServices()
+            )
+            assertEquals(setOf("selected_service", "recent_web_services"), preferences.all.keys)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
+    @Test
     fun selectionOrderSurvivesStoreRecreationWithoutSavingConversationData() {
         val app = RuntimeEnvironment.getApplication()
         val preferences = app.getSharedPreferences("web_chat_preferences", Context.MODE_PRIVATE)

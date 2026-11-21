@@ -21,3 +21,12 @@ SPLais/tee/data/model/ChatModelsKt;->filterWebChatSections(Lais/tee/data/model/W
 SPLais/tee/data/model/WebChatSections;->getAll()Ljava/util/List;
 SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$-257995373$app()Lkotlin/jvm/functions/Function2;
 SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$1574386837$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/data/preferences/WebChatPreferencesStore;->loadRecentWebServices()Ljava/util/List;
+SPLais/tee/data/preferences/WebChatPreferencesStoreKt;->resolveRecentWebServices(Ljava/lang/String;)Ljava/util/List;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$-1480856835$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$-2018810490$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$-472376201$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$-488125566$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$-89702731$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$628539897$app()Lkotlin/jvm/functions/Function2;
+SPLais/tee/ui/screens/WebChatScreenKt;->WebProviderDrawer(ZLais/tee/data/model/WebAiService;Ljava/util/Map;Ljava/util/Map;Ljava/util/Set;Ljava/util/List;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)V
