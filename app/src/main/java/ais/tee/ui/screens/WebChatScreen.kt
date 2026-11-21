@@ -1677,10 +1677,22 @@ fun WebChatScreen(
                 }
             },
             onOpenInBrowser = {
-                if (openExternalUri(context, Uri.parse(signInUrl))) {
-                    showSignInHelp = false
-                } else {
-                    viewModel.showSnackbar(browserLaunchFailure)
+                val serviceAtLaunch = selectedService
+                val uri = Uri.parse(signInUrl)
+                openProviderBrowserTab(context, uri) { result ->
+                    if (currentIsActive && viewModel.uiState.value.selectedWebService == serviceAtLaunch) {
+                        when (result) {
+                            BrowserTabResult.LAUNCHED -> showSignInHelp = false
+                            BrowserTabResult.UNAVAILABLE, BrowserTabResult.FAILED -> {
+                                if (isBrowserTabEntry(uri) && openExternalUri(context, uri)) {
+                                    showSignInHelp = false
+                                } else {
+                                    viewModel.showSnackbar(browserLaunchFailure)
+                                }
+                            }
+                            BrowserTabResult.CANCELLED -> Unit
+                        }
+                    }
                 }
             },
             onDismiss = { showSignInHelp = false },
@@ -2202,11 +2214,27 @@ private fun WebChatToolbar(
                             modifier = Modifier.testTag("toggle_web_comfortable_width"),
                         )
                         DropdownMenuItem(
-                            text = { Text("Open in browser") },
+                            text = { Text("Open provider in browser tab") },
+                            leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                openProviderBrowserTab(context, Uri.parse(selectedService.url)) { result ->
+                                    when (result) {
+                                        BrowserTabResult.UNAVAILABLE ->
+                                            onShowSnackbar("No compatible browser tab. Try Open page externally.")
+                                        BrowserTabResult.FAILED -> onShowSnackbar("Could not open browser tab")
+                                        BrowserTabResult.LAUNCHED, BrowserTabResult.CANCELLED -> Unit
+                                    }
+                                }
+                            },
+                            modifier = Modifier.testTag("btn_web_browser_tab"),
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Open page externally") },
                             leadingIcon = { Icon(Icons.Default.OpenInNew, contentDescription = null) },
                             onClick = {
                                 if (!openExternalUri(context, Uri.parse(currentUrl))) {
-                                    onShowSnackbar("Could not launch external browser")
+                                    onShowSnackbar("Could not launch external browser or app")
                                 }
                                 menuExpanded = false
                             }
