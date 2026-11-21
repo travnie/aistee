@@ -24,6 +24,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -229,6 +230,7 @@ fun WebChatScreen(
     val webPreferences = remember(context.applicationContext) {
         WebChatPreferencesStore(context.applicationContext)
     }
+    val recentWebServices = remember(selectedService) { webPreferences.loadRecentWebServices() }
     var preferredIdentityMethod by remember { mutableStateOf(webPreferences.loadPreferredIdentityMethod()) }
     var comfortableWidth by remember(selectedService) {
         mutableStateOf(webPreferences.loadComfortableWidth(selectedService))
@@ -1173,6 +1175,7 @@ fun WebChatScreen(
             activityStatuses = activityStatuses,
             providerFavicons = providerFavicons,
             favoriteServices = uiState.favoriteWebServices,
+            recentServices = recentWebServices,
             onToggleFavorite = viewModel::toggleFavoriteWebService,
             onSelectService = { service ->
                 activateService(service)
@@ -2243,6 +2246,7 @@ internal fun WebProviderDrawer(
     activityStatuses: Map<WebAiService, WebChatActivityStatus>,
     providerFavicons: Map<WebAiService, Bitmap>,
     favoriteServices: Set<WebAiService>,
+    recentServices: List<WebAiService> = emptyList(),
     onToggleFavorite: (WebAiService) -> Unit,
     onSelectService: (WebAiService) -> Unit,
     onOpenNativeCompare: () -> Unit,
@@ -2254,6 +2258,9 @@ internal fun WebProviderDrawer(
     }
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
+    val recentShortcuts = if (query.isBlank()) {
+        recentServices.distinct().filter { it != selectedService && it !in favoriteServices }.take(3)
+    } else emptyList()
     fun chooseProvider(service: WebAiService) {
         focusManager.clearFocus()
         keyboard?.hide()
@@ -2289,6 +2296,37 @@ internal fun WebProviderDrawer(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
                     .testTag("web_provider_search")
             )
+
+            if (recentShortcuts.isNotEmpty()) {
+                Text(
+                    text = stringResource(R.string.web_recent_providers),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 4.dp)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    recentShortcuts.forEach { service ->
+                        AssistChip(
+                            onClick = { chooseProvider(service) },
+                            label = { Text(service.shortName) },
+                            leadingIcon = {
+                                WebProviderIdentityIcon(
+                                    service = service,
+                                    favicon = providerFavicons[service],
+                                    fallbackTint = Color(service.brandHexColor),
+                                    size = 18.dp
+                                )
+                            },
+                            modifier = Modifier.testTag("btn_recent_web_service_${service.id}")
+                        )
+                    }
+                }
+            }
 
             if (sections.all.isEmpty()) {
                 Text(

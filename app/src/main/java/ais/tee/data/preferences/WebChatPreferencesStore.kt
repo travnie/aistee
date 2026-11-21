@@ -20,6 +20,18 @@ internal fun resolveFavoriteWebServices(ids: Set<String>): Set<WebAiService> =
 internal fun resolveDisabledTurnNavigationServices(ids: Set<String>): Set<WebAiService> =
     resolveWebServices(ids)
 
+private const val MAX_RECENT_WEB_SERVICES = 4
+
+internal fun resolveRecentWebServices(ids: String?): List<WebAiService> =
+    ids?.take(256)?.split(',')?.mapNotNull { id ->
+        WebAiService.entries.firstOrNull { it.id.equals(id, ignoreCase = true) }
+    }?.distinct()?.take(MAX_RECENT_WEB_SERVICES).orEmpty()
+
+internal fun recentWebServicesAfterSelection(
+    previous: List<WebAiService>,
+    selected: WebAiService,
+): List<WebAiService> = (listOf(selected) + previous).distinct().take(MAX_RECENT_WEB_SERVICES)
+
 internal fun resolvePreferredIdentityMethod(id: String?): ProviderIdentityMethod? =
     ProviderIdentityMethod.entries.firstOrNull { method ->
         id?.equals(method.name, ignoreCase = true) == true
@@ -32,8 +44,17 @@ internal class WebChatPreferencesStore(context: Context) {
         preferences.getString(SELECTED_SERVICE_KEY, null)
     )
 
+    // Provider IDs only. No conversation URLs, page data or account identifiers.
+    fun loadRecentWebServices(): List<WebAiService> = resolveRecentWebServices(
+        preferences.getString(RECENT_SERVICES_KEY, null)
+    )
+
     fun saveSelectedService(service: WebAiService) {
-        preferences.edit().putString(SELECTED_SERVICE_KEY, service.id).apply()
+        val recent = recentWebServicesAfterSelection(loadRecentWebServices(), service)
+        preferences.edit()
+            .putString(SELECTED_SERVICE_KEY, service.id)
+            .putString(RECENT_SERVICES_KEY, recent.joinToString(",") { it.id })
+            .apply()
     }
 
     fun loadFavorites(): Set<WebAiService> = resolveFavoriteWebServices(
@@ -82,6 +103,7 @@ internal class WebChatPreferencesStore(context: Context) {
     private companion object {
         const val PREFERENCES_NAME = "web_chat_preferences"
         const val SELECTED_SERVICE_KEY = "selected_service"
+        const val RECENT_SERVICES_KEY = "recent_web_services"
         const val FAVORITE_SERVICES_KEY = "favorite_services"
         const val PREFERRED_IDENTITY_METHOD_KEY = "preferred_identity_method"
         const val DISABLED_TURN_NAVIGATION_KEY = "disabled_turn_navigation_services"

@@ -34,6 +34,27 @@ class WebChatPreferencesStoreTest {
     }
 
     @Test
+    fun recentProviderIdsAreBoundedOrderedAndRejectUnknownValues() {
+        assertEquals(emptyList<WebAiService>(), resolveRecentWebServices(null))
+        assertEquals(
+            listOf(WebAiService.GROK, WebAiService.CHATGPT, WebAiService.GEMINI, WebAiService.KIMI),
+            resolveRecentWebServices("GROK,broken,chatgpt,grok,gemini,kimi,qwen")
+        )
+        val recent = recentWebServicesAfterSelection(
+            listOf(WebAiService.CLAUDE, WebAiService.CHATGPT, WebAiService.GROK, WebAiService.QWEN),
+            WebAiService.GROK
+        )
+        assertEquals(
+            listOf(WebAiService.GROK, WebAiService.CLAUDE, WebAiService.CHATGPT, WebAiService.QWEN),
+            recent
+        )
+        assertEquals(
+            listOf(WebAiService.DEEPSEEK, WebAiService.GROK, WebAiService.CLAUDE, WebAiService.CHATGPT),
+            recentWebServicesAfterSelection(recent, WebAiService.DEEPSEEK)
+        )
+    }
+
+    @Test
     fun preferredIdentityMethodResolvesCaseInsensitivelyAndRejectsUnknownValues() {
         assertEquals(
             ProviderIdentityMethod.GITHUB,
