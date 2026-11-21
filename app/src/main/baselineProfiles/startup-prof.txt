@@ -30,3 +30,7 @@ SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$-48812556
 SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$-89702731$app()Lkotlin/jvm/functions/Function2;
 SPLais/tee/ui/screens/ComposableSingletons$WebChatScreenKt;->getLambda$628539897$app()Lkotlin/jvm/functions/Function2;
 SPLais/tee/ui/screens/WebChatScreenKt;->WebProviderDrawer(ZLais/tee/data/model/WebAiService;Ljava/util/Map;Ljava/util/Map;Ljava/util/Set;Ljava/util/List;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function0;Landroidx/compose/runtime/Composer;II)V
+SPLais/tee/ui/screens/BrowserTabResult;->$values()[Lais/tee/ui/screens/BrowserTabResult;
+SPLais/tee/ui/screens/BrowserTabResult;-><clinit>()V
+SPLais/tee/ui/screens/BrowserTabResult;-><init>(Ljava/lang/String;I)V
+SPLais/tee/ui/screens/BrowserTabResult;->values()[Lais/tee/ui/screens/BrowserTabResult;
