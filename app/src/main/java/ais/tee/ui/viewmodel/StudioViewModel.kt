@@ -708,8 +708,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun selectWebService(service: WebAiService) {
-        _uiState.update { it.copy(selectedWebService = service) }
+        // Persist before state emission; drawer shortcuts read this preference on recomposition.
         webChatPreferencesStore.saveSelectedService(service)
+        _uiState.update { it.copy(selectedWebService = service) }
     }
 
     /** Vault handoff stays in memory; encrypted journal retains the durable source. */
