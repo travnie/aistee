@@ -22511,3 +22511,7 @@ SPLais/tee/ui/screens/WebChatScreenKt;->webViewEvictionModeForTrimMemory(I)Lais/
 SPLais/tee/ui/screens/WebPromptVaultTransfer;-><clinit>()V
 SPLais/tee/ui/screens/WebPromptVaultTransfer;-><init>(ZLkotlin/jvm/functions/Function0;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function0;)V
 SPLais/tee/ui/screens/WebPromptVaultTransferKt;->rememberWebPromptVaultTransfer(Lais/tee/ui/viewmodel/StudioViewModel;Landroidx/compose/runtime/Composer;I)Lais/tee/ui/screens/WebPromptVaultTransfer;
+SPLais/tee/data/engine/AiChatServiceKt;->buildMistralStreamingHttpClient(Lokhttp3/OkHttpClient;)Lokhttp3/OkHttpClient;
+SPLais/tee/data/model/ApiKeyConfig;-><init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+SPLais/tee/data/model/ApiKeyConfig;-><init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+SPLais/tee/data/model/ApiKeyConfig;->getMistralKey()Ljava/lang/String;
