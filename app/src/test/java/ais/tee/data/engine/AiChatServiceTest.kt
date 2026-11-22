@@ -1406,6 +1406,34 @@ class AiChatServiceTest {
     }
 
     @Test
+    fun mistralStreamingUsesBearerKeyAndReturnsDeltas() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val deltas = mutableListOf<String>()
+        val service = customEndpointService(
+            requests,
+            "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n" +
+                "data: [DONE]\n\n",
+        )
+        val reply = service.generateResponse(
+            prompt = "ping",
+            provider = AiProvider.MISTRAL,
+            modelName = "mistral-large-latest",
+            apiKeys = ApiKeyConfig(mistralKey = "mistral-test-key"),
+            systemInstruction = null,
+            profile = null,
+            allowSimulationFallback = false,
+            onTextDelta = deltas::add,
+        )
+        assertFalse(reply.isError)
+        assertFalse(reply.isSimulated)
+        assertEquals("hello", reply.text)
+        assertEquals(listOf("hello"), deltas)
+        assertEquals("Bearer mistral-test-key", requests.single().header("Authorization"))
+        val payload = Buffer().also { requireNotNull(requests.single().body).writeTo(it) }.readUtf8()
+        assertEquals("true", Json.parseToJsonElement(payload).jsonObject["stream"]?.jsonPrimitive?.content)
+    }
+
+    @Test
     fun customEndpointClientNeverFollowsRedirects() {
         val client = buildCustomEndpointHttpClient(OkHttpClient())
 

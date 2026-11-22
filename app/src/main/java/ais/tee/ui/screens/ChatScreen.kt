@@ -1656,11 +1656,11 @@ private fun NativeChatDetailPane(
         ApiKeySettingsDialog(
             currentKeys = uiState.apiKeyConfig,
             onDismiss = { viewModel.setShowApiKeyDialog(false) },
-            onSave = { gemini, openAi, claude, deepseek, kimi, openRouter, aiHubMix, vercel,
+            onSave = { gemini, openAi, claude, deepseek, kimi, mistral, openRouter, aiHubMix, vercel,
                 customUrl, customKey, customModel ->
                 viewModel.saveApiKeys(
                     gemini, openAi, claude, deepseek, kimi, openRouter, aiHubMix, vercel,
-                    customUrl, customKey, customModel,
+                    customUrl, customKey, customModel, mistralKey = mistral,
                 )
             },
         )
@@ -2334,6 +2334,7 @@ fun ApiKeySettingsDialog(
         claude: String,
         deepseek: String,
         kimi: String,
+        mistral: String,
         openRouter: String,
         aiHubMix: String,
         vercel: String,
@@ -2347,6 +2348,7 @@ fun ApiKeySettingsDialog(
     var claudeKey by remember { mutableStateOf(currentKeys.claudeKey) }
     var deepseekKey by remember { mutableStateOf(currentKeys.deepseekKey) }
     var kimiKey by remember { mutableStateOf(currentKeys.kimiKey) }
+    var mistralKey by remember { mutableStateOf(currentKeys.mistralKey) }
     var openRouterKey by remember { mutableStateOf(currentKeys.openRouterKey) }
     var aiHubMixKey by remember { mutableStateOf(currentKeys.aiHubMixKey) }
     var vercelAiGatewayKey by remember { mutableStateOf(currentKeys.vercelAiGatewayKey) }
@@ -2461,6 +2463,20 @@ fun ApiKeySettingsDialog(
                 )
 
                 OutlinedTextField(
+                    value = mistralKey,
+                    onValueChange = { mistralKey = it },
+                    label = { Text("Mistral API Key") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    leadingIcon = {
+                        Icon(Icons.Default.FlashOn, contentDescription = null, tint = Color(0xFFFF7000))
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("input_mistral_api_key"),
+                )
+
+                OutlinedTextField(
                     value = openRouterKey,
                     onValueChange = { openRouterKey = it },
                     label = { Text("OpenRouter API Key") },
@@ -2563,7 +2579,8 @@ fun ApiKeySettingsDialog(
             Button(
                 onClick = {
                     onSave(
-                        geminiKey, openAiKey, claudeKey, deepseekKey, kimiKey, openRouterKey, aiHubMixKey,
+                        geminiKey, openAiKey, claudeKey, deepseekKey, kimiKey, mistralKey,
+                        openRouterKey, aiHubMixKey,
                         vercelAiGatewayKey, customEndpointUrl, customEndpointKey, customEndpointModel,
                     )
                 },

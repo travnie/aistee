@@ -20,6 +20,7 @@ internal class ApiKeyStore(context: Context) {
             claudeKey = json.optString("claude"),
             deepseekKey = json.optString("deepseek"),
             kimiKey = json.optString("kimi"),
+            mistralKey = json.optString("mistral"),
             openRouterKey = json.optString("openrouter"),
             aiHubMixKey = json.optString("aihubmix"),
             vercelAiGatewayKey = json.optString("vercel_ai_gateway"),
@@ -36,6 +37,7 @@ internal class ApiKeyStore(context: Context) {
             .put("claude", config.claudeKey)
             .put("deepseek", config.deepseekKey)
             .put("kimi", config.kimiKey)
+            .put("mistral", config.mistralKey)
             .put("openrouter", config.openRouterKey)
             .put("aihubmix", config.aiHubMixKey)
             .put("vercel_ai_gateway", config.vercelAiGatewayKey)

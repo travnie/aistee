@@ -91,6 +91,7 @@ class ChatModelsTest {
     @Test
     fun defaultCompareUsesDirectProvidersOnly() {
         assertFalse(AiProvider.ALL in AiProvider.concreteProviders)
+        assertFalse(AiProvider.MISTRAL in AiProvider.concreteProviders)
         assertFalse(AiProvider.OPENROUTER in AiProvider.concreteProviders)
         assertFalse(AiProvider.AIHUBMIX in AiProvider.concreteProviders)
         assertFalse(AiProvider.VERCEL in AiProvider.concreteProviders)
@@ -209,6 +210,7 @@ class ChatModelsTest {
         assertTrue(config.hasKeyFor(AiProvider.MISTRAL))
         assertFalse(config.hasKeyFor(AiProvider.ALL))
         assertTrue(config.configuredDirectProviders().isEmpty())
+        assertTrue(config.canRunDirect(AiProvider.MISTRAL, null))
     }
 
     @Test

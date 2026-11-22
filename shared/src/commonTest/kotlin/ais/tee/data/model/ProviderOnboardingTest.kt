@@ -14,7 +14,8 @@ class ProviderOnboardingTest {
         WebAiService.GROK,
         WebAiService.CHARACTER_AI,
         WebAiService.VENICE,
-        WebAiService.META_AI
+        WebAiService.META_AI,
+        WebAiService.VIBE
     )
 
     @Test
