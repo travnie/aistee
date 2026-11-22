@@ -98,8 +98,12 @@ class ProviderWebActivityTest {
 
     @Test
     fun vibeUsesLocaleIndependentSubmitStopIcon() {
-        val activeSelector = ProviderWebRegistry.generationSelectors(WebAiService.VIBE).single()
-        val idleSelector = ProviderWebRegistry.generationIdleSelectors(WebAiService.VIBE).single()
+        val activeSelectors = ProviderWebRegistry.generationSelectors(WebAiService.VIBE)
+        val idleSelectors = ProviderWebRegistry.generationIdleSelectors(WebAiService.VIBE)
+        val activeSelector = activeSelectors.first()
+        val idleSelector = idleSelectors.first()
+        assertTrue(activeSelectors.contains("[data-testid=\"stop-generating\"]"))
+        assertTrue(idleSelectors.contains("[data-testid=\"send-button\"]"))
         assertTrue(activeSelector.contains("button[type=\"submit\"]"))
         assertTrue(activeSelector.endsWith("svg rect"))
         assertTrue(idleSelector.contains("path[d^=\"M12 18v4h4v-4h-4ZM16 14v4h4v-4h-4\"]"))

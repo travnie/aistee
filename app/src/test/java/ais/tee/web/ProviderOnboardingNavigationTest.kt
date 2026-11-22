@@ -11,7 +11,7 @@ import org.junit.Test
 class ProviderOnboardingNavigationTest {
     @Test
     fun androidNavigationVerificationRemainsProviderScoped() {
-        val verified = setOf(WebAiService.QWEN, WebAiService.COPILOT, WebAiService.ZAI)
+        val verified = setOf(WebAiService.QWEN, WebAiService.COPILOT, WebAiService.ZAI, WebAiService.VIBE)
 
         WebAiService.entries.forEach { service ->
             assertEquals(
@@ -90,6 +90,10 @@ class ProviderOnboardingNavigationTest {
         assertEquals(
             setOf("accounts.google.com", "github.com"),
             ProviderWebRegistry.topLevelNavigationAuthHosts(WebAiService.ZAI)
+        )
+        assertEquals(
+            setOf("accounts.google.com", "github.com", "login.live.com", "login.microsoftonline.com"),
+            ProviderWebRegistry.topLevelNavigationAuthHosts(WebAiService.VIBE)
         )
     }
 }
