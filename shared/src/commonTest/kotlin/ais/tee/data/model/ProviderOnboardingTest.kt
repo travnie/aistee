@@ -67,7 +67,13 @@ class ProviderOnboardingTest {
                 ProviderIdentityMethod.EMAIL,
                 ProviderIdentityMethod.WALLET_CONNECT
             ),
-            WebAiService.META_AI to listOf(ProviderIdentityMethod.META_ACCOUNT)
+            WebAiService.META_AI to listOf(ProviderIdentityMethod.META_ACCOUNT),
+            WebAiService.VIBE to listOf(
+                ProviderIdentityMethod.GOOGLE,
+                ProviderIdentityMethod.GITHUB,
+                ProviderIdentityMethod.MICROSOFT,
+                ProviderIdentityMethod.EMAIL
+            )
         )
 
         expected.forEach { (service, methods) ->
