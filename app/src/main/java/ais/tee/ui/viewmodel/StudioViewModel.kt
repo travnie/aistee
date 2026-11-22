@@ -2079,7 +2079,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         if (targetProvider == AiProvider.ALL && providersToRun.isEmpty()) {
             _uiState.update { it.copy(showApiKeyDialog = true) }
-            showSnackbar("Add at least one direct provider API key to use All Models.")
+            showSnackbar(
+                if (state.apiKeyConfig.mistralKey.isNotBlank()) {
+                    "Mistral runs separately. Add a Claude, OpenAI, Gemini, DeepSeek or Kimi key for All Models."
+                } else {
+                    "Add at least one direct provider API key to use All Models."
+                }
+            )
             return null
         }
         return NativeChatSendPlan(targetProvider, providersToRun, state.apiKeyConfig, state.chatGptPlanClientId)

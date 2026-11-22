@@ -2947,7 +2947,8 @@ class AiChatService(
             }
         }
 
-        while (!source.exhausted() && !stopped) {
+        // Check completion before touching the socket: providers may keep SSE open after [DONE].
+        while (!stopped && !source.exhausted()) {
             val line = source.readUtf8Line() ?: break
             when {
                 line.isEmpty() -> dispatchEvent()
