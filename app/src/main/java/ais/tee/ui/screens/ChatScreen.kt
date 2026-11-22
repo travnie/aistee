@@ -829,6 +829,7 @@ private fun NativeChatDetailPane(
                                             uiState.apiKeyConfig.claudeKey.isNotBlank() ||
                                             uiState.apiKeyConfig.deepseekKey.isNotBlank() ||
                                             uiState.apiKeyConfig.kimiKey.isNotBlank() ||
+                                            uiState.apiKeyConfig.mistralKey.isNotBlank() ||
                                             uiState.apiKeyConfig.openRouterKey.isNotBlank() ||
                                             uiState.apiKeyConfig.aiHubMixKey.isNotBlank() ||
                                             uiState.apiKeyConfig.vercelAiGatewayKey.isNotBlank() ||
