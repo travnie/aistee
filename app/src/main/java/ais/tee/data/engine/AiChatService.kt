@@ -220,6 +220,12 @@ internal fun buildCustomEndpointHttpClient(baseClient: OkHttpClient): OkHttpClie
         .followSslRedirects(false)
         .build()
 
+internal fun buildMistralStreamingHttpClient(baseClient: OkHttpClient): OkHttpClient =
+    baseClient.newBuilder()
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .callTimeout(10, TimeUnit.MINUTES)
+        .build()
+
 internal fun buildClaudeMetadataHttpClient(baseClient: OkHttpClient): OkHttpClient =
     baseClient.newBuilder()
         .callTimeout(CLAUDE_METADATA_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -280,9 +286,8 @@ class AiChatService(
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
     // Bound total Mistral request time without cutting off long quiet periods during reasoning.
-    private val mistralStreamingHttpClient: OkHttpClient = streamingHttpClient.newBuilder()
-        .callTimeout(10, TimeUnit.MINUTES)
-        .build()
+    private val mistralStreamingHttpClient: OkHttpClient =
+        buildMistralStreamingHttpClient(streamingHttpClient)
     private val openAiFlexHttpClient: OkHttpClient = httpClient.newBuilder()
         .callTimeout(OPENAI_FLEX_TIMEOUT_MINUTES, TimeUnit.MINUTES)
         .readTimeout(OPENAI_FLEX_TIMEOUT_MINUTES, TimeUnit.MINUTES)
