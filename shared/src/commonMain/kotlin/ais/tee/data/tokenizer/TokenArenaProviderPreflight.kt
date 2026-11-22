@@ -104,6 +104,8 @@ fun TokenArenaProviderPreflightResult.measureForArena(
             TokenMeasurementMode.PROVIDER_EXACT to "Gemini countTokens"
         AiProvider.CLAUDE ->
             TokenMeasurementMode.PROVIDER_ESTIMATE to "Claude messages/count_tokens"
+        AiProvider.MISTRAL ->
+            TokenMeasurementMode.PROVIDER_ESTIMATE to "Mistral token estimate"
         else ->
             throw IllegalArgumentException(
                 "Token Arena provider preflight is not supported for ${preflight.provider.id}"

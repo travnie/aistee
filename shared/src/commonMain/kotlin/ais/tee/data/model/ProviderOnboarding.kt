@@ -95,6 +95,15 @@ fun WebAiService.onboardingCapabilities(): ProviderOnboardingCapabilities = when
         preferredIdentityMethods = listOf(ProviderIdentityMethod.META_ACCOUNT),
         signInUrl = url
     )
+    WebAiService.VIBE -> ProviderOnboardingCapabilities(
+        preferredIdentityMethods = listOf(
+            ProviderIdentityMethod.GOOGLE,
+            ProviderIdentityMethod.GITHUB,
+            ProviderIdentityMethod.MICROSOFT,
+            ProviderIdentityMethod.EMAIL
+        ),
+        signInUrl = url
+    )
     WebAiService.GEMINI -> ProviderOnboardingCapabilities(
         embeddedSessionHandoff = EmbeddedSessionHandoff.UNSUPPORTED,
         signInUrl = url,

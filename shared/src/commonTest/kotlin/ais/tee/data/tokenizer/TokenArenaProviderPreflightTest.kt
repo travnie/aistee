@@ -72,6 +72,19 @@ class TokenArenaProviderPreflightTest {
     }
 
     @Test
+    fun mistralPreflightIsEstimated() {
+        val request = variant.providerPreflightRequest(REQUEST_TAG_A)
+        val measurement = request.withBudget(
+            budget(request, AiProvider.MISTRAL, "mistral-large-latest", 500, 32_000)
+        ).measureForArena(variant)
+
+        assertEquals(TokenMeasurementMode.PROVIDER_ESTIMATE, measurement.mode)
+        assertEquals("Mistral token estimate", measurement.backendLabel)
+        assertEquals(31_500L, measurement.remainingInputTokens)
+        assertEquals(TokenArenaProviderInputLimitStatus.FITS, measurement.providerInputLimitStatus)
+    }
+
+    @Test
     fun localMeasurementsDoNotInventAProviderLimit() {
         val counter = object : TokenCounter {
             override val encodingLabel = "test"

@@ -32,6 +32,10 @@ object OpenAiCompatibleProtocol {
         AiProvider.KIMI to OpenAiCompatibleProviderConfig(
             endpointUrl = "https://api.moonshot.ai/v1/chat/completions"
         ),
+        AiProvider.MISTRAL to OpenAiCompatibleProviderConfig(
+            endpointUrl = "https://api.mistral.ai/v1/chat/completions",
+            modelCatalogUrl = "https://api.mistral.ai/v1/models"
+        ),
         AiProvider.OPENROUTER to OpenAiCompatibleProviderConfig(
             endpointUrl = "https://openrouter.ai/api/v1/chat/completions",
             modelCatalogUrl = "https://openrouter.ai/api/v1/models?output_modalities=text",

@@ -89,8 +89,23 @@ internal object ProviderWebRegistry {
         ),
         // Vibe keeps a submit button while its SVG switches between send and stop icons.
         WebAiService.VIBE to ProviderWebProfile(
-            generationSelectors = listOf(VIBE_STOP_ICON_SELECTOR),
-            generationIdleSelectors = listOf(VIBE_SEND_ICON_SELECTOR)
+            generationSelectors = listOf(
+                VIBE_STOP_ICON_SELECTOR,
+                "[data-testid=\"stop-generating\"]"
+            ),
+            generationIdleSelectors = listOf(
+                VIBE_SEND_ICON_SELECTOR,
+                "[data-testid=\"send-button\"]"
+            ),
+            turnAnchors = ProviderTurnAnchors(
+                userSelector = "[data-message-sender=\"user\"]",
+                assistantSelector = "[data-message-sender=\"assistant\"]"
+            ),
+            verifiedTopLevelNavigationIdentityMethods = setOf(
+                ProviderIdentityMethod.GOOGLE,
+                ProviderIdentityMethod.GITHUB,
+                ProviderIdentityMethod.MICROSOFT
+            )
         ),
         WebAiService.QWEN to ProviderWebProfile(
             ownedHostAliases = setOf("qwen.ai"),

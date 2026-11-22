@@ -878,7 +878,8 @@ private fun NativeChatDetailPane(
                                     )
                                     if (
                                         uiState.selectedChatProvider == AiProvider.GEMINI ||
-                                        uiState.selectedChatProvider == AiProvider.CLAUDE
+                                        uiState.selectedChatProvider == AiProvider.CLAUDE ||
+                                        uiState.selectedChatProvider == AiProvider.MISTRAL
                                     ) {
                                         val inputBudgetProvider = uiState.selectedChatProvider
                                         DropdownMenuItem(
@@ -895,6 +896,7 @@ private fun NativeChatDetailPane(
                                                         when (inputBudgetProvider) {
                                                             AiProvider.GEMINI -> "Gemini countTokens · exact"
                                                             AiProvider.CLAUDE -> "Claude messages/count_tokens · estimate"
+                                                            AiProvider.MISTRAL -> "Mistral token estimate"
                                                             else -> ""
                                                         },
                                                         style = MaterialTheme.typography.labelSmall,
@@ -1357,12 +1359,13 @@ private fun NativeChatDetailPane(
                             },
                             placeholder = {
                                 val destination = when (uiState.selectedChatProvider) {
-                                    AiProvider.ALL -> "Ask Gemini, ChatGPT, Claude, DeepSeek & Kimi..."
+                                    AiProvider.ALL -> "Ask Gemini, ChatGPT, Claude, DeepSeek, Kimi & Mistral..."
                                     AiProvider.GEMINI -> "Ask Google Gemini..."
                                     AiProvider.CHATGPT -> "Ask OpenAI ChatGPT..."
                                     AiProvider.CLAUDE -> "Ask Anthropic Claude..."
                                     AiProvider.DEEPSEEK -> "Ask DeepSeek..."
                                     AiProvider.KIMI -> "Ask Moonshot Kimi..."
+                                    AiProvider.MISTRAL -> "Ask Mistral AI..."
                                     AiProvider.OPENROUTER -> "Ask a free OpenRouter model..."
                                     AiProvider.AIHUBMIX -> "Ask a free AIHubMix model..."
                                     AiProvider.VERCEL -> "Ask via Vercel AI Gateway..."
@@ -1587,7 +1590,7 @@ private fun NativeChatDetailPane(
     }
 
     uiState.inputBudgetPreflight?.let { preflight ->
-        val isEstimate = preflight.provider == AiProvider.CLAUDE
+        val isEstimate = preflight.provider == AiProvider.CLAUDE || preflight.provider == AiProvider.MISTRAL
         val remainingLabel = if (isEstimate) "Estimated remaining" else "Remaining"
         val remainingLine = if (preflight.fits) {
             "$remainingLabel: ${preflight.remainingTokens} tokens"
@@ -1629,6 +1632,10 @@ private fun NativeChatDetailPane(
                                     "Anthropic documents token counting as an estimate; the request " +
                                     "includes bounded chat history, the active system instruction, " +
                                     "reasoning settings, and enabled native tool declarations."
+                            AiProvider.MISTRAL ->
+                                "Source: Mistral token estimation. " +
+                                    "The estimated request includes bounded chat history and the active " +
+                                    "system instruction."
                             else -> "Source: provider token-count API."
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -2588,6 +2595,7 @@ fun getProviderColor(provider: AiProvider): Color {
         AiProvider.CLAUDE -> Color(0xFFF59E0B)
         AiProvider.DEEPSEEK -> Color(0xFF2563EB)
         AiProvider.KIMI -> Color(0xFF8B5CF6)
+        AiProvider.MISTRAL -> Color(0xFFFF7000)
         AiProvider.OPENROUTER -> Color(0xFF6366F1)
         AiProvider.AIHUBMIX -> Color(0xFF14B8A6)
         AiProvider.VERCEL -> Color(0xFF334155)
@@ -2603,6 +2611,7 @@ fun getProviderIcon(provider: AiProvider): ImageVector {
         AiProvider.CLAUDE -> Icons.Default.Flare
         AiProvider.DEEPSEEK -> Icons.Default.Psychology
         AiProvider.KIMI -> Icons.Default.ElectricBolt
+        AiProvider.MISTRAL -> Icons.Default.FlashOn
         AiProvider.OPENROUTER -> Icons.Default.Route
         AiProvider.AIHUBMIX -> Icons.Default.Cloud
         AiProvider.VERCEL -> Icons.Default.Cloud

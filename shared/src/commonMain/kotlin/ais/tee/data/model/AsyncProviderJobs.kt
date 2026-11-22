@@ -54,6 +54,9 @@ val AsyncProviderJob.isClaudeBatch: Boolean
 val AsyncProviderJob.isGeminiBatch: Boolean
     get() = provider == AiProvider.GEMINI && kind == AsyncProviderJobKind.BATCH
 
+val AsyncProviderJob.isMistralBatch: Boolean
+    get() = provider == AiProvider.MISTRAL && kind == AsyncProviderJobKind.BATCH
+
 @Serializable
 data class AsyncProviderJobArchive(
     val version: Int = ASYNC_PROVIDER_JOB_ARCHIVE_VERSION,

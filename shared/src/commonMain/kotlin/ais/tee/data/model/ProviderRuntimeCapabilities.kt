@@ -234,6 +234,7 @@ fun AiProvider.runtimeCapabilities(): ProviderRuntimeCapabilities = when (this) 
     )
     AiProvider.DEEPSEEK,
     AiProvider.KIMI,
+    AiProvider.MISTRAL,
     AiProvider.OPENROUTER,
     AiProvider.AIHUBMIX,
     AiProvider.VERCEL,

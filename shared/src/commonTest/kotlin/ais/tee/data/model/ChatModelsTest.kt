@@ -199,12 +199,14 @@ class ChatModelsTest {
         val config = ApiKeyConfig(
             openRouterKey = "sk-or-v1-gateway",
             aiHubMixKey = "gateway-key",
-            vercelAiGatewayKey = "vercel-gateway-key"
+            vercelAiGatewayKey = "vercel-gateway-key",
+            mistralKey = "mistral-key"
         )
 
         assertTrue(config.hasKeyFor(AiProvider.OPENROUTER))
         assertTrue(config.hasKeyFor(AiProvider.AIHUBMIX))
         assertTrue(config.hasKeyFor(AiProvider.VERCEL))
+        assertTrue(config.hasKeyFor(AiProvider.MISTRAL))
         assertFalse(config.hasKeyFor(AiProvider.ALL))
         assertTrue(config.configuredDirectProviders().isEmpty())
     }

@@ -98,6 +98,7 @@ class ProviderRuntimeCapabilitiesTest {
         listOf(
             AiProvider.DEEPSEEK,
             AiProvider.KIMI,
+            AiProvider.MISTRAL,
             AiProvider.OPENROUTER,
             AiProvider.AIHUBMIX,
             AiProvider.VERCEL,

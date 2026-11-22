@@ -247,6 +247,19 @@ enum class AiProvider(
         ),
         description = "Moonshot AI models for general chat, frontier reasoning, coding, and long context",
     ),
+    MISTRAL(
+        id = "mistral",
+        displayName = "Mistral AI",
+        shortName = "Mistral",
+        defaultModel = "mistral-large-latest",
+        availableModels = listOf(
+            "mistral-large-latest",
+            "mistral-small-latest",
+            "mistral-medium-latest",
+            "mistral-tiny-latest",
+        ),
+        description = "Mistral AI models with reasoning, coding, and multimodal capabilities",
+    ),
     OPENROUTER(
         id = "openrouter",
         displayName = "OpenRouter Free",
@@ -307,6 +320,7 @@ data class ApiKeyConfig(
     val claudeKey: String = "",
     val deepseekKey: String = "",
     val kimiKey: String = "",
+    val mistralKey: String = "",
     val openRouterKey: String = "",
     val aiHubMixKey: String = "",
     val vercelAiGatewayKey: String = "",
@@ -327,6 +341,7 @@ fun ApiKeyConfig.hasKeyFor(provider: AiProvider): Boolean = when (provider) {
     AiProvider.CLAUDE -> claudeKey.isNotBlank()
     AiProvider.DEEPSEEK -> deepseekKey.isNotBlank()
     AiProvider.KIMI -> kimiKey.isNotBlank()
+    AiProvider.MISTRAL -> mistralKey.isNotBlank()
     AiProvider.OPENROUTER -> openRouterKey.isNotBlank()
     AiProvider.AIHUBMIX -> aiHubMixKey.isNotBlank()
     AiProvider.VERCEL -> vercelAiGatewayKey.isNotBlank()
