@@ -24,6 +24,10 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
+import okio.BufferedSource
+import okio.Source
+import okio.Timeout
+import okio.buffer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -1431,6 +1435,45 @@ class AiChatServiceTest {
         assertEquals("Bearer mistral-test-key", requests.single().header("Authorization"))
         val payload = Buffer().also { requireNotNull(requests.single().body).writeTo(it) }.readUtf8()
         assertEquals("true", Json.parseToJsonElement(payload).jsonObject["stream"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun doneSentinelEndsStreamWithoutReadingAfterTerminalEvent() {
+        val service = AiChatService()
+        val available = Buffer().writeUtf8(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\\n\\n" +
+                "data: [DONE]\\n\\n",
+        )
+        val guarded = object : Source {
+            override fun read(sink: Buffer, byteCount: Long): Long {
+                check(available.size > 0L) { "Attempted a read after the DONE sentinel" }
+                return available.read(sink, byteCount)
+            }
+            override fun timeout(): Timeout = Timeout.NONE
+            override fun close() = Unit
+        }.buffer()
+        val body = object : okhttp3.ResponseBody() {
+            override fun contentType() = TEST_EVENT_STREAM_TYPE.toMediaType()
+            override fun contentLength() = -1L
+            override fun source(): BufferedSource = guarded
+        }
+        val response = Response.Builder()
+            .request(Request.Builder().url(TEST_STREAM_URL).build())
+            .protocol(Protocol.HTTP_1_1)
+            .code(200)
+            .message("OK")
+            .body(body)
+            .build()
+        assertEquals(
+            "hello",
+            service.readSseResponse(
+                response,
+                service::extractOpenAiCompatibleStreamText,
+                isComplete = { false },
+                onTextDelta = {},
+                completeOnDoneSentinel = true,
+            ),
+        )
     }
 
     @Test

@@ -279,9 +279,9 @@ class AiChatService(
     private val streamingHttpClient: OkHttpClient = httpClient.newBuilder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
-    // Mistral streams use an idle timeout; other providers retain existing streaming policy.
-    private val mistralStreamingHttpClient: OkHttpClient = httpClient.newBuilder()
-        .readTimeout(60, TimeUnit.SECONDS)
+    // Bound total Mistral request time without cutting off long quiet periods during reasoning.
+    private val mistralStreamingHttpClient: OkHttpClient = streamingHttpClient.newBuilder()
+        .callTimeout(10, TimeUnit.MINUTES)
         .build()
     private val openAiFlexHttpClient: OkHttpClient = httpClient.newBuilder()
         .callTimeout(OPENAI_FLEX_TIMEOUT_MINUTES, TimeUnit.MINUTES)
