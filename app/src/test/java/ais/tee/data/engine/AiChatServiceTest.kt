@@ -1441,8 +1441,8 @@ class AiChatServiceTest {
     fun doneSentinelEndsStreamWithoutReadingAfterTerminalEvent() {
         val service = AiChatService()
         val available = Buffer().writeUtf8(
-            "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\\n\\n" +
-                "data: [DONE]\\n\\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n" +
+                "data: [DONE]\n\n",
         )
         val guarded = object : Source {
             override fun read(sink: Buffer, byteCount: Long): Long {
