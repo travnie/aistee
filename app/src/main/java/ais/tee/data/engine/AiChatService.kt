@@ -1154,6 +1154,7 @@ class AiChatService(
             AiProvider.CLAUDE -> Pair(apiKeys.claudeKey.trim(), apiKeys.claudeKey.isNotBlank())
             AiProvider.DEEPSEEK -> Pair(apiKeys.deepseekKey.trim(), apiKeys.deepseekKey.isNotBlank())
             AiProvider.KIMI -> Pair(apiKeys.kimiKey.trim(), apiKeys.kimiKey.isNotBlank())
+            AiProvider.MISTRAL -> Pair(apiKeys.mistralKey.trim(), apiKeys.mistralKey.isNotBlank())
             AiProvider.OPENROUTER -> Pair(apiKeys.openRouterKey.trim(), apiKeys.openRouterKey.isNotBlank())
             AiProvider.AIHUBMIX -> Pair(apiKeys.aiHubMixKey.trim(), apiKeys.aiHubMixKey.isNotBlank())
             AiProvider.VERCEL -> Pair(apiKeys.vercelAiGatewayKey.trim(), apiKeys.vercelAiGatewayKey.isNotBlank())
@@ -1238,8 +1239,8 @@ class AiChatService(
                         providerUsage = result.usage
                         result.text
                     }
-                    AiProvider.DEEPSEEK, AiProvider.KIMI, AiProvider.OPENROUTER, AiProvider.AIHUBMIX, AiProvider.VERCEL,
-                    AiProvider.CUSTOM -> {
+                    AiProvider.DEEPSEEK, AiProvider.KIMI, AiProvider.MISTRAL, AiProvider.OPENROUTER,
+                    AiProvider.AIHUBMIX, AiProvider.VERCEL, AiProvider.CUSTOM -> {
                         check(effectiveModel.isNotEmpty()) {
                             "No model selected. Pick one from the endpoint's list or set a default model in API Keys."
                         }
@@ -3411,6 +3412,10 @@ class AiChatService(
                         }
                     }
                 }
+            }
+
+            AiProvider.MISTRAL -> {
+                "**Mistral ($model)**: Simulation for '$prompt'. Add a Mistral API key to use the live OpenAI-compatible endpoint."
             }
 
             AiProvider.OPENROUTER -> {

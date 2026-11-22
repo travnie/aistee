@@ -1375,6 +1375,37 @@ class AiChatServiceTest {
     }
 
     @Test
+    fun mistralKeyUsesLiveCompatibleEndpoint() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val service = customEndpointService(
+            requests,
+            """{"model":"mistral-large-latest","choices":[{"message":{"content":"mistral answer"}}]}""",
+        )
+        val reply = service.generateResponse(
+            prompt = "ping",
+            provider = AiProvider.MISTRAL,
+            modelName = "mistral-large-latest",
+            apiKeys = ApiKeyConfig(mistralKey = "mistral-test-key"),
+            systemInstruction = null,
+            profile = null,
+            allowSimulationFallback = false,
+        )
+
+        assertFalse(reply.isError)
+        assertFalse(reply.isSimulated)
+        assertEquals("mistral answer", reply.text)
+        assertEquals(AiProvider.MISTRAL, reply.provider)
+        val request = requests.single()
+        assertEquals("https://api.mistral.ai/v1/chat/completions", request.url.toString())
+        assertEquals("Bearer mistral-test-key", request.header("Authorization"))
+        val body = Buffer().also { requireNotNull(request.body).writeTo(it) }.readUtf8()
+        assertEquals(
+            "mistral-large-latest",
+            Json.parseToJsonElement(body).jsonObject["model"]?.jsonPrimitive?.content,
+        )
+    }
+
+    @Test
     fun customEndpointClientNeverFollowsRedirects() {
         val client = buildCustomEndpointHttpClient(OkHttpClient())
 
