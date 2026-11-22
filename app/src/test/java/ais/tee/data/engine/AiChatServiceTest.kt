@@ -1410,6 +1410,15 @@ class AiChatServiceTest {
     }
 
     @Test
+    fun mistralStreamingHasBoundedTotalCallWithoutAnIdleReadTimeout() {
+        val client = buildMistralStreamingHttpClient(
+            OkHttpClient.Builder().readTimeout(10, java.util.concurrent.TimeUnit.SECONDS).build()
+        )
+        assertEquals(0, client.readTimeoutMillis)
+        assertEquals(10 * 60 * 1000, client.callTimeoutMillis)
+    }
+
+    @Test
     fun mistralStreamingUsesBearerKeyAndReturnsDeltas() = runBlocking {
         val requests = mutableListOf<Request>()
         val deltas = mutableListOf<String>()
