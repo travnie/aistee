@@ -259,6 +259,7 @@ enum class AiProvider(
             "mistral-tiny-latest",
         ),
         description = "Mistral AI models with reasoning, coding, and multimodal capabilities",
+        participatesInDefaultCompare = false,
     ),
     OPENROUTER(
         id = "openrouter",

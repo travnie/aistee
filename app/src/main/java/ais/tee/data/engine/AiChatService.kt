@@ -279,6 +279,10 @@ class AiChatService(
     private val streamingHttpClient: OkHttpClient = httpClient.newBuilder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
+    // Mistral streams use an idle timeout; other providers retain existing streaming policy.
+    private val mistralStreamingHttpClient: OkHttpClient = httpClient.newBuilder()
+        .readTimeout(60, TimeUnit.SECONDS)
+        .build()
     private val openAiFlexHttpClient: OkHttpClient = httpClient.newBuilder()
         .callTimeout(OPENAI_FLEX_TIMEOUT_MINUTES, TimeUnit.MINUTES)
         .readTimeout(OPENAI_FLEX_TIMEOUT_MINUTES, TimeUnit.MINUTES)
@@ -3081,7 +3085,11 @@ class AiChatService(
                 extractOpenAiCompatibleModel(event)?.let(onResolvedModel)
                 usage = mergeProviderUsage(usage, extractOpenAiCompatibleUsage(event))
             },
-            client = if (provider == AiProvider.CUSTOM) customEndpointStreamingHttpClient else streamingHttpClient
+            client = when (provider) {
+                AiProvider.CUSTOM -> customEndpointStreamingHttpClient
+                AiProvider.MISTRAL -> mistralStreamingHttpClient
+                else -> streamingHttpClient
+            }
         ).ifEmpty { "Received empty message content." }
         return OpenAiCompatibleGenerationResult(text = text, usage = usage)
     }

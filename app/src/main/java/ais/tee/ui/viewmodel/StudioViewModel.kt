@@ -1811,6 +1811,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         customEndpointUrl: String = "",
         customEndpointKey: String = "",
         customEndpointModel: String = "",
+        mistralKey: String = "",
     ) {
         val previous = _uiState.value.apiKeyConfig
         val config = ApiKeyConfig(
@@ -1819,6 +1820,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             claudeKey = claudeKey.trim(),
             deepseekKey = deepseekKey.trim(),
             kimiKey = kimiKey.trim(),
+            mistralKey = mistralKey.trim(),
             openRouterKey = openRouterKey.trim(),
             aiHubMixKey = aiHubMixKey.trim(),
             vercelAiGatewayKey = vercelAiGatewayKey.trim(),
