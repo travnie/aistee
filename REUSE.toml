@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 trvny
+# SPDX-License-Identifier: MPL-2.0
+
+version = 1
+
+# Repository-owned source, documentation, configuration, and generated profiles.
+[[annotations]]
+path = "**"
+SPDX-FileCopyrightText = "2026 trvny"
+SPDX-License-Identifier = "MPL-2.0"
+
+# Generated Gradle wrapper is not relicensed.
+[[annotations]]
+path = [
+  "gradlew",
+  "gradlew.bat",
+  "gradle/wrapper/gradle-wrapper.jar",
+  "gradle/wrapper/gradle-wrapper.properties",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2015 Gradle original authors and contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# JTokkit notice remains under its upstream license.
+[[annotations]]
+path = "app/src/main/assets/licenses/JTokkit-LICENSE.txt"
+precedence = "override"
+SPDX-FileCopyrightText = "2023 Knuddels, Philip Müller"
+SPDX-License-Identifier = "MIT"
