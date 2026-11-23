@@ -1,0 +1,53 @@
+name: Aistee WebView Experiment
+
+on:
+  push:
+    branches: [experiment/ai-studio-webview-nov20]
+    paths:
+      - "experiments/ai-studio-webview/**"
+      - ".github/workflows/aistee-webview-experiment.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prototype:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: experiments/ai-studio-webview/package-lock.json
+
+      - name: Check and bundle web prototype
+        working-directory: experiments/ai-studio-webview
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run lint
+          npm run build
+
+      - name: Refresh Android WebView bundle
+        run: |
+          cp -a experiments/ai-studio-webview/dist/. \
+            experiments/ai-studio-webview/app/src/main/assets/web/
+
+      - name: Set up Android build
+        uses: ./.github/actions/setup-android-build
+
+      - name: Build isolated Android experiment
+        run: ./gradlew -p experiments/ai-studio-webview :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload experimental APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: aistee-lab-experimental-apk
+          path: experiments/ai-studio-webview/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
