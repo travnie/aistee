@@ -10,7 +10,7 @@ Kotlin Multiplatform · Android first · Local-first tools
 [![Performance](https://img.shields.io/github/actions/workflow/status/travnie/aistee/performance-ci.yml?branch=main&label=performance&logo=githubactions&logoColor=white&style=flat-square)](https://github.com/travnie/aistee/actions/workflows/performance-ci.yml)
 [![Latest APK](https://img.shields.io/badge/APK-rolling-818CF8?logo=android&logoColor=white&style=flat-square)](https://github.com/travnie/aistee/releases/download/aistee-latest/aistee.apk)
 [![Last commit](https://img.shields.io/github/last-commit/travnie/aistee?color=A78BFA&logo=git&style=flat-square)](https://github.com/travnie/aistee/commits/main)
-[![License](https://img.shields.io/github/license/travnie/aistee?color=818CF8&logo=opensourceinitiative&logoColor=white&style=flat-square)](https://spdx.org/licenses/MPL-2.0.html)
+[![License](https://img.shields.io/badge/license-MPL--2.0-818CF8?logo=opensourceinitiative&logoColor=white&style=flat-square)](https://spdx.org/licenses/MPL-2.0.html)
 
 [![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin%20Multiplatform-7F52FF?logo=kotlin&logoColor=white&style=flat-square)](https://kotlinlang.org/docs/multiplatform.html) ![Gradle](https://img.shields.io/badge/Gradle-02303A?logo=gradle&logoColor=fff&style=flat-square)
 [![Material 3](https://img.shields.io/badge/Material%203-4285F4?logo=jetpackcompose&logoColor=white&style=flat-square)](https://m3.material.io/) [![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white&style=flat-square)](https://developer.android.com/about/versions/oreo)
