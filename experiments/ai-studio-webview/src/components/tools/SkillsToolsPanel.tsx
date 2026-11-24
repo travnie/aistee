@@ -1,9 +1,8 @@
-import React, { useMemo, useRef, useState } from 'react';
+import { downloadBlob } from '../../lib/nativeWorkbench';
+import React, { useRef, useState } from 'react';
 import {
-  CheckCircle2,
   Copy,
   Download,
-  Play,
   Plus,
   ShieldCheck,
   ShieldOff,
@@ -13,13 +12,11 @@ import {
 } from 'lucide-react';
 import { useAistee } from '../../context/AisteeContext';
 import {
-  ActiveSkillToolId,
   BUILT_IN_INSTRUCTIONS,
   BUILT_IN_SKILLS,
   BUILT_IN_TEMPLATES,
   createSkillDraft,
   exportStudioPackageZip,
-  LocalSkillBundle,
   parseSkillManifest,
   readSkillArchiveZip,
 } from '../../lib/skills';
@@ -29,8 +26,6 @@ const BUILT_IN_CATEGORIES = ['Skills', 'Instructions', 'Templates'] as const;
 export const SkillsToolsPanel: React.FC = () => {
   const {
     localSkills,
-    activeSkillsEnabled,
-    setActiveSkillsEnabled,
     upsertLocalSkill,
     deleteLocalSkill,
     trustLocalSkill,
@@ -49,15 +44,6 @@ export const SkillsToolsPanel: React.FC = () => {
   const [draftScript, setDraftScript] = useState(
     `// Runs inside sandboxed iframe\nwindow.aisteeCall('current_datetime', {});`,
   );
-
-  // Active Skill sandbox runner modal state
-  const [runningSkill, setRunningSkill] = useState<LocalSkillBundle | null>(null);
-  const [sandboxLogs, setSandboxLogs] = useState<string[]>([]);
-  const [pendingToolPrompt, setPendingToolPrompt] = useState<{
-    id: string;
-    tool: ActiveSkillToolId;
-    args: Record<string, unknown>;
-  } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -79,61 +65,8 @@ export const SkillsToolsPanel: React.FC = () => {
 
   const handleExportZip = async () => {
     const blob = await exportStudioPackageZip(localSkills, exportHost, renderedInstructions);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `aistee-studio-${exportHost.toLowerCase()}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast(`Exported Studio Plugin ZIP (${exportHost})`);
+    downloadBlob(blob, `aistee-studio-${exportHost.toLowerCase()}.zip`, showToast);
   };
-
-  const sandboxSrcDoc = useMemo(() => {
-    if (!runningSkill) return '';
-    const scriptCode =
-      runningSkill.scriptSource ||
-      `document.body.innerHTML += '<p>Skill ${runningSkill.name} rendered safely inside sandboxed iframe.</p>';`;
-    const safeScript = scriptCode.replace(/<\/script>/gi, '<\\/script>');
-    return `<!doctype html><html><head><meta charset="utf-8"><style>
-      body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; margin: 16px; font-size: 13px; }
-      button { background: #4f46e5; color: #fff; border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 12px; }
-      pre { background: #1e293b; padding: 10px; border-radius: 8px; overflow: auto; }
-    </style></head><body>
-      <h3>${runningSkill.name}</h3>
-      <div id="app"></div>
-      <script>
-        window.aisteeCall = function(tool, args) {
-          var id = 'req_' + Math.random().toString(36).slice(2);
-          window.parent.postMessage({ source: 'aistee-skill-sandbox', id: id, tool: tool, args: args || {} }, '*');
-        };
-      </script>
-      <script>
-        try {
-          ${safeScript}
-        } catch (err) {
-          document.body.innerHTML += '<pre style="color:#fda4af">' + String(err) + '</pre>';
-        }
-      </script>
-    </body></html>`;
-  }, [runningSkill]);
-
-  React.useEffect(() => {
-    if (!runningSkill) return;
-    const onMessage = (evt: MessageEvent) => {
-      if (evt.data?.source !== 'aistee-skill-sandbox') return;
-      const tool = evt.data.tool as ActiveSkillToolId;
-      const args = (evt.data.args ?? {}) as Record<string, unknown>;
-      setSandboxLogs((prev) => [...prev, `Requested tool: ${tool} (${JSON.stringify(args)})`]);
-      if (tool === 'current_datetime') {
-        const now = new Date().toISOString();
-        setSandboxLogs((prev) => [...prev, `→ Result: ${now}`]);
-      } else {
-        setPendingToolPrompt({ id: evt.data.id, tool, args });
-      }
-    };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [runningSkill]);
 
   return (
     <div className="space-y-5">
@@ -164,15 +97,7 @@ export const SkillsToolsPanel: React.FC = () => {
           </button>
         </div>
 
-        <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={activeSkillsEnabled}
-            onChange={(e) => setActiveSkillsEnabled(e.target.checked)}
-            className="h-4 w-4 accent-indigo-600"
-          />
-          Enable Active Skills Sandbox (requires SHA-256 trust per skill)
-        </label>
+        <p className="text-xs text-amber-500">Active script execution disabled pending an isolated capability runtime. Import/export remains available.</p>
       </div>
 
       {subView === 'local' ? (
@@ -285,19 +210,7 @@ export const SkillsToolsPanel: React.FC = () => {
                                 Trust SHA-256
                               </button>
                             )}
-                            <button
-                              type="button"
-                              disabled={!activeSkillsEnabled || !skill.trusted}
-                              onClick={() => {
-                                setSandboxLogs([]);
-                                setPendingToolPrompt(null);
-                                setRunningSkill(skill);
-                              }}
-                              className="inline-flex items-center gap-1 rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 px-2.5 py-1 text-xs font-semibold text-white"
-                            >
-                              <Play className="h-3.5 w-3.5" />
-                              Run Sandbox
-                            </button>
+
                           </>
                         )}
                         <button
@@ -523,80 +436,6 @@ export const SkillsToolsPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Sandboxed Active Skill Runner Modal */}
-      {runningSkill && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4"
-          onClick={() => setRunningSkill(null)}
-        >
-          <div
-            className="w-full max-w-2xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#1E293B] shadow-2xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                <span className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-100">
-                  Active Skill Sandbox · {runningSkill.name}
-                </span>
-              </div>
-              <button type="button" onClick={() => setRunningSkill(null)} className="rounded p-1 text-slate-400">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-3">
-              <iframe
-                title={`Active skill ${runningSkill.name}`}
-                sandbox="allow-scripts"
-                srcDoc={sandboxSrcDoc}
-                className="w-full h-52 rounded-lg border border-slate-300 dark:border-slate-700 bg-[#0F172A]"
-              />
-
-              {pendingToolPrompt && (
-                <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 p-3 flex items-center justify-between gap-3">
-                  <div className="text-xs text-amber-900 dark:text-amber-200">
-                    Skill requested consent for tool <code className="font-mono font-semibold">{pendingToolPrompt.tool}</code>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSandboxLogs((prev) => [...prev, `Denied tool ${pendingToolPrompt.tool}`]);
-                        setPendingToolPrompt(null);
-                      }}
-                      className="rounded border border-amber-400 px-2.5 py-1 text-xs"
-                    >
-                      Deny
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (pendingToolPrompt.tool === 'copy_to_clipboard') {
-                          await navigator.clipboard.writeText(String(pendingToolPrompt.args.text ?? runningSkill.name));
-                        }
-                        setSandboxLogs((prev) => [...prev, `Approved & executed ${pendingToolPrompt.tool}`]);
-                        setPendingToolPrompt(null);
-                      }}
-                      className="rounded bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white"
-                    >
-                      Approve
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/70 p-2.5 font-mono text-[11px] text-slate-700 dark:text-slate-300 max-h-28 overflow-y-auto space-y-1">
-                {sandboxLogs.length === 0 ? (
-                  <div className="text-slate-400">Waiting for capability messages…</div>
-                ) : (
-                  sandboxLogs.map((l, i) => <div key={i}>{l}</div>)
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

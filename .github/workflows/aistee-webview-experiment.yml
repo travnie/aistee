@@ -31,10 +31,13 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           npm run lint
+          npm test
           npm run build
 
       - name: Refresh Android WebView bundle
         run: |
+          rm -rf experiments/ai-studio-webview/app/src/main/assets/web
+          mkdir -p experiments/ai-studio-webview/app/src/main/assets/web
           cp -a experiments/ai-studio-webview/dist/. \
             experiments/ai-studio-webview/app/src/main/assets/web/
 

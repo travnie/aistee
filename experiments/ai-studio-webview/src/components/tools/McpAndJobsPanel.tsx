@@ -638,13 +638,13 @@ export const AsyncJobsPanel: React.FC = () => {
                   <button
                     type="button"
                     onClick={async () => {
-                      await upsertProjectAsset({
+                      if (!(await upsertProjectAsset({
                         projectId: job.projectId,
                         title: `Job ${job.remoteId.slice(0, 12)} output`,
                         content: job.outputPreview!,
                         kind: 'ARTIFACT',
                         origin: 'JOB_OUTPUT',
-                      });
+                      }))) return;
                       showToast('Saved job output to Project Library');
                     }}
                     className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white"

@@ -31,8 +31,10 @@ separate; no credential or conversation migration is provided.
 - External account sign-ins may remain in the system browser, not the embedded UI.
 - Generated JS/CSS assets are included for archive fidelity; treat source under
   `src/` as canonical and regenerate before publishing test APKs.
-- Android runtime, secure key storage, MCP calls, licensing notices and mobile
-  UX require separate review. No automatic rolling-release publication.
+- API keys are session-only; no plaintext persistence. Active scripts are disabled
+  until a capability runtime can enforce network and host permissions.
+- Android runtime, MCP compatibility and mobile UX require device testing.
+  No automatic rolling-release publication.
 
 ## Original prototype overview
 
@@ -49,7 +51,7 @@ Aistee is a local-first React + TypeScript web workbench (backed by a stateless 
 - **`.ai` Profile Studio & Renderer (`Studio`)**: Compose base profiles with built-in or custom overlays, tweak personality modifiers, adaptation flags, collaboration policies, knowledge integrity constraints, and output preferences; inspect deterministic EN/PL/Auto instructions, schema-validated `profile.yaml`, and test responses in the offline Playground.
 - **Docbench & Markdown Workspace**: Live split editor/preview with `o200k_base` token estimation, line-ending detection & LF normalization, unclosed Markdown fence repair, JSON formatting, structural diagnostics, and Text Inspector scanning.
 - **Tools Hub (`Skills`, `Benches`, `Agents`, `MCP`, `Jobs`, `Privacy`)**:
-  - **Skills**: Browse built-in skills/instructions/templates, manage `SKILL.md` local bundles with SHA-256 trust digests, export `.zip` bundles (`PORTABLE`, `.claude/skills`, `.agents/skills`), and execute Active Skills inside a sandboxed `iframe`.
+  - **Skills**: Browse built-in skills/instructions/templates, manage `SKILL.md` local bundles with SHA-256 trust digests, export `.zip` bundles (`PORTABLE`, `.claude/skills`, `.agents/skills`), Active Skill packages can be imported/exported; execution is disabled.
   - **Benches**: Docbench Text Inspector (bidi overrides, Unicode tags, variation selectors, mixed-script confusables, Base64 carriers), Codebench QR SVG generator & offline image decoder, and Streambench M3U/M3U8 in-memory audio player.
   - **Agents / MCP / Jobs**: Claude Code external handoff builder, SSRF-protected MCP `tools/list` + RFC 9728 OAuth inspection + one-shot manual tool execution, and OpenAI/Anthropic/Gemini async/batch job orchestration.
   - **Privacy**: Screen Privacy veil, Quick Privacy toggle, Passcode App Lock, and full local data wipe.

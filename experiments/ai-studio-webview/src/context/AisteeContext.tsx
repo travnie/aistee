@@ -1,3 +1,5 @@
+import { buildReplayHistory } from '../lib/chatReplay';
+import { syncNativePrivacy } from '../lib/nativeWorkbench';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AI_PROVIDERS,
@@ -56,7 +58,7 @@ import {
   loadWebDrafts,
   loadWebPrefs,
   saveActiveSkillsEnabled,
-  saveApiKeys,
+  STORAGE_ERROR_EVENT,
   saveAsyncJobs,
   saveEnabledBenches,
   saveLocalSkills,
@@ -203,7 +205,7 @@ interface AisteeContextValue {
     mediaType?: string;
     kind: ProjectLibraryAssetKind;
     origin: ProjectLibraryAssetOrigin;
-  }) => Promise<ProjectLibraryAsset>;
+  }) => Promise<ProjectLibraryAsset | null>;
   deleteProjectAsset: (assetId: string) => void;
   importProjectLibraryJson: (raw: string) => { ok: boolean; message: string };
 
@@ -295,7 +297,6 @@ export const AisteeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [apiKeys, setApiKeys] = useState<ApiKeyConfig>(() => loadApiKeys());
   const updateApiKeys = useCallback((next: ApiKeyConfig) => {
     setApiKeys(next);
-    saveApiKeys(next);
   }, []);
 
   // Studio profile
@@ -376,11 +377,21 @@ export const AisteeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [],
   );
 
-  // Project Library v2
-  const [projectLibrary, setProjectLibrary] = useState<ProjectLibraryArchive>(() => loadProjectLibrary());
+  // Project Library v2: commit storage before publishing state or confirming saves.
+  const [projectLibrary, publishProjectLibrary] = useState<ProjectLibraryArchive>(() => loadProjectLibrary());
+  const projectLibraryRef = useRef(projectLibrary);
+  const setProjectLibrary = useCallback((update: ProjectLibraryArchive | ((prev: ProjectLibraryArchive) => ProjectLibraryArchive)) => {
+    const next = typeof update === 'function' ? update(projectLibraryRef.current) : update;
+    if (!saveProjectLibrary(next)) return false;
+    projectLibraryRef.current = next;
+    publishProjectLibrary(next);
+    return true;
+  }, []);
   useEffect(() => {
-    saveProjectLibrary(projectLibrary);
-  }, [projectLibrary]);
+    const onStorageError = () => showToast('Local storage write failed. Unsaved data may be lost on reload.');
+    window.addEventListener(STORAGE_ERROR_EVENT, onStorageError);
+    return () => window.removeEventListener(STORAGE_ERROR_EVENT, onStorageError);
+  }, [showToast]);
 
   const createProject = useCallback(
     (name: string): LocalProject | null => {
@@ -393,11 +404,10 @@ export const AisteeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         createdAtEpochMs: now,
         updatedAtEpochMs: now,
       };
-      setProjectLibrary((prev) => ({
+      return setProjectLibrary((prev) => ({
         ...prev,
         projects: [...prev.projects, proj],
-      }));
-      return proj;
+      })) ? proj : null;
     },
     [],
   );
@@ -431,12 +441,12 @@ export const AisteeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       mediaType?: string;
       kind: ProjectLibraryAssetKind;
       origin: ProjectLibraryAssetOrigin;
-    }): Promise<ProjectLibraryAsset> => {
+    }): Promise<ProjectLibraryAsset | null> => {
       const now = Date.now();
       const hash = await sha256Hex(input.content);
       const sizeBytes = new TextEncoder().encode(input.content).length;
       let createdAsset!: ProjectLibraryAsset;
-      setProjectLibrary((prev) => {
+      const saved = setProjectLibrary((prev) => {
         const existing = input.id ? prev.assets.find((a) => a.id === input.id) : undefined;
         if (existing) {
           createdAsset = {
@@ -477,9 +487,9 @@ export const AisteeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           assets: [createdAsset, ...prev.assets],
         };
       });
-      return createdAsset;
+      return saved ? createdAsset : null;
     },
-    [],
+    [setProjectLibrary],
   );
 
   const deleteProjectAsset = useCallback((assetId: string) => {
@@ -496,7 +506,7 @@ export const AisteeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return { ok: false, message: 'JSON must contain an `assets` array.' };
       }
       const importedProjects = Array.isArray(parsed.projects) ? parsed.projects : [];
-      setProjectLibrary((prev) => {
+      const saved = setProjectLibrary((prev) => {
         const projMap = new Map(prev.projects.map((p) => [p.id, p]));
         for (const p of importedProjects) {
           if (p && p.id && p.name && !projMap.has(p.id)) projMap.set(p.id, p);
@@ -516,7 +526,7 @@ export const AisteeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           assets: Array.from(assetMap.values()),
         };
       });
-      return { ok: true, message: `Imported ${parsed.assets.length} project library assets.` };
+      return saved ? { ok: true, message: `Imported ${parsed.assets.length} project library assets.` } : { ok: false, message: 'Import failed: local storage unavailable or full. Original archive unchanged.' };
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : 'Invalid JSON archive.' };
     }
@@ -760,6 +770,7 @@ export const AisteeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         text: rawPrompt || `Attached ${attachedAssets.length} project file(s)`,
         timestamp: Date.now(),
         sourceAssetIds: attachedAssets.map((a) => a.id),
+        replayUserContent: attachedAssets.length ? fullUserContent : undefined,
       };
 
       const placeholderIds: Record<string, string> = {};
@@ -826,18 +837,7 @@ export const AisteeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const customUrl =
           provider === 'custom' ? normalizeCustomEndpointBaseUrl(apiKeys.customEndpointUrl) ?? undefined : undefined;
 
-        // Provider-scoped replay boundary: only replay user messages and assistant messages from THIS provider (no cross-provider/error pollution)
-        const scopedHistory: Array<{ role: 'user' | 'assistant'; text: string }> = [];
-        for (const m of priorMessages) {
-          if (m.isError || !m.text.trim()) continue;
-          if (m.sender === 'user') {
-            scopedHistory.push({ role: 'user', text: m.text });
-          } else if (m.sender === 'assistant' && (m.provider === provider || targets.length === 1)) {
-            scopedHistory.push({ role: 'assistant', text: m.text });
-          }
-        }
-        // Keep last 24 turns bounded
-        const boundedHistory = [...scopedHistory.slice(-24), { role: 'user' as const, text: fullUserContent }];
+        const boundedHistory = [...buildReplayHistory(priorMessages, provider, customUrl).slice(-24), { role: 'user' as const, text: fullUserContent }];
 
         try {
           let accumulatedText = '';
@@ -1210,6 +1210,7 @@ export const AisteeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     savePrivacySettings(privacy);
+    syncNativePrivacy(privacy.quickPrivacy);
   }, [privacy]);
 
   const updatePrivacy = useCallback((patch: Partial<PrivacySettings>) => {
@@ -1259,7 +1260,9 @@ export const AisteeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const freshChat = createDefaultConversation();
     setConversations([freshChat]);
     setActiveConversationId(freshChat.id);
-    setProjectLibrary(loadProjectLibrary());
+    const freshLibrary = loadProjectLibrary();
+    projectLibraryRef.current = freshLibrary;
+    publishProjectLibrary(freshLibrary);
     setWebDrafts({});
     setWebBookmarks([]);
     setLocalSkills([]);

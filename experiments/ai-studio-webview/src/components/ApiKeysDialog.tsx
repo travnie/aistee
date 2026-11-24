@@ -42,7 +42,7 @@ export const ApiKeysDialog: React.FC = () => {
       customEndpointUrl: normalizedCustom,
     });
     setIsApiKeysOpen(false);
-    showToast('API keys updated locally');
+    showToast('API keys updated for this session');
   };
 
   const fields: Array<{ key: keyof ApiKeyConfig; label: string; hint: string }> = [
@@ -74,7 +74,7 @@ export const ApiKeysDialog: React.FC = () => {
                 Provider API Keys & Custom Endpoint
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Stored only in your browser; sent ephemerally to the stateless proxy per turn.
+                Session only. Keys are not saved to disk; re-enter after reload.
               </p>
             </div>
           </div>

@@ -1,3 +1,4 @@
+import { downloadBlob } from '../lib/nativeWorkbench';
 import React from 'react';
 import { Copy, Download, Languages } from 'lucide-react';
 import { useAistee } from '../context/AisteeContext';
@@ -20,12 +21,7 @@ export const InstructionsScreen: React.FC = () => {
 
   const handleDownload = () => {
     const blob = new Blob([renderedInstructions], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `instructions-${composedProfile.id}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `instructions-${composedProfile.id}.md`, showToast);
   };
 
   return (

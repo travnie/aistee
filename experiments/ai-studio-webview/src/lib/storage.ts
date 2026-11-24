@@ -43,11 +43,15 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
-function writeJson(key: string, value: unknown): void {
+export const STORAGE_ERROR_EVENT = 'aistee-storage-error';
+
+function writeJson(key: string, value: unknown): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch {
-    // storage quota ignored
+    window.dispatchEvent(new Event(STORAGE_ERROR_EVENT));
+    return false;
   }
 }
 
@@ -61,11 +65,9 @@ export function saveThemeMode(mode: 'dark' | 'light'): void {
 }
 
 export function loadApiKeys(): ApiKeyConfig {
-  return { ...EMPTY_API_KEYS, ...readJson<Partial<ApiKeyConfig>>(KEYS.API_KEYS, {}) };
-}
-
-export function saveApiKeys(keys: ApiKeyConfig): void {
-  writeJson(KEYS.API_KEYS, keys);
+  // Experimental credentials are session-only; discard legacy plaintext.
+  try { localStorage.removeItem(KEYS.API_KEYS); } catch { /* unavailable storage */ }
+  return { ...EMPTY_API_KEYS };
 }
 
 export interface StudioSnapshot {
@@ -127,8 +129,8 @@ export function loadProjectLibrary(): ProjectLibraryArchive {
   return raw;
 }
 
-export function saveProjectLibrary(archive: ProjectLibraryArchive): void {
-  writeJson(KEYS.PROJECT_LIBRARY, archive);
+export function saveProjectLibrary(archive: ProjectLibraryArchive): boolean {
+  return writeJson(KEYS.PROJECT_LIBRARY, archive);
 }
 
 export interface WebPrefs {

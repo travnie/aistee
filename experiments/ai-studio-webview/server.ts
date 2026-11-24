@@ -2,94 +2,11 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import dns from 'node:dns/promises';
-import net from 'node:net';
+import { assertPublicHttpsUrl, publicFetch, readBoundedText } from './src/lib/publicProxy';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3000;
 const HOST = '0.0.0.0';
-
-function isPrivateOrReservedIp(ip: string): boolean {
-  if (net.isIPv4(ip)) {
-    const parts = ip.split('.').map(Number);
-    const [a, b] = parts;
-    if (a === 0 || a === 10 || a === 127) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 100 && b >= 64 && b <= 127) return true;
-    if (a >= 224) return true;
-    return false;
-  }
-  if (net.isIPv6(ip)) {
-    const norm = ip.toLowerCase();
-    if (norm === '::' || norm === '::1') return true;
-    if (norm.startsWith('fc') || norm.startsWith('fd') || norm.startsWith('fe80')) return true;
-    if (norm.startsWith('::ffff:')) {
-      return isPrivateOrReservedIp(norm.slice(7));
-    }
-    return false;
-  }
-  return true;
-}
-
-const BLOCKED_HOST_SUFFIXES = [
-  '.local',
-  '.localhost',
-  '.internal',
-  '.invalid',
-  '.test',
-  '.example',
-  '.arpa',
-  '.onion',
-  '.alt',
-];
-
-async function assertPublicHttpsUrl(rawUrl: string): Promise<URL> {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl.trim());
-  } catch {
-    throw new Error('Invalid HTTPS URL.');
-  }
-  if (parsed.protocol !== 'https:') {
-    throw new Error('Only public HTTPS endpoints are permitted.');
-  }
-  if (parsed.username || parsed.password || parsed.hash) {
-    throw new Error('URLs with embedded credentials or fragments are not permitted.');
-  }
-  const hostname = parsed.hostname.toLowerCase().replace(/\.$/, '');
-  if (
-    !hostname ||
-    hostname === 'localhost' ||
-    BLOCKED_HOST_SUFFIXES.some((s) => hostname.endsWith(s))
-  ) {
-    throw new Error('Local or reserved hostnames are blocked.');
-  }
-  if (net.isIP(hostname)) {
-    if (isPrivateOrReservedIp(hostname)) {
-      throw new Error('Private or reserved IP addresses are blocked.');
-    }
-    return parsed;
-  }
-  try {
-    const records = await dns.lookup(hostname, { all: true });
-    if (records.length === 0) {
-      throw new Error('DNS resolution returned no addresses.');
-    }
-    for (const rec of records) {
-      if (isPrivateOrReservedIp(rec.address)) {
-        throw new Error('Endpoint resolves to a private or reserved network address.');
-      }
-    }
-  } catch (err) {
-    if (err instanceof Error && err.message.includes('blocked') || (err instanceof Error && err.message.includes('private'))) {
-      throw err;
-    }
-    throw new Error('Unable to verify public DNS resolution for endpoint.');
-  }
-  return parsed;
-}
 
 function writeSseEvent(res: express.Response, payload: unknown) {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -162,7 +79,7 @@ async function startServer() {
           signal: abortController.signal,
         });
         if (!upstream.ok || !upstream.body) {
-          const errText = await upstream.text().catch(() => '');
+          const errText = await readBoundedText(upstream, 16_000).catch(() => '');
           writeSseEvent(res, {
             type: 'error',
             message: `Gemini HTTP ${upstream.status}${errText ? `: ${errText.slice(0, 300)}` : ''}`,
@@ -240,7 +157,7 @@ async function startServer() {
           signal: abortController.signal,
         });
         if (!upstream.ok || !upstream.body) {
-          const errText = await upstream.text().catch(() => '');
+          const errText = await readBoundedText(upstream, 16_000).catch(() => '');
           writeSseEvent(res, {
             type: 'error',
             message: `Claude HTTP ${upstream.status}${errText ? `: ${errText.slice(0, 300)}` : ''}`,
@@ -322,7 +239,7 @@ async function startServer() {
           signal: abortController.signal,
         });
         if (!upstream.ok || !upstream.body) {
-          const errText = await upstream.text().catch(() => '');
+          const errText = await readBoundedText(upstream, 16_000).catch(() => '');
           writeSseEvent(res, {
             type: 'error',
             message: `OpenAI HTTP ${upstream.status}${errText ? `: ${errText.slice(0, 300)}` : ''}`,
@@ -387,8 +304,9 @@ async function startServer() {
           return res.end();
         }
         const verified = await assertPublicHttpsUrl(customUrl);
-        const cleanBase = verified.toString().replace(/\/+$/, '');
-        targetUrl = `${cleanBase}/chat/completions`;
+        if (verified.search) throw new Error('Custom base URL cannot include a query.');
+        verified.pathname = verified.pathname.replace(/\/+$/, '') + '/chat/completions';
+        targetUrl = verified.toString();
       } else {
         writeSseEvent(res, { type: 'error', message: `Unsupported provider: ${provider}` });
         return res.end();
@@ -412,7 +330,7 @@ async function startServer() {
       };
       if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-      const upstream = await fetch(targetUrl, {
+      const upstream = await (provider === 'custom' ? publicFetch : fetch)(targetUrl, {
         method: 'POST',
         headers,
         redirect: 'manual',
@@ -425,7 +343,7 @@ async function startServer() {
       });
 
       if (!upstream.ok || !upstream.body) {
-        const errText = await upstream.text().catch(() => '');
+        const errText = await readBoundedText(upstream, 16_000).catch(() => '');
         writeSseEvent(res, {
           type: 'error',
           message: `Provider HTTP ${upstream.status}${errText ? `: ${errText.slice(0, 300)}` : ''}`,
@@ -502,17 +420,19 @@ async function startServer() {
       else if (provider === 'custom') {
         if (!customUrl) return res.status(400).json({ error: 'Custom URL required.' });
         const verified = await assertPublicHttpsUrl(customUrl);
-        url = `${verified.toString().replace(/\/+$/, '')}/models`;
+        if (verified.search) throw new Error('Custom base URL cannot include a query.');
+        verified.pathname = verified.pathname.replace(/\/+$/, '') + '/models';
+        url = verified.toString();
       } else {
         return res.status(400).json({ error: 'Unsupported gateway provider.' });
       }
       const headers: Record<string, string> = { Accept: 'application/json' };
       if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-      const upstream = await fetch(url, { headers, redirect: 'manual' });
+      const upstream = await (provider === 'custom' ? publicFetch : fetch)(url, { headers, redirect: 'manual' });
       if (!upstream.ok) {
         return res.status(upstream.status).json({ error: `HTTP ${upstream.status}` });
       }
-      const json = (await upstream.json()) as { data?: Array<Record<string, unknown>> };
+      const json = JSON.parse(await readBoundedText(upstream, 4_000_000)) as { data?: Array<Record<string, unknown>> };
       const entries = Array.isArray(json?.data)
         ? json.data
             .map((item) => {
@@ -550,7 +470,7 @@ async function startServer() {
     try {
       const { endpoint } = req.body as { endpoint: string };
       const url = await assertPublicHttpsUrl(endpoint);
-      const upstream = await fetch(url.toString(), {
+      const upstream = await publicFetch(url.toString(), {
         method: 'POST',
         redirect: 'manual',
         headers: {
@@ -587,10 +507,7 @@ async function startServer() {
         });
       }
 
-      const raw = await upstream.text();
-      if (raw.length > 256_000) {
-        return res.json({ status: 'failure', reason: 'RESPONSE_TOO_LARGE' });
-      }
+      const raw = await readBoundedText(upstream, 256_000);
       const parsed = JSON.parse(raw);
       const tools = Array.isArray(parsed?.result?.tools) ? parsed.result.tools : null;
       if (!tools) {
@@ -619,7 +536,7 @@ async function startServer() {
     try {
       const { url } = req.body as { url: string };
       const parsed = await assertPublicHttpsUrl(url);
-      const upstream = await fetch(parsed.toString(), {
+      const upstream = await publicFetch(parsed.toString(), {
         method: 'GET',
         redirect: 'manual',
         headers: { Accept: 'application/json' },
@@ -627,10 +544,7 @@ async function startServer() {
       if (!upstream.ok) {
         return res.status(upstream.status).json({ error: `HTTP ${upstream.status}` });
       }
-      const text = await upstream.text();
-      if (text.length > 128_000) {
-        return res.status(413).json({ error: 'Metadata document too large.' });
-      }
+      const text = await readBoundedText(upstream, 128_000);
       return res.json({ metadata: JSON.parse(text) });
     } catch (err) {
       return res.status(400).json({ error: err instanceof Error ? err.message : 'Inspection failed.' });
@@ -646,7 +560,7 @@ async function startServer() {
         argumentsObj: Record<string, unknown>;
       };
       const url = await assertPublicHttpsUrl(endpoint);
-      const upstream = await fetch(url.toString(), {
+      const upstream = await publicFetch(url.toString(), {
         method: 'POST',
         redirect: 'manual',
         headers: {
@@ -664,10 +578,7 @@ async function startServer() {
           },
         }),
       });
-      const text = await upstream.text();
-      if (text.length > 256_000) {
-        return res.json({ ok: false, error: 'Tool response exceeded 256 KB bound.' });
-      }
+      const text = await readBoundedText(upstream, 256_000);
       if (!upstream.ok) {
         return res.json({ ok: false, error: `HTTP ${upstream.status}` });
       }

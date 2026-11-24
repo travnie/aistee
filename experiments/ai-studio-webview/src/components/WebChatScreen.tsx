@@ -1,3 +1,4 @@
+import { downloadBlob } from '../lib/nativeWorkbench';
 import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
@@ -136,13 +137,13 @@ export const WebChatScreen: React.FC = () => {
   const handleSaveNewPrompt = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPromptContent.trim()) return;
-    await upsertProjectAsset({
+    if (!(await upsertProjectAsset({
       projectId: promptFilterProject === 'ALL' ? DEFAULT_PROJECT_ID : promptFilterProject,
       title: newPromptTitle.trim() || 'Saved Web Prompt',
       content: newPromptContent.trim(),
       kind: 'PROMPT',
       origin: 'LOCAL',
-    });
+    }))) return;
     setNewPromptTitle('');
     setNewPromptContent('');
     showToast('Prompt saved to Project Library');
@@ -170,12 +171,7 @@ export const WebChatScreen: React.FC = () => {
     const blob = new Blob([JSON.stringify({ version: 1, bookmarks: webBookmarks }, null, 2)], {
       type: 'application/json',
     });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `aistee-web-bookmarks-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `aistee-web-bookmarks-${new Date().toISOString().slice(0, 10)}.json`, showToast);
   };
 
   const exportPromptsJson = (singleAssetId?: string) => {
@@ -185,12 +181,7 @@ export const WebChatScreen: React.FC = () => {
     const blob = new Blob([JSON.stringify({ version: 2, projects: projectLibrary.projects, assets }, null, 2)], {
       type: 'application/json',
     });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = singleAssetId ? `aistee-prompt-${singleAssetId}.json` : 'aistee-prompt-vault.json';
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, singleAssetId ? `aistee-prompt-${singleAssetId}.json` : 'aistee-prompt-vault.json', showToast);
   };
 
   const renderProviderButton = (service: WebAiService) => {
@@ -483,7 +474,7 @@ export const WebChatScreen: React.FC = () => {
                                 <span>{new Date(rp.savedAtEpochMs).toLocaleTimeString()}</span>
                                 <RotateCcw className="h-3 w-3" />
                               </div>
-                              <div className="truncate text-slate-700 dark:text-slate-200 mt-0.5">{rp.text}</div>
+                              <div className="truncate text-slate-700 dark:text-slate-200 mt-0.5">{privacy.screenPrivacy && !privacyPeek ? 'Hidden snapshot' : rp.text}</div>
                             </button>
                           ))
                         )}

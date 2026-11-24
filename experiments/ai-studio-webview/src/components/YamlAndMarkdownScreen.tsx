@@ -1,3 +1,4 @@
+import { downloadBlob } from '../lib/nativeWorkbench';
 import React, { useMemo, useRef, useState } from 'react';
 import yaml from 'js-yaml';
 import {
@@ -42,6 +43,7 @@ export const YamlAndMarkdownScreen: React.FC = () => {
     workspaceTitle,
     setWorkspaceTitle,
     workspaceLinkedAssetId,
+    openInMarkdownWorkspace,
     upsertProjectAsset,
     activeConversation,
     showToast,
@@ -77,12 +79,7 @@ export const YamlAndMarkdownScreen: React.FC = () => {
 
   const handleDownload = (filename: string, content: string, mime = 'text/plain;charset=utf-8') => {
     const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, filename, showToast);
   };
 
   return (
@@ -219,8 +216,7 @@ export const YamlAndMarkdownScreen: React.FC = () => {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   const txt = await file.text();
-                  setWorkspaceTitle(file.name);
-                  setWorkspaceText(txt);
+                  openInMarkdownWorkspace(file.name, txt);
                   showToast(`Opened ${file.name}`);
                   e.target.value = '';
                 }}
@@ -236,7 +232,7 @@ export const YamlAndMarkdownScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={async () => {
-                  await upsertProjectAsset({
+                  if (!(await upsertProjectAsset({
                     id: workspaceLinkedAssetId ?? undefined,
                     projectId: activeConversation?.projectId ?? DEFAULT_PROJECT_ID,
                     title: workspaceTitle,
@@ -244,7 +240,7 @@ export const YamlAndMarkdownScreen: React.FC = () => {
                     content: workspaceText,
                     kind: 'DOCUMENT',
                     origin: 'LOCAL',
-                  });
+                  }))) return;
                   showToast(`Saved "${workspaceTitle}" to Project Library`);
                 }}
                 className="inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap"

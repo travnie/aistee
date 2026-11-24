@@ -162,8 +162,31 @@ export function repairMarkdownStructure(text: string): {
 
 export function formatJsonText(text: string): { ok: true; text: string } | { ok: false; error: string } {
   try {
-    const parsed = JSON.parse(text);
-    return { ok: true, text: JSON.stringify(parsed, null, 2) + '\n' };
+    // Validate syntax without serializing JS numbers or collapsing duplicate keys.
+    JSON.parse(text);
+    const tokens = text.match(/"(?:\\.|[^"\\])*"|[{}\[\],:]|[^\s{}\[\],:"]+/g) ?? [];
+    let depth = 0;
+    let output = '';
+    const newline = () => '\n' + '  '.repeat(depth);
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      const next = tokens[i + 1];
+      const previous = tokens[i - 1];
+      if (token === '{' || token === '[') {
+        output += token;
+        depth++;
+        if (next !== '}' && next !== ']') output += newline();
+      } else if (token === '}' || token === ']') {
+        depth--;
+        if (previous !== '{' && previous !== '[') output += newline();
+        output += token;
+      } else if (token === ',') {
+        output += ',' + newline();
+      } else {
+        output += token === ':' ? ': ' : token;
+      }
+    }
+    return { ok: true, text: output + '\n' };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Invalid JSON.' };
   }

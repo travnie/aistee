@@ -458,6 +458,7 @@ export interface ModelChatMessage {
   usage?: ProviderUsage;
   activeProfileNotes?: string[];
   sourceAssetIds?: string[];
+  replayUserContent?: string;
   toolReceipts?: NativeToolReceipt[];
   skillCards?: ActiveSkillCard[];
   endpointTag?: string;

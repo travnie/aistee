@@ -1,3 +1,4 @@
+import { downloadBlob } from '../../lib/nativeWorkbench';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
@@ -244,12 +245,7 @@ export const BenchesToolsPanel: React.FC = () => {
                   disabled={!qrSvg}
                   onClick={() => {
                     const blob = new Blob([qrSvg], { type: 'image/svg+xml;charset=utf-8' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'codebench-qr.svg';
-                    a.click();
-                    URL.revokeObjectURL(url);
+                    downloadBlob(blob, 'codebench-qr.svg', showToast);
                   }}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 px-3 py-1.5 text-xs font-semibold text-white"
                 >

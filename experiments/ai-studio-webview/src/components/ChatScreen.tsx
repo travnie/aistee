@@ -1,3 +1,4 @@
+import { downloadBlob } from '../lib/nativeWorkbench';
 import React, { useMemo, useRef, useState } from 'react';
 import {
   BookMarked,
@@ -183,13 +184,7 @@ export const ChatScreen: React.FC = () => {
       lines.push(m.text, '');
     }
     const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${activeConversation.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'chat'}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Exported conversation as Markdown');
+    downloadBlob(blob, `${activeConversation.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'chat'}.md`, showToast);
   };
 
   const handleQuoteMessage = (msg: ModelChatMessage) => {
@@ -204,13 +199,13 @@ export const ChatScreen: React.FC = () => {
   };
 
   const handleSaveAssetToLibrary = async (title: string, content: string) => {
-    await upsertProjectAsset({
+    if (!(await upsertProjectAsset({
       projectId: activeConversation.projectId,
       title: title.slice(0, 60) || 'Chat snippet',
       content,
       kind: 'DOCUMENT',
       origin: 'CHAT_EXPORT',
-    });
+    }))) return;
     showToast(`Saved to ${activeProject?.name ?? 'Inbox'} Library`);
   };
 
@@ -920,14 +915,14 @@ export const ChatScreen: React.FC = () => {
                       const res = importProjectLibraryJson(text);
                       showToast(res.message);
                     } else {
-                      await upsertProjectAsset({
+                      if (!(await upsertProjectAsset({
                         projectId: activeConversation.projectId,
                         title: file.name,
                         fileName: file.name,
                         content: text,
                         kind: 'DOCUMENT',
                         origin: 'IMPORTED',
-                      });
+                      }))) return;
                       showToast(`Imported ${file.name} into Project Library`);
                     }
                     e.target.value = '';
@@ -945,12 +940,7 @@ export const ChatScreen: React.FC = () => {
                   type="button"
                   onClick={() => {
                     const blob = new Blob([JSON.stringify(projectLibrary, null, 2)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `aistee-library-${new Date().toISOString().slice(0, 10)}.json`;
-                    a.click();
-                    URL.revokeObjectURL(url);
+                    downloadBlob(blob, `aistee-library-${new Date().toISOString().slice(0, 10)}.json`, showToast);
                   }}
                   className="inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-700 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap"
                 >
@@ -1021,13 +1011,13 @@ export const ChatScreen: React.FC = () => {
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (!newAssetContent.trim()) return;
-                  await upsertProjectAsset({
+                  if (!(await upsertProjectAsset({
                     projectId: activeConversation.projectId,
                     title: newAssetTitle.trim() || 'Reference snippet',
                     content: newAssetContent,
                     kind: newAssetKind,
                     origin: 'LOCAL',
-                  });
+                  }))) return;
                   setNewAssetTitle('');
                   setNewAssetContent('');
                   showToast('Saved asset to Project Library');
