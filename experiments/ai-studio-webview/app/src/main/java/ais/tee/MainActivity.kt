@@ -141,14 +141,6 @@ class MainActivity : ComponentActivity() {
         }.getOrDefault(false)
     }
 
-    private fun pickerMimeType(accept: String): String? = when (accept) {
-        ".md", ".txt", ".yaml", ".yml", ".m3u", ".m3u8" -> "text/*"
-        ".json" -> "application/json"
-        ".zip" -> "application/zip"
-        else -> if (accept.startsWith(".")) MimeTypeMap.getSingleton().getMimeTypeFromExtension(accept.drop(1))
-            else accept.takeIf { it.contains('/') }
-    }
-
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -368,11 +360,17 @@ class MainActivity : ComponentActivity() {
             pendingMultiple = fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE
             pendingAcceptTypes = fileChooserParams.acceptTypes.orEmpty()
                 .flatMap { it.split(',') }.map { it.trim().lowercase() }.filter { it.isNotEmpty() }
-            val mimeTypes = pendingAcceptTypes.mapNotNull(::pickerMimeType).distinct()
+            // Extensions can be advertised under several MIME types by document providers.
+            // Filter the selected URI against the original accept list instead.
+            val mimeTypes = if (pendingAcceptTypes.any { it.startsWith(".") }) {
+                emptyList()
+            } else {
+                pendingAcceptTypes.distinct()
+            }
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
                 type = mimeTypes.singleOrNull() ?: "*/*"
-                if (mimeTypes.size > 1) putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
+                if (mimeTypes.size > 1 && "*/*" !in mimeTypes) putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
                 putExtra(Intent.EXTRA_ALLOW_MULTIPLE, pendingMultiple)
             }
             return try {

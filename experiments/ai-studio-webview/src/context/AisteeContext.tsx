@@ -1,4 +1,4 @@
-import { buildReplayHistory } from '../lib/chatReplay';
+import { attachmentReplayScope, buildReplayHistory } from '../lib/chatReplay';
 import { syncNativePrivacy } from '../lib/nativeWorkbench';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -771,6 +771,12 @@ export const AisteeProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         timestamp: Date.now(),
         sourceAssetIds: attachedAssets.map((a) => a.id),
         replayUserContent: attachedAssets.length ? fullUserContent : undefined,
+        attachmentReplayScopes: attachedAssets.length
+          ? targets.map((provider) => attachmentReplayScope(
+              provider,
+              provider === 'custom' ? normalizeCustomEndpointBaseUrl(apiKeys.customEndpointUrl) ?? undefined : undefined,
+            )).filter((scope): scope is string => scope !== undefined)
+          : undefined,
       };
 
       const placeholderIds: Record<string, string> = {};

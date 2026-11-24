@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatJsonText } from '../src/lib/docbench';
-import { buildReplayHistory } from '../src/lib/chatReplay';
+import { attachmentReplayScope, buildReplayHistory } from '../src/lib/chatReplay';
 import { customEndpointTag, type ModelChatMessage } from '../src/lib/models';
 import { assertPublicHttpsUrl, isPrivateOrReservedIp, readBoundedText } from '../src/lib/publicProxy';
 
@@ -17,7 +17,7 @@ test('JSON formatting preserves numeric lexemes, duplicate keys and escaped stri
 test('replay includes attached user content and only matching provider/endpoint replies', () => {
   const url = 'https://gateway.example.com/v1';
   const messages: ModelChatMessage[] = [
-    { id: '1', sender: 'user', text: 'Attachment', replayUserContent: 'Attachment\nOriginal contents', timestamp: 0 },
+    { id: '1', sender: 'user', text: 'Attachment', replayUserContent: 'Attachment\nOriginal contents', attachmentReplayScopes: [attachmentReplayScope('custom', url)!], timestamp: 0 },
     { id: '2', sender: 'assistant', provider: 'gemini', text: 'Other provider', timestamp: 1 },
     { id: '3', sender: 'assistant', provider: 'custom', endpointTag: customEndpointTag(url), text: 'Matching', timestamp: 2 },
     { id: '4', sender: 'assistant', provider: 'custom', endpointTag: customEndpointTag('https://other.example.com'), text: 'Other gateway', timestamp: 3 },
@@ -27,8 +27,23 @@ test('replay includes attached user content and only matching provider/endpoint 
     { role: 'user', text: 'Attachment\nOriginal contents' }, { role: 'assistant', text: 'Matching' },
   ]);
   assert.deepEqual(buildReplayHistory(messages, 'gemini'), [
-    { role: 'user', text: 'Attachment\nOriginal contents' }, { role: 'assistant', text: 'Other provider' },
+    { role: 'user', text: 'Attachment' }, { role: 'assistant', text: 'Other provider' },
   ]);
+});
+
+test('attachments replay only to originally selected destinations; legacy payloads fail closed', () => {
+  const url = 'https://gateway.example.com/v1';
+  const messages: ModelChatMessage[] = [
+    { id: '1', sender: 'user', text: 'Compare these', replayUserContent: 'Secret file', attachmentReplayScopes: ['gemini', 'claude', attachmentReplayScope('custom', url)!], timestamp: 0 },
+    { id: '2', sender: 'user', text: 'Legacy', replayUserContent: 'Legacy secret', timestamp: 1 },
+  ];
+  for (const provider of ['gemini', 'claude'] as const) {
+    assert.deepEqual(buildReplayHistory(messages, provider).map(m => m.text), ['Secret file', 'Legacy']);
+  }
+  assert.deepEqual(buildReplayHistory(messages, 'custom', url).map(m => m.text), ['Secret file', 'Legacy']);
+  assert.deepEqual(buildReplayHistory(messages, 'custom', 'https://other.example.com').map(m => m.text), ['Compare these', 'Legacy']);
+  assert.deepEqual(buildReplayHistory(messages, 'custom').map(m => m.text), ['Compare these', 'Legacy']);
+  assert.deepEqual(buildReplayHistory(messages, 'openrouter').map(m => m.text), ['Compare these', 'Legacy']);
 });
 
 test('public proxy rejects private, mapped, reserved and local addresses', async () => {

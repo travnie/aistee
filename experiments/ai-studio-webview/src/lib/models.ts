@@ -459,6 +459,7 @@ export interface ModelChatMessage {
   activeProfileNotes?: string[];
   sourceAssetIds?: string[];
   replayUserContent?: string;
+  attachmentReplayScopes?: string[];
   toolReceipts?: NativeToolReceipt[];
   skillCards?: ActiveSkillCard[];
   endpointTag?: string;
