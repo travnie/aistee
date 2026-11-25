@@ -35,14 +35,15 @@ internal data class WebPromptVaultTransfer(
     val exportAllPrompts: () -> Unit,
 )
 
-internal fun promptBackupImportMessage(result: PromptImportResult, source: String? = null): String {
-    val skipped = if (result.skipped > 0) {
-        if (source == null) ", ${result.skipped} already saved" else ", ${result.skipped} skipped or already saved"
-    } else ""
+internal fun promptBackupImportMessage(result: PromptImportResult, source: String? = null, dropped: Int = 0): String {
+    val rejected = if (dropped > 0) ", $dropped rejected" else ""
+    val skipped = if (result.skipped > 0) ", ${result.skipped} already saved$rejected" else rejected
     val from = if (source != null) " from $source" else ""
     return when {
         !result.complete -> "Import stopped: ${result.imported} imported$skipped. Storage write failed."
-        result.imported == 0 -> "Nothing new: all ${result.skipped} prompts are already saved."
+        result.imported == 0 && result.skipped == 0 && dropped > 0 -> "Nothing imported: all $dropped entries were rejected."
+        result.imported == 0 && result.skipped == 0 -> "Nothing imported."
+        result.imported == 0 -> "Nothing new: all ${result.skipped} prompts are already saved$rejected."
         else -> "Imported ${result.imported} prompts$from into Project Library Inbox$skipped."
     }
 }
@@ -91,7 +92,7 @@ internal fun rememberWebPromptVaultTransfer(viewModel: StudioViewModel): WebProm
                 when {
                     backup != null -> promptBackupImportMessage(viewModel.importPortablePrompts(backup))
                     external != null -> promptBackupImportMessage(
-                        viewModel.importExternalPromptVault(external), external.adapterLabel
+                        viewModel.importExternalPromptVault(external), external.adapterLabel, external.skipped
                     )
                     prompt == null -> "Invalid or unsupported prompt JSON."
                     viewModel.importPortablePrompt(prompt) -> "Prompt imported into Project Library Inbox."

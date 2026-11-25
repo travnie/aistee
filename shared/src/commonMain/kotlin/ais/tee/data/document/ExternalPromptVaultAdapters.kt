@@ -47,14 +47,15 @@ interface ExternalPromptVaultAdapter {
     val id: String
     val label: String
 
-    /** Null when the file is not this shape or yields no portable prompt. Never throws. */
-    fun decode(raw: String): ExternalPromptVaultImport?
+    /** Null when the parsed document is not this shape or yields no portable prompt. */
+    fun decode(root: JsonElement): ExternalPromptVaultImport?
 }
 
 /**
  * Registry of external prompt-vault import adapters. Aistee's own single-prompt and
  * [PortablePromptBackup] formats are decoded before these adapters run; a file carrying the
- * Aistee backup kind is never reinterpreted as an external vault.
+ * Aistee backup kind is never reinterpreted as an external vault. The file is parsed once here
+ * and each adapter only inspects the tree.
  */
 object ExternalPromptVaultAdapters {
     val adapters: List<ExternalPromptVaultAdapter> = listOf(
@@ -62,9 +63,12 @@ object ExternalPromptVaultAdapters {
         BarePromptArrayAdapter,
     )
 
-    /** First matching adapter wins. */
-    fun decode(raw: String): ExternalPromptVaultImport? =
-        adapters.firstNotNullOfOrNull { adapter -> adapter.decode(raw) }
+    /** First matching adapter wins. Strict JSON only; oversized files are rejected up front. */
+    fun decode(raw: String): ExternalPromptVaultImport? {
+        if (raw.length > MAX_EXTERNAL_VAULT_CHARS) return null
+        val root = runCatching { Json.parseToJsonElement(raw) }.getOrNull() ?: return null
+        return adapters.firstNotNullOfOrNull { adapter -> adapter.decode(root) }
+    }
 }
 
 /** `{"prompts": [{...}, ...], ...}` envelope used by common browser-extension vault exports. */
@@ -72,13 +76,12 @@ private object PromptListEnvelopeAdapter : ExternalPromptVaultAdapter {
     override val id: String = "prompt-list-envelope"
     override val label: String = "external prompt list"
 
-    override fun decode(raw: String): ExternalPromptVaultImport? = runCatching {
-        if (raw.length > MAX_EXTERNAL_VAULT_CHARS) return@runCatching null
-        val root = Json.parseToJsonElement(raw) as? JsonObject ?: return@runCatching null
-        if (root["kind"]?.stringContent() == PortablePromptBackup.KIND) return@runCatching null
-        val entries = root["prompts"] as? JsonArray ?: return@runCatching null
-        buildImport(this, entries)
-    }.getOrNull()
+    override fun decode(root: JsonElement): ExternalPromptVaultImport? {
+        val obj = root as? JsonObject ?: return null
+        if (obj["kind"]?.stringContent() == PortablePromptBackup.KIND) return null
+        val entries = obj["prompts"] as? JsonArray ?: return null
+        return buildImport(this, entries)
+    }
 }
 
 /** Bare top-level `[{"title": ..., "content": ...}, ...]` array. */
@@ -86,11 +89,10 @@ private object BarePromptArrayAdapter : ExternalPromptVaultAdapter {
     override val id: String = "bare-prompt-array"
     override val label: String = "prompt array"
 
-    override fun decode(raw: String): ExternalPromptVaultImport? = runCatching {
-        if (raw.length > MAX_EXTERNAL_VAULT_CHARS) return@runCatching null
-        val entries = Json.parseToJsonElement(raw) as? JsonArray ?: return@runCatching null
-        buildImport(this, entries)
-    }.getOrNull()
+    override fun decode(root: JsonElement): ExternalPromptVaultImport? {
+        val entries = root as? JsonArray ?: return null
+        return buildImport(this, entries)
+    }
 }
 
 private fun buildImport(
@@ -111,8 +113,28 @@ private fun mapExternalEntry(entry: JsonElement): PortablePrompt? {
     val obj = entry as? JsonObject ?: return null
     val title = EXTERNAL_TITLE_KEYS.firstNotNullOfOrNull { key -> obj[key]?.stringContent() }
     val text = EXTERNAL_TEXT_KEYS.firstNotNullOfOrNull { key -> obj[key]?.stringContent() }
-    if (title == null || text == null) return null
+    // A lone surrogate would survive isValid but break strict UTF-8 asset encoding downstream;
+    // drop the whole entry instead of aborting or altering the rest of the import.
+    if (title == null || text == null ||
+        hasUnpairedSurrogate(title) || hasUnpairedSurrogate(text)
+    ) return null
     return PortablePrompt.fromLibrary(title, text).takeIf { it.isValid() }
+}
+
+private fun hasUnpairedSurrogate(value: String): Boolean {
+    var i = 0
+    while (i < value.length) {
+        val c = value[i]
+        when {
+            c.isHighSurrogate() -> {
+                if (i + 1 >= value.length || !value[i + 1].isLowSurrogate()) return true
+                i += 2
+            }
+            c.isLowSurrogate() -> return true
+            else -> i++
+        }
+    }
+    return false
 }
 
 private fun JsonElement?.stringContent(): String? =

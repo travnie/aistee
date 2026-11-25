@@ -95,6 +95,19 @@ class ExternalPromptVaultAdaptersTest {
     }
 
     @Test
+    fun unpairedSurrogatesAreRejectedButValidSupplementaryCharsSurvive() {
+        val raw = """{"prompts": [
+          {"title": "Bad body", "content": "\uD800"},
+          {"title": "Bad \uDFFF title", "content": "ok"},
+          {"title": "Emoji", "content": "🙂 works"}
+        ]}"""
+        val import = requireNotNull(ExternalPromptVaultAdapters.decode(raw))
+        assertEquals(listOf("Emoji"), import.prompts.map { it.title })
+        assertEquals("🙂 works", import.prompts.single().text)
+        assertEquals(2, import.skipped)
+    }
+
+    @Test
     fun adapterRegistryIsOrderedAndLabeled() {
         assertEquals(listOf("prompt-list-envelope", "bare-prompt-array"), ExternalPromptVaultAdapters.adapters.map { it.id })
         assertTrue(ExternalPromptVaultAdapters.adapters.all { it.label.isNotBlank() })
