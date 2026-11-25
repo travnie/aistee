@@ -66,7 +66,8 @@ class ExternalPromptVaultAdaptersTest {
 
     @Test
     fun anOversizedEntryIsDroppedWithoutAbortingLaterValidEntries() {
-        val big = "🙂".repeat(4 * 1024 * 1024)
+        // 3 MiB of 3-byte characters: under the file code-unit cap, over the 8 MiB UTF-8 entry cap.
+        val big = "€".repeat(3 * 1024 * 1024)
         val raw = """{"prompts": [{"title": "Huge", "content": "$big"}, {"title": "Small", "content": "ok"}]}"""
         val import = requireNotNull(ExternalPromptVaultAdapters.decode(raw))
         assertEquals(listOf("Small"), import.prompts.map { it.title })
@@ -101,7 +102,9 @@ class ExternalPromptVaultAdaptersTest {
         assertNull(ExternalPromptVaultAdapters.decode("""{"prompts": "nope"}"""))
         assertNull(ExternalPromptVaultAdapters.decode("""{"prompts": []}"""))
         assertNull(ExternalPromptVaultAdapters.decode("not json"))
-        assertNull(ExternalPromptVaultAdapters.decode("""["just strings"]"""))
+        val stringsOnly = assertNotNull(ExternalPromptVaultAdapters.decode("""["just strings"]"""))
+        assertTrue(stringsOnly.prompts.isEmpty())
+        assertEquals(1, stringsOnly.skipped)
     }
 
     @Test
