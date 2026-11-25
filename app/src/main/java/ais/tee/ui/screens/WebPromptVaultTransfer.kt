@@ -1,5 +1,6 @@
 package ais.tee.ui.screens
 
+import ais.tee.data.document.ExternalPromptVaultAdapters
 import ais.tee.data.document.PortablePrompt
 import ais.tee.data.document.PortablePromptBackup
 import ais.tee.data.document.TextDocument
@@ -34,12 +35,15 @@ internal data class WebPromptVaultTransfer(
     val exportAllPrompts: () -> Unit,
 )
 
-internal fun promptBackupImportMessage(result: PromptImportResult): String {
-    val skipped = if (result.skipped > 0) ", ${result.skipped} already saved" else ""
+internal fun promptBackupImportMessage(result: PromptImportResult, source: String? = null): String {
+    val skipped = if (result.skipped > 0) {
+        if (source == null) ", ${result.skipped} already saved" else ", ${result.skipped} skipped or already saved"
+    } else ""
+    val from = if (source != null) " from $source" else ""
     return when {
         !result.complete -> "Import stopped: ${result.imported} imported$skipped. Storage write failed."
         result.imported == 0 -> "Nothing new: all ${result.skipped} prompts are already saved."
-        else -> "Imported ${result.imported} prompts into Project Library Inbox$skipped."
+        else -> "Imported ${result.imported} prompts$from into Project Library Inbox$skipped."
     }
 }
 
@@ -77,12 +81,18 @@ internal fun rememberWebPromptVaultTransfer(viewModel: StudioViewModel): WebProm
         if (uri != null) {
             transfer("Could not import prompt JSON.") {
                 val raw = TextDocumentFileAccess.import(context, uri).document.text
-                val (prompt, backup) = withContext(Dispatchers.Default) {
+                val (prompt, backup, external) = withContext(Dispatchers.Default) {
                     val single = PortablePrompt.decode(raw)
-                    single to if (single == null) PortablePromptBackup.decode(raw) else null
+                    if (single != null) return@withContext Triple(single, null, null)
+                    val bulk = PortablePromptBackup.decode(raw)
+                    if (bulk != null) return@withContext Triple(null, bulk, null)
+                    Triple(null, null, ExternalPromptVaultAdapters.decode(raw))
                 }
                 when {
                     backup != null -> promptBackupImportMessage(viewModel.importPortablePrompts(backup))
+                    external != null -> promptBackupImportMessage(
+                        viewModel.importExternalPromptVault(external), external.adapterLabel
+                    )
                     prompt == null -> "Invalid or unsupported prompt JSON."
                     viewModel.importPortablePrompt(prompt) -> "Prompt imported into Project Library Inbox."
                     else -> "Could not save the imported prompt."

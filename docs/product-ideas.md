@@ -233,7 +233,7 @@ Recent browser-extension projects around Gemini, Claude, ChatGPT and DeepSeek re
 - **Web conversation timeline:** verify the experimental loaded-user-message picker on signed-in provider pages, including virtualized long chats, before declaring provider support. Rich previews and assistant/branch navigation remain future work; never scrape inactive Web conversations.
 - **Branch-aware navigation:** when a provider exposes visible response branches in the loaded conversation, represent branch points in the same timeline without pretending Aistee owns remote branch history.
 - **Local Web bookmark interoperability:** provider-specific stable URL formats and graceful recovery from moved conversations remain open; never rewrite the provider's data. Delivered encrypted bookmarks, nested folders and portable backups are indexed in [Implemented](implemented.md).
-- **Prompt Vault interoperability:** add optional external prompt-vault format adapters on top of the delivered single-prompt and bulk JSON backups. Project Library remains canonical.
+- **Prompt Vault interoperability:** import-side external prompt-vault JSON adapters are delivered (see [Implemented](implemented.md)); export-side adapters and folder/tag mapping remain open. Project Library remains canonical.
 - **Web starred moments:** build on native stars and notes, but require stable provider-specific turn IDs; never copy remote message bodies just to bookmark them.
 - **Web quote reply:** stage user-reviewed excerpts only after a trustworthy provider-page text source exists. Native quote selection is implemented.
 - **Reading controls:** optional collapsible composer for long reading sessions and a prevent-auto-scroll toggle where a provider's page repeatedly yanks the viewport.
