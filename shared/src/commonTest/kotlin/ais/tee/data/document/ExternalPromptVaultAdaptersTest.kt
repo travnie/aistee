@@ -36,7 +36,6 @@ class ExternalPromptVaultAdaptersTest {
     fun invalidEntriesAreDroppedAndCounted() {
         val raw = """{"prompts": [
           {"title": "Good", "content": "text"},
-          {"title": " padded ", "content": "text"},
           {"title": "", "content": "text"},
           {"title": "tab\there", "content": "text"},
           {"title": "No text"},
@@ -46,7 +45,32 @@ class ExternalPromptVaultAdaptersTest {
         ]}"""
         val import = requireNotNull(ExternalPromptVaultAdapters.decode(raw))
         assertEquals(listOf("Good"), import.prompts.map { it.title })
-        assertEquals(7, import.skipped)
+        assertEquals(6, import.skipped)
+    }
+
+    @Test
+    fun paddedExternalTitlesAreTrimmedBeforeValidation() {
+        val raw = """{"prompts": [{"title": "  padded  ", "content": "text"}]}"""
+        val import = requireNotNull(ExternalPromptVaultAdapters.decode(raw))
+        assertEquals(listOf("padded"), import.prompts.map { it.title })
+        assertEquals(0, import.skipped)
+    }
+
+    @Test
+    fun recognizedShapeWithOnlyInvalidEntriesStillReportsTheRejectedCount() {
+        val raw = """[{"title": " ", "content": " "}, {"content": "no title"}]"""
+        val import = requireNotNull(ExternalPromptVaultAdapters.decode(raw))
+        assertTrue(import.prompts.isEmpty())
+        assertEquals(2, import.skipped)
+    }
+
+    @Test
+    fun anOversizedEntryIsDroppedWithoutAbortingLaterValidEntries() {
+        val big = "🙂".repeat(4 * 1024 * 1024)
+        val raw = """{"prompts": [{"title": "Huge", "content": "$big"}, {"title": "Small", "content": "ok"}]}"""
+        val import = requireNotNull(ExternalPromptVaultAdapters.decode(raw))
+        assertEquals(listOf("Small"), import.prompts.map { it.title })
+        assertEquals(1, import.skipped)
     }
 
     @Test
@@ -76,7 +100,6 @@ class ExternalPromptVaultAdaptersTest {
         assertNull(ExternalPromptVaultAdapters.decode("""{"messages": [{"role": "user", "text": "hi"}]}"""))
         assertNull(ExternalPromptVaultAdapters.decode("""{"prompts": "nope"}"""))
         assertNull(ExternalPromptVaultAdapters.decode("""{"prompts": []}"""))
-        assertNull(ExternalPromptVaultAdapters.decode("""[{"title": " ", "content": " "}]"""))
         assertNull(ExternalPromptVaultAdapters.decode("not json"))
         assertNull(ExternalPromptVaultAdapters.decode("""["just strings"]"""))
     }

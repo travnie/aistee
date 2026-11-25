@@ -6,7 +6,10 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
+// Cheap pre-parse guard in UTF-16 code units; the per-entry UTF-8 byte cap below and the
+// file-level byte cap enforced at document read keep the real limits in bytes.
 private const val MAX_EXTERNAL_VAULT_CHARS = 8 * 1024 * 1024
+private const val MAX_EXTERNAL_PROMPT_TEXT_UTF8_BYTES = 8 * 1024 * 1024
 private val EXTERNAL_TITLE_KEYS = listOf("title", "name")
 private val EXTERNAL_TEXT_KEYS = listOf("content", "text", "prompt")
 
@@ -18,7 +21,6 @@ class ExternalPromptVaultImport private constructor(
     val skipped: Int,
 ) {
     init {
-        require(prompts.isNotEmpty()) { "External vault import must contain at least one prompt" }
         require(skipped >= 0) { "Skipped count must not be negative" }
     }
 
@@ -31,10 +33,8 @@ class ExternalPromptVaultImport private constructor(
             adapterLabel: String,
             prompts: List<PortablePrompt>,
             skipped: Int,
-        ): ExternalPromptVaultImport? {
-            if (prompts.isEmpty()) return null
-            return ExternalPromptVaultImport(adapterId, adapterLabel, prompts, skipped)
-        }
+        ): ExternalPromptVaultImport =
+            ExternalPromptVaultImport(adapterId, adapterLabel, prompts, skipped)
     }
 }
 
@@ -99,6 +99,9 @@ private fun buildImport(
     adapter: ExternalPromptVaultAdapter,
     entries: JsonArray,
 ): ExternalPromptVaultImport? {
+    // A recognized vault shape with zero entries is not a vault; a shape whose entries all fail
+    // validation still returns a result so the caller can report the rejected count.
+    if (entries.isEmpty()) return null
     var skipped = (entries.size - PortablePromptBackup.MAX_PROMPTS).coerceAtLeast(0)
     val prompts = mutableListOf<PortablePrompt>()
     for (entry in entries.take(PortablePromptBackup.MAX_PROMPTS)) {
@@ -111,12 +114,14 @@ private fun buildImport(
 /** Only string title/text fields are read; ids, tags, timestamps and folder data are ignored. */
 private fun mapExternalEntry(entry: JsonElement): PortablePrompt? {
     val obj = entry as? JsonObject ?: return null
-    val title = EXTERNAL_TITLE_KEYS.firstNotNullOfOrNull { key -> obj[key]?.stringContent() }
+    // Real-world exports often pad names; trimming stays adapter-side, Library rules unchanged.
+    val title = EXTERNAL_TITLE_KEYS.firstNotNullOfOrNull { key -> obj[key]?.stringContent()?.trim() }
     val text = EXTERNAL_TEXT_KEYS.firstNotNullOfOrNull { key -> obj[key]?.stringContent() }
-    // A lone surrogate would survive isValid but break strict UTF-8 asset encoding downstream;
-    // drop the whole entry instead of aborting or altering the rest of the import.
+    // A lone surrogate would survive isValid but break strict UTF-8 asset encoding downstream,
+    // and one over-limit body would abort the rest of the import; drop the entry instead.
     if (title == null || text == null ||
-        hasUnpairedSurrogate(title) || hasUnpairedSurrogate(text)
+        hasUnpairedSurrogate(title) || hasUnpairedSurrogate(text) ||
+        text.encodeToByteArray().size > MAX_EXTERNAL_PROMPT_TEXT_UTF8_BYTES
     ) return null
     return PortablePrompt.fromLibrary(title, text).takeIf { it.isValid() }
 }
