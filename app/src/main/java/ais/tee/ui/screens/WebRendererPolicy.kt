@@ -5,6 +5,7 @@ import ais.tee.data.preferences.safeWebChatBookmarkUrl
 import java.net.URI
 import ais.tee.data.model.WebChatActivityStatus
 import ais.tee.data.model.WebChatGenerationObservation
+import ais.tee.web.ProviderWebRegistry
 import ais.tee.web.providerDiagnosticsDocumentMatches
 
 internal const val MAX_LIVE_WEBVIEWS = 2
@@ -30,19 +31,7 @@ internal fun webRendererRecoveryAction(
 /** Explicit crash recovery only. Recognized conversation paths; never replay auth or transient URLs. */
 internal fun webRendererCrashConversationUrl(service: WebAiService, lastUrl: String?): String? {
     val safe = safeWebChatBookmarkUrl(service, lastUrl) ?: return null
-    val uri = URI(safe)
-    val prefix = when (service) {
-        WebAiService.CHATGPT -> "/c/"
-        WebAiService.CLAUDE -> "/chat/"
-        WebAiService.GEMINI -> "/app/"
-        WebAiService.DEEPSEEK -> "/a/chat/s/"
-        else -> return null
-    }
-    if (!uri.host.equals(URI(service.url).host, ignoreCase = true)) return null
-    val path = uri.rawPath
-    if (!path.startsWith(prefix)) return null
-    val id = path.removePrefix(prefix)
-    if (id.length !in 1..128 || id.any { it !in 'a'..'z' && it !in 'A'..'Z' && it !in '0'..'9' && it != '-' && it != '_' }) return null
+    if (!ProviderWebRegistry.isConversationRecoveryRoute(service, URI(safe))) return null
     return safe
 }
 

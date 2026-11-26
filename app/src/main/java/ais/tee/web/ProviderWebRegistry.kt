@@ -166,6 +166,24 @@ internal object ProviderWebRegistry {
     fun generationIdleSelectors(service: WebAiService): List<String> =
         profile(service).generationIdleSelectors
 
+    // Recognized conversation routes for explicit renderer recovery only.
+    fun isConversationRecoveryRoute(service: WebAiService, uri: URI): Boolean {
+        val prefix = when (service) {
+            WebAiService.CHATGPT -> "/c/"
+            WebAiService.CLAUDE -> "/chat/"
+            WebAiService.GEMINI -> "/app/"
+            WebAiService.DEEPSEEK -> "/a/chat/s/"
+            else -> return false
+        }
+        if (!uri.host.equals(URI(service.url).host, ignoreCase = true)) return false
+        val path = uri.rawPath ?: return false
+        if (!path.startsWith(prefix)) return false
+        val id = path.removePrefix(prefix)
+        return id.length in 1..128 && id.all {
+            it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '_'
+        }
+    }
+
     fun turnAnchors(service: WebAiService): ProviderTurnAnchors? = profile(service).turnAnchors
 
     fun toolbarShortcut(service: WebAiService): ProviderWebToolbarShortcut? =
