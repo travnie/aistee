@@ -2,9 +2,17 @@ package ais.tee.ui.screens
 
 import android.content.ContentResolver
 import android.content.Context
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.webkit.WebChromeClient
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.ActivityResultRegistry
+import androidx.activity.result.contract.ActivityResultContracts
+import java.util.UUID
 
 internal fun fileChooserAcceptsMimeType(
     acceptTypes: Array<String>,
@@ -105,27 +113,40 @@ internal fun isAllowedUploadUri(context: Context, uri: Uri): Boolean {
     return true
 }
 
-/** One ActivityResult launch at a time, even after its WebView has gone away. */
-internal class WebFilePickerSlot<T : Any>(restoredInFlight: Boolean = false) {
-    var inFlight: Boolean = restoredInFlight
-        private set
-    private var pending: T? = null
+/** Unique registry key per launch; cancelled owners cannot receive a late result. Main thread only. */
+internal class WebFilePickerSlot<T : Any>(private val registry: ActivityResultRegistry) {
+    private data class Launch<T>(
+        val key: String,
+        val request: T,
+        val launcher: ActivityResultLauncher<Intent>
+    )
 
-    fun begin(request: T) {
-        check(!inFlight)
-        pending = request
-        inFlight = true
+    private var active: Launch<T>? = null
+
+    fun launch(intent: Intent, request: T, onResult: (T, ActivityResult) -> Unit) {
+        check(active == null)
+        val key = "aistee-web-picker-${UUID.randomUUID()}"
+        val launcher = registry.register(key, ActivityResultContracts.StartActivityForResult()) { result ->
+            val item = active?.takeIf { it.key == key } ?: return@register
+            active = null
+            // Registry finishes dispatch after invoking the callback.
+            Handler(Looper.getMainLooper()).post { item.launcher.unregister() }
+            onResult(item.request, result)
+        }
+        active = Launch(key, request, launcher)
+        try {
+            launcher.launch(intent)
+        } catch (error: Exception) {
+            active = null
+            launcher.unregister()
+            throw error
+        }
     }
 
-    // Cancel the owner, but drain its outstanding platform result before another launch.
     fun cancelIf(predicate: (T) -> Boolean): T? {
-        val request = pending?.takeIf(predicate) ?: return null
-        pending = null
-        return request
-    }
-
-    fun complete(): T? {
-        inFlight = false
-        return cancelIf { true }
+        val item = active?.takeIf { predicate(it.request) } ?: return null
+        active = null
+        item.launcher.unregister()
+        return item.request
     }
 }

@@ -66,42 +66,6 @@ class SharedFileChooserTest {
     }
 
     @Test
-    fun cancelledPickerDrainsBeforeAnotherRequest() {
-        val slot = WebFilePickerSlot<String>()
-        slot.begin("ChatGPT")
-        assertEquals("ChatGPT", slot.cancelIf { it == "ChatGPT" })
-        assertTrue(slot.inFlight)
-        assertNull(slot.cancelIf { true })
-        assertNull(slot.complete())
-        assertFalse(slot.inFlight)
-
-        slot.begin("Claude")
-        assertEquals("Claude", slot.complete())
-        assertFalse(slot.inFlight)
-    }
-
-    @Test
-    fun cancellationOfAnotherProviderDoesNotConsumeLiveRequest() {
-        val slot = WebFilePickerSlot<String>()
-        slot.begin("Claude")
-        assertNull(slot.cancelIf { it == "ChatGPT" })
-        assertTrue(slot.inFlight)
-        assertEquals("Claude", slot.complete())
-    }
-
-    @Test
-    fun recreatedHostDrainsOldLaunchWithoutRestoringCallback() {
-        val original = WebFilePickerSlot<String>()
-        original.begin("ChatGPT")
-        val restored = WebFilePickerSlot<String>(restoredInFlight = original.inFlight)
-        assertTrue(restored.inFlight)
-        assertNull(restored.complete())
-        assertFalse(restored.inFlight)
-        restored.begin("Gemini")
-        assertEquals("Gemini", restored.complete())
-    }
-
-    @Test
     fun stagedUploadsOnlyUseOpenModes() {
         assertTrue(fileChooserModeAllowsStagedUpload(FILE_MODE_OPEN))
         assertTrue(fileChooserModeAllowsStagedUpload(FILE_MODE_OPEN_MULTIPLE))

@@ -16,8 +16,8 @@ import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.webkit.*
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.result.ActivityResult
 import androidx.compose.animation.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -36,7 +36,6 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -260,13 +259,8 @@ fun WebChatScreen(
     var diagnosticsProbeResult by remember { mutableStateOf<ProviderDiagnosticsProbeResult?>(null) }
     var diagnosticsProbeRequestId by remember { mutableIntStateOf(0) }
     var pendingExternalIntentUri by remember { mutableStateOf<Uri?>(null) }
-    // Only the outstanding launch flag survives recreation, never a WebView callback.
-    val filePickerSlot = rememberSaveable(
-        saver = Saver<WebFilePickerSlot<PendingFileChooser>, Any>(
-            save = { it.inFlight },
-            restore = { WebFilePickerSlot(it == true) }
-        )
-    ) { WebFilePickerSlot<PendingFileChooser>() }
+    val filePickerRegistry = LocalActivityResultRegistryOwner.current?.activityResultRegistry
+    val filePickerSlot = remember { mutableStateOf<WebFilePickerSlot<PendingFileChooser>?>(null) }
     var pendingSharedUploadConfirmation by remember {
         mutableStateOf<PendingSharedUploadConfirmation?>(null)
     }
@@ -327,10 +321,7 @@ fun WebChatScreen(
         }
     }
 
-    val fileChooserLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val request = filePickerSlot.complete() ?: return@rememberLauncherForActivityResult
+    fun deliverFileChooserResult(request: PendingFileChooser, result: ActivityResult) {
         val resultData = result.data
         val selectedUris = if (result.resultCode == Activity.RESULT_OK && resultData != null) {
             WebChromeClient.FileChooserParams.parseResult(result.resultCode, resultData)
@@ -399,7 +390,7 @@ fun WebChatScreen(
     }
 
     fun cancelPendingUploadFor(service: WebAiService, outcome: String) {
-        filePickerSlot.cancelIf { it.service == service }?.let { request ->
+        filePickerSlot.value?.cancelIf { it.service == service }?.let { request ->
             updateFileChooserOutcome(service, request.requestId, outcome)
             request.callback.onReceiveValue(null)
         }
@@ -788,7 +779,8 @@ fun WebChatScreen(
     DisposableEffect(webViewMap) {
         onDispose {
             closeFindInPage()
-            filePickerSlot.cancelIf { true }?.callback?.onReceiveValue(null)
+            filePickerSlot.value?.cancelIf { true }?.callback?.onReceiveValue(null)
+            filePickerSlot.value = null
             pendingSharedUploadConfirmation?.callback?.onReceiveValue(null)
             pendingSharedUploadConfirmation = null
             pendingSharedTextInsertion.value?.let { insertion ->
@@ -1374,18 +1366,23 @@ fun WebChatScreen(
                                     handleRendererGone(service, deadView, didCrash)
                                 },
                                 onFileChooserRequested = { callback, params, pageUrl ->
-                                    if (filePickerSlot.inFlight ||
+                                    if (service != currentSelectedService || !currentIsActive ||
                                         pendingSharedUploadConfirmation != null
                                     ) {
                                         recordFileChooserRequest(
                                             service,
                                             params,
                                             pageUrl,
-                                            "rejected: chooser already active"
+                                            "rejected: inactive provider or shared upload pending"
                                         )
                                         callback.onReceiveValue(null)
                                         true
                                     } else {
+                                        // A new foreground request supersedes a missing or abandoned result.
+                                        filePickerSlot.value?.cancelIf { true }?.let { previous ->
+                                            updateFileChooserOutcome(previous.service, previous.requestId, "superseded")
+                                            previous.callback.onReceiveValue(null)
+                                        }
                                         val stagedShare = currentPendingWebShare
                                             ?.takeIf { it.service == service }
                                         val sharedUris = sharedUrisForFileChooser(
@@ -1416,14 +1413,19 @@ fun WebChatScreen(
                                                 pageUrl,
                                                 "picker launched"
                                             )
-                                            filePickerSlot.begin(PendingFileChooser(service, requestId, callback))
                                             val launchError = runCatching {
-                                                fileChooserLauncher.launch(params.createIntent())
+                                                val registry = checkNotNull(filePickerRegistry)
+                                                val slot = filePickerSlot.value ?: WebFilePickerSlot<PendingFileChooser>(registry)
+                                                    .also { filePickerSlot.value = it }
+                                                slot.launch(
+                                                    params.createIntent(),
+                                                    PendingFileChooser(service, requestId, callback),
+                                                    ::deliverFileChooserResult
+                                                )
                                             }.exceptionOrNull()
                                             if (launchError == null) {
                                                 true
                                             } else {
-                                                filePickerSlot.complete()
                                                 val outcome = when (launchError) {
                                                     is ActivityNotFoundException -> {
                                                         Log.w(WEBVIEW_LOG_TAG, "No file picker available", launchError)
@@ -1490,8 +1492,7 @@ fun WebChatScreen(
                         },
                         onRelease = { wv ->
                             releasePendingTextClaimsFor(wv)
-                            if (webViewMap[service] === wv) {
-                                webViewMap.remove(service)
+                            if (webViewMap.remove(service, wv)) {
                                 cancelPendingUploadFor(service, "WebView released")
                                 if (findSession?.webView === wv) closeFindInPage()
                                 releaseWebView(wv)
