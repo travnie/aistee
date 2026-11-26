@@ -28,6 +28,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -367,8 +369,12 @@ internal fun WebChatBookmarksDialog(
             if (target == null) {
                 TextButton(onClick = onDismiss, enabled = !busy) { Text("Done") }
             } else {
+                val focus = LocalFocusManager.current
+                val keyboard = LocalSoftwareKeyboardController.current
                 TextButton(
                     onClick = {
+                        focus.clearFocus()
+                        keyboard?.hide()
                         busy = true
                         editorError = null
                         val name = title
@@ -399,7 +405,16 @@ internal fun WebChatBookmarksDialog(
         },
         dismissButton = {
             if (target != null) {
-                TextButton(onClick = { editorTarget = null }, enabled = !busy) { Text("Cancel") }
+                val focus = LocalFocusManager.current
+                val keyboard = LocalSoftwareKeyboardController.current
+                TextButton(
+                    onClick = {
+                        focus.clearFocus()
+                        keyboard?.hide()
+                        editorTarget = null
+                    },
+                    enabled = !busy,
+                ) { Text("Cancel") }
             }
         },
         modifier = Modifier.testTag(if (target == null) "web_bookmarks_dialog" else "web_bookmarks_editor"),
