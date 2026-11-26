@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,6 +35,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private data class WebBookmarkEditorTarget(
+    val url: String,
+    val bookmark: WebChatBookmark? = null,
+)
 
 internal data class WebBookmarkFolderHeading(val path: String, val name: String, val depth: Int)
 
@@ -157,9 +163,7 @@ internal fun WebChatBookmarksDialog(
     val existing = currentKey?.let { key ->
         bookmarks.firstOrNull { webBookmarkIdentityKey(it.providerId, it.url) == key }
     }
-    var adding by remember(service, safeCurrentUrl) { mutableStateOf(false) }
-    var title by remember(service, safeCurrentUrl) { mutableStateOf("") }
-    var folder by remember(service, safeCurrentUrl) { mutableStateOf("") }
+    var editorTarget by remember(service) { mutableStateOf<WebBookmarkEditorTarget?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<WebChatBookmark?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
@@ -222,55 +226,16 @@ internal fun WebChatBookmarksDialog(
                     if (safeCurrentUrl == null) {
                         Text("This address cannot be bookmarked safely. Pages with query strings, fragments or unrecognized hosts are excluded.",
                             style = MaterialTheme.typography.bodySmall)
-                    } else if (!adding) {
+                    } else {
                         OutlinedButton(
                             onClick = {
-                                adding = true
-                                title = existing?.title.orEmpty()
-                                folder = existing?.folder.orEmpty()
+                                editorTarget = WebBookmarkEditorTarget(safeCurrentUrl, existing)
                                 error = null
                             },
                             enabled = !loading && actionsEnabled,
                             modifier = Modifier.fillMaxWidth().testTag("web_bookmarks_add")
                         ) {
                             Text(if (existing != null) "Edit this bookmark" else "Bookmark this page")
-                        }
-                    }
-                    if (adding && safeCurrentUrl != null) {
-                        OutlinedTextField(
-                            value = title, onValueChange = { if (it.length <= 80) title = it },
-                            label = { Text("Bookmark name") }, singleLine = true,
-                            modifier = Modifier.fillMaxWidth().testTag("web_bookmarks_title"),
-                        )
-                        OutlinedTextField(
-                            value = folder, onValueChange = { if (it.length <= 96) folder = it },
-                            label = { Text("Folder (optional)") },
-                            supportingText = { Text("Use / for up to three nested levels") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().testTag("web_bookmarks_folder"),
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            TextButton(onClick = { adding = false }, enabled = !busy) { Text("Cancel") }
-                            Button(
-                                onClick = {
-                                    busy = true
-                                    error = null
-                                    scope.launch {
-                                        val result = withContext(Dispatchers.IO) {
-                                            store.save(service, safeCurrentUrl, title, folder)
-                                        }
-                                        if (result is WebChatBookmarkSaveResult.Saved) {
-                                            adding = false
-                                            refresh()
-                                        } else {
-                                            error = (result as WebChatBookmarkSaveResult.Rejected).reason
-                                        }
-                                        busy = false
-                                    }
-                                },
-                                enabled = actionsEnabled && title.isNotBlank(),
-                                modifier = Modifier.testTag("web_bookmarks_save"),
-                            ) { Text("Save") }
                         }
                     }
                     if (loading) {
@@ -326,6 +291,16 @@ internal fun WebChatBookmarksDialog(
                                                 modifier = Modifier.fillMaxWidth())
                                         }
                                         IconButton(
+                                            onClick = {
+                                                editorTarget = WebBookmarkEditorTarget(bookmark.url, bookmark)
+                                                error = null
+                                            },
+                                            enabled = actionsEnabled,
+                                            modifier = Modifier.testTag("web_bookmark_edit"),
+                                        ) {
+                                            Icon(Icons.Default.Edit, contentDescription = "Edit ${bookmark.title}")
+                                        }
+                                        IconButton(
                                             onClick = { pendingDelete = bookmark }, enabled = actionsEnabled,
                                             modifier = Modifier.testTag("web_bookmark_remove"),
                                         ) { Icon(Icons.Default.DeleteOutline,
@@ -343,6 +318,79 @@ internal fun WebChatBookmarksDialog(
         },
         modifier = Modifier.testTag("web_bookmarks_dialog"),
     )
+
+    editorTarget?.let { target ->
+        var title by remember(target) { mutableStateOf(target.bookmark?.title.orEmpty()) }
+        var folder by remember(target) { mutableStateOf(target.bookmark?.folder.orEmpty()) }
+        var editorError by remember(target) { mutableStateOf<String?>(null) }
+        val targetAvailable = target.bookmark != null || safeCurrentUrl == target.url
+        AlertDialog(
+            onDismissRequest = { if (!busy) editorTarget = null },
+            title = { Text(if (target.bookmark == null) "Bookmark this page" else "Edit bookmark") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { if (it.length <= 80) title = it },
+                        label = { Text("Bookmark name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("web_bookmarks_title"),
+                    )
+                    OutlinedTextField(
+                        value = folder,
+                        onValueChange = { if (it.length <= 96) folder = it },
+                        label = { Text("Folder (optional)") },
+                        supportingText = { Text("Use / for up to three nested levels") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("web_bookmarks_folder"),
+                    )
+                    val message = if (!targetAvailable) "The current page changed. Reopen the editor to bookmark it."
+                        else editorError
+                    if (message != null) {
+                        Text(message, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        busy = true
+                        editorError = null
+                        val name = title
+                        val destination = folder
+                        scope.launch {
+                            try {
+                                val result = withContext(Dispatchers.IO) {
+                                    val bookmark = target.bookmark
+                                    if (bookmark == null) store.save(service, target.url, name, destination)
+                                    else store.updateMetadata(service, bookmark.id, name, destination)
+                                }
+                                when (result) {
+                                    is WebChatBookmarkSaveResult.Saved -> {
+                                        editorTarget = null
+                                        refresh()
+                                    }
+                                    is WebChatBookmarkSaveResult.Rejected -> editorError = result.reason
+                                }
+                            } finally {
+                                busy = false
+                            }
+                        }
+                    },
+                    enabled = actionsEnabled && targetAvailable && title.isNotBlank(),
+                    modifier = Modifier.testTag("web_bookmarks_save"),
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { editorTarget = null }, enabled = !busy) { Text("Cancel") }
+            },
+            modifier = Modifier.testTag("web_bookmarks_editor"),
+        )
+    }
 
     pendingDelete?.let { target ->
         AlertDialog(

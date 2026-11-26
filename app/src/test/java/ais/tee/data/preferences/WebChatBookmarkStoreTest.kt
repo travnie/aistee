@@ -73,6 +73,26 @@ class WebChatBookmarkStoreTest {
     }
 
     @Test
+    fun metadataEditPreservesIdentityUrlAndOtherProviders() {
+        val persistence = FakePersistence()
+        val store = WebChatBookmarkStore(persistence)
+        val original = (store.save(service, address, "Original", "Work") as WebChatBookmarkSaveResult.Saved).bookmark
+        val other = (store.save(WebAiService.CLAUDE, "https://claude.ai/chat/other", "Other", "") as WebChatBookmarkSaveResult.Saved).bookmark
+
+        val changed = store.updateMetadata(service, original.id, "Renamed", "Work/AI")
+        assertEquals(WebChatBookmarkSaveResult.Saved(original.copy(title = "Renamed", folder = "Work/AI")), changed)
+        assertEquals(listOf(original.copy(title = "Renamed", folder = "Work/AI"), other), store.load().bookmarks)
+        val previous = persistence.value
+        assertTrue(store.updateMetadata(service, other.id, "Wrong provider", "") is WebChatBookmarkSaveResult.Rejected)
+        assertTrue(store.updateMetadata(service, original.id, "", "") is WebChatBookmarkSaveResult.Rejected)
+        assertTrue(store.updateMetadata(service, original.id, "Valid", "bad//folder") is WebChatBookmarkSaveResult.Rejected)
+        assertEquals(previous, persistence.value)
+        assertTrue(store.remove(original.id))
+        assertTrue(store.updateMetadata(service, original.id, "Gone", "") is WebChatBookmarkSaveResult.Rejected)
+        assertEquals(listOf(other), store.load().bookmarks)
+    }
+
+    @Test
     fun rejectsInvalidSaveWithoutChangingStorage() {
         val persistence = FakePersistence()
         val store = WebChatBookmarkStore(persistence)
