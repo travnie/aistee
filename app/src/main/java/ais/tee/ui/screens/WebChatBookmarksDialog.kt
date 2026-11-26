@@ -183,12 +183,29 @@ internal fun WebChatBookmarksDialog(
         if (!backup.busy) refresh()
     }
 
-    if (editorTarget == null) {
-        AlertDialog(
-            onDismissRequest = { if (!busy) onDismiss() },
-            icon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
-            title = { Text("${service.shortName} bookmarks") },
-            text = {
+    val target = editorTarget
+    var title by remember(target) { mutableStateOf(target?.bookmark?.title.orEmpty()) }
+    var folder by remember(target) { mutableStateOf(target?.bookmark?.folder.orEmpty()) }
+    var editorError by remember(target) { mutableStateOf<String?>(null) }
+    val targetAvailable = target != null && (target.bookmark != null || safeCurrentUrl == target.url)
+
+    // Keep one dialog window while switching between the list and editor.
+    AlertDialog(
+        onDismissRequest = {
+            if (!busy) {
+                if (target != null) editorTarget = null else onDismiss()
+            }
+        },
+        icon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
+        title = {
+            Text(when {
+                target == null -> "${service.shortName} bookmarks"
+                target.bookmark == null -> "Bookmark this page"
+                else -> "Edit bookmark"
+            })
+        },
+        text = {
+            if (target == null) {
                 Column(
                     modifier = Modifier.heightIn(max = 460.dp).verticalScroll(listScrollState),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -317,23 +334,7 @@ internal fun WebChatBookmarksDialog(
                         }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = onDismiss, enabled = !busy) { Text("Done") }
-            },
-            modifier = Modifier.testTag("web_bookmarks_dialog"),
-        )
-    }
-
-    editorTarget?.let { target ->
-        var title by remember(target) { mutableStateOf(target.bookmark?.title.orEmpty()) }
-        var folder by remember(target) { mutableStateOf(target.bookmark?.folder.orEmpty()) }
-        var editorError by remember(target) { mutableStateOf<String?>(null) }
-        val targetAvailable = target.bookmark != null || safeCurrentUrl == target.url
-        AlertDialog(
-            onDismissRequest = { if (!busy) editorTarget = null },
-            title = { Text(if (target.bookmark == null) "Bookmark this page" else "Edit bookmark") },
-            text = {
+            } else {
                 Column(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -360,8 +361,12 @@ internal fun WebChatBookmarksDialog(
                             style = MaterialTheme.typography.bodySmall)
                     }
                 }
-            },
-            confirmButton = {
+            }
+        },
+        confirmButton = {
+            if (target == null) {
+                TextButton(onClick = onDismiss, enabled = !busy) { Text("Done") }
+            } else {
                 TextButton(
                     onClick = {
                         busy = true
@@ -390,13 +395,15 @@ internal fun WebChatBookmarksDialog(
                     enabled = actionsEnabled && targetAvailable && title.isNotBlank(),
                     modifier = Modifier.testTag("web_bookmarks_save"),
                 ) { Text("Save") }
-            },
-            dismissButton = {
+            }
+        },
+        dismissButton = {
+            if (target != null) {
                 TextButton(onClick = { editorTarget = null }, enabled = !busy) { Text("Cancel") }
-            },
-            modifier = Modifier.testTag("web_bookmarks_editor"),
-        )
-    }
+            }
+        },
+        modifier = Modifier.testTag(if (target == null) "web_bookmarks_dialog" else "web_bookmarks_editor"),
+    )
 
     pendingDelete?.let { target ->
         AlertDialog(
