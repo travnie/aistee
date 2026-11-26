@@ -36,6 +36,7 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -136,6 +137,12 @@ internal fun webServicesToKeepAfterMemoryPressure(
     }
     WebViewEvictionMode.SELECTED_ONLY -> if (webChatActive) listOf(selectedService) else emptyList()
 }
+
+private data class PendingFileChooser(
+    val service: WebAiService,
+    val requestId: Int,
+    val callback: ValueCallback<Array<Uri>>
+)
 
 private data class PendingSharedUploadConfirmation(
     val service: WebAiService,
@@ -253,9 +260,13 @@ fun WebChatScreen(
     var diagnosticsProbeResult by remember { mutableStateOf<ProviderDiagnosticsProbeResult?>(null) }
     var diagnosticsProbeRequestId by remember { mutableIntStateOf(0) }
     var pendingExternalIntentUri by remember { mutableStateOf<Uri?>(null) }
-    val pendingFileCallback = remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
-    val pendingFileService = remember { mutableStateOf<WebAiService?>(null) }
-    val pendingFileRequestId = remember { mutableStateOf<Int?>(null) }
+    // Only the outstanding launch flag survives recreation, never a WebView callback.
+    val filePickerSlot = rememberSaveable(
+        saver = Saver<WebFilePickerSlot<PendingFileChooser>, Any>(
+            save = { it.inFlight },
+            restore = { WebFilePickerSlot(it == true) }
+        )
+    ) { WebFilePickerSlot<PendingFileChooser>() }
     var pendingSharedUploadConfirmation by remember {
         mutableStateOf<PendingSharedUploadConfirmation?>(null)
     }
@@ -319,12 +330,7 @@ fun WebChatScreen(
     val fileChooserLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        val callback = pendingFileCallback.value ?: return@rememberLauncherForActivityResult
-        val service = pendingFileService.value
-        val requestId = pendingFileRequestId.value
-        pendingFileCallback.value = null
-        pendingFileService.value = null
-        pendingFileRequestId.value = null
+        val request = filePickerSlot.complete() ?: return@rememberLauncherForActivityResult
         val resultData = result.data
         val selectedUris = if (result.resultCode == Activity.RESULT_OK && resultData != null) {
             WebChromeClient.FileChooserParams.parseResult(result.resultCode, resultData)
@@ -332,15 +338,13 @@ fun WebChatScreen(
                 ?.toTypedArray()
                 ?.takeIf { it.isNotEmpty() }
         } else null
-        if (service != null && requestId != null) {
-            updateFileChooserOutcome(
-                service,
-                requestId,
-                selectedUris?.let { uris -> "selected (${uris.size})" }
-                    ?: "cancelled / no accepted file"
-            )
-        }
-        callback.onReceiveValue(selectedUris)
+        updateFileChooserOutcome(
+            request.service,
+            request.requestId,
+            selectedUris?.let { uris -> "selected (${uris.size})" }
+                ?: "cancelled / no accepted file"
+        )
+        request.callback.onReceiveValue(selectedUris)
     }
 
     var liveServices by remember { mutableStateOf(listOf(selectedService)) }
@@ -394,20 +398,16 @@ fun WebChatScreen(
         }
     }
 
-    fun cancelPendingUploadFor(service: WebAiService) {
-        if (pendingFileService.value == service) {
-            val requestId = pendingFileRequestId.value
-            pendingFileCallback.value?.onReceiveValue(null)
-            pendingFileCallback.value = null
-            pendingFileService.value = null
-            pendingFileRequestId.value = null
-            requestId?.let { updateFileChooserOutcome(service, it, "renderer terminated") }
+    fun cancelPendingUploadFor(service: WebAiService, outcome: String) {
+        filePickerSlot.cancelIf { it.service == service }?.let { request ->
+            updateFileChooserOutcome(service, request.requestId, outcome)
+            request.callback.onReceiveValue(null)
         }
         pendingSharedUploadConfirmation
             ?.takeIf { it.service == service }
             ?.let { confirmation ->
                 pendingSharedUploadConfirmation = null
-                updateFileChooserOutcome(service, confirmation.requestId, "renderer terminated")
+                updateFileChooserOutcome(service, confirmation.requestId, outcome)
                 confirmation.callback.onReceiveValue(null)
             }
     }
@@ -448,7 +448,7 @@ fun WebChatScreen(
             // probe callbacks/timeouts will settle this dead target as UNKNOWN via
             // the document-revision and WebView-identity guards below.
             documentRevisions[service] = (documentRevisions[service] ?: 0) + 1
-            cancelPendingUploadFor(service)
+            cancelPendingUploadFor(service, "renderer terminated")
             activityStatuses[service]?.let { status ->
                 activityStatuses[service] = webChatActivityStatusAfterEviction(status)
             }
@@ -788,10 +788,7 @@ fun WebChatScreen(
     DisposableEffect(webViewMap) {
         onDispose {
             closeFindInPage()
-            pendingFileCallback.value?.onReceiveValue(null)
-            pendingFileCallback.value = null
-            pendingFileService.value = null
-            pendingFileRequestId.value = null
+            filePickerSlot.cancelIf { true }?.callback?.onReceiveValue(null)
             pendingSharedUploadConfirmation?.callback?.onReceiveValue(null)
             pendingSharedUploadConfirmation = null
             pendingSharedTextInsertion.value?.let { insertion ->
@@ -828,7 +825,7 @@ fun WebChatScreen(
         closeFindInPage()
         livePoolDecisionRequestId++
         liveServices.forEach { service ->
-            cancelPendingUploadFor(service)
+            cancelPendingUploadFor(service, "provider sessions cleared")
             invalidateRendererWaiveEligibility(service)
             documentRevisions[service] = (documentRevisions[service] ?: 0) + 1
         }
@@ -1377,7 +1374,7 @@ fun WebChatScreen(
                                     handleRendererGone(service, deadView, didCrash)
                                 },
                                 onFileChooserRequested = { callback, params, pageUrl ->
-                                    if (pendingFileCallback.value != null ||
+                                    if (filePickerSlot.inFlight ||
                                         pendingSharedUploadConfirmation != null
                                     ) {
                                         recordFileChooserRequest(
@@ -1419,15 +1416,14 @@ fun WebChatScreen(
                                                 pageUrl,
                                                 "picker launched"
                                             )
-                                            pendingFileCallback.value = callback
-                                            pendingFileService.value = service
-                                            pendingFileRequestId.value = requestId
+                                            filePickerSlot.begin(PendingFileChooser(service, requestId, callback))
                                             val launchError = runCatching {
                                                 fileChooserLauncher.launch(params.createIntent())
                                             }.exceptionOrNull()
                                             if (launchError == null) {
                                                 true
                                             } else {
+                                                filePickerSlot.complete()
                                                 val outcome = when (launchError) {
                                                     is ActivityNotFoundException -> {
                                                         Log.w(WEBVIEW_LOG_TAG, "No file picker available", launchError)
@@ -1444,16 +1440,10 @@ fun WebChatScreen(
                                                         "picker already active"
                                                     }
                                                     else -> {
-                                                        pendingFileCallback.value = null
-                                                        pendingFileService.value = null
-                                                        pendingFileRequestId.value = null
                                                         callback.onReceiveValue(null)
                                                         throw launchError
                                                     }
                                                 }
-                                                pendingFileCallback.value = null
-                                                pendingFileService.value = null
-                                                pendingFileRequestId.value = null
                                                 updateFileChooserOutcome(service, requestId, outcome)
                                                 callback.onReceiveValue(null)
                                                 true
@@ -1500,7 +1490,9 @@ fun WebChatScreen(
                         },
                         onRelease = { wv ->
                             releasePendingTextClaimsFor(wv)
-                            if (webViewMap.remove(service) === wv) {
+                            if (webViewMap[service] === wv) {
+                                webViewMap.remove(service)
+                                cancelPendingUploadFor(service, "WebView released")
                                 if (findSession?.webView === wv) closeFindInPage()
                                 releaseWebView(wv)
                             }

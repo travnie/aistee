@@ -104,3 +104,28 @@ internal fun isAllowedUploadUri(context: Context, uri: Uri): Boolean {
     if (normalizedAuthority == appAuthorityPrefix || normalizedAuthority.startsWith("$appAuthorityPrefix.")) return false
     return true
 }
+
+/** One ActivityResult launch at a time, even after its WebView has gone away. */
+internal class WebFilePickerSlot<T : Any>(restoredInFlight: Boolean = false) {
+    var inFlight: Boolean = restoredInFlight
+        private set
+    private var pending: T? = null
+
+    fun begin(request: T) {
+        check(!inFlight)
+        pending = request
+        inFlight = true
+    }
+
+    // Cancel the owner, but drain its outstanding platform result before another launch.
+    fun cancelIf(predicate: (T) -> Boolean): T? {
+        val request = pending?.takeIf(predicate) ?: return null
+        pending = null
+        return request
+    }
+
+    fun complete(): T? {
+        inFlight = false
+        return cancelIf { true }
+    }
+}
