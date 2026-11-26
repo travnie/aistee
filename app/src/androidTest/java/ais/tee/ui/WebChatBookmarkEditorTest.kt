@@ -125,8 +125,9 @@ class WebChatBookmarkEditorTest {
         compose.waitUntil(5_000) {
             compose.onAllNodesWithTag("web_bookmarks_list").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithTag("web_bookmarks_list").performScrollToIndex(12)
-        compose.onNodeWithContentDescription("Edit Chat 11").assertIsDisplayed().performClick()
+        // Bring the nested list into the dialog viewport before scrolling its rows.
+        compose.onNodeWithTag("web_bookmarks_list").performScrollTo().performScrollToIndex(12)
+        compose.onNodeWithContentDescription("Edit Chat 11").performScrollTo().assertIsDisplayed().performClick()
         compose.onNodeWithText("Cancel").performClick()
         compose.onNodeWithTag("web_bookmarks_editor").assertDoesNotExist()
         compose.onNodeWithText("Chat 11").assertIsDisplayed()
