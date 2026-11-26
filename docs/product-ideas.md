@@ -1,1 +1,1 @@
-PLACEHOLDER
+See /tmp/product-ideas.md
