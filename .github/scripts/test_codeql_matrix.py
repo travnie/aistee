@@ -31,6 +31,9 @@ class ScopeTests(unittest.TestCase):
         self.assertTrue(all(not row["required"] for row in matrix(set())))
         self.assertEqual({row["language"] for row in matrix(set())}, ALL)
         self.assertTrue(all(row["required"] for row in matrix(ALL)))
+        mixed = matrix({"java-kotlin"})
+        self.assertEqual({row["language"] for row in mixed if row["required"]}, {"java-kotlin"})
+        self.assertEqual({row["language"] for row in mixed if not row["required"]}, ALL - {"java-kotlin"})
         self.assertEqual({row["language"] for row in matrix(ALL)}, ALL)
 
 
