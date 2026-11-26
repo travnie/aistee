@@ -92,9 +92,9 @@ class AdaptiveWebProviderSearchScreenshotTest {
         compose.onNodeWithTag("btn_recent_web_service_chatgpt").assertDoesNotExist()
         compose.onNodeWithTag("btn_recent_web_service_gemini").assertDoesNotExist()
         compose.onNodeWithTag("btn_recent_web_service_claude").assertIsDisplayed()
-        compose.onNodeWithTag("status_web_service_gemini_draft").assertIsDisplayed()
-        assertEquals(2, compose.onAllNodesWithTag("status_web_service_claude_draft").fetchSemanticsNodes().size)
-        compose.onNodeWithTag("status_web_service_grok_draft").assertDoesNotExist()
+        compose.onNodeWithTag("status_web_service_gemini_draft", useUnmergedTree = true).assertIsDisplayed()
+        assertEquals(2, compose.onAllNodesWithTag("status_web_service_claude_draft", useUnmergedTree = true).fetchSemanticsNodes().size)
+        compose.onNodeWithTag("status_web_service_grok_draft", useUnmergedTree = true).assertDoesNotExist()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
         compose.onNodeWithTag("btn_recent_web_service_claude").performClick()
         compose.runOnIdle { assertEquals(listOf(WebAiService.CLAUDE), selections) }
