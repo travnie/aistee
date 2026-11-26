@@ -25,7 +25,7 @@ Android-specific opportunities that can be delivered incrementally alongside the
 
 | Candidate | Next deliverable | Gate |
 | --- | --- | --- |
-| **AppFunctions / system assistant tools** | Phase 1 device-free `countTokens(text)` action and JVM tests are complete. Next: promote the debug AppFunctions service adapter behind a default-off Privacy toggle after Android 17+ device verification. | Release has no service. Phase 2 needs a compatible OS/device, KSP-generated manifest metadata and opt-in/revocation instrumentation. |
+| **AppFunctions / system assistant tools** | Phase 1 device-free `countTokens(text)` action and JVM tests are complete. Next: promote the debug AppFunctions service adapter behind a default-off Privacy toggle after the [release-promotion gates](android-intelligence.md#debug-appfunctions-verification) pass. | Release has no service. Android 17 same-app smoke coverage exists; external-assistant invocation with trusted per-request confirmation, cancellation and clear-data behavior remain unverified. |
 | **Gemini Nano on-device drafts** | Prototype an opt-in "Suggest description" / "Fix validation" action using the existing Markdown/skill editor; integrate with the planned Skill Studio only when available. | Device/AICore `FeatureStatus`, explicit download and measured model availability; deterministic editor remains fully usable offline. No silent cloud fallback. |
 | **Provider WebView compatibility** | Add per-provider, metadata-only navigation/identity/upload probes and origin-scoped feature tests before modifying injected scripts or sign-in flows. | Real WebView/identity-provider verification and no page text, URLs containing tokens or credentials collected. |
 | **Adaptive and accessible Android UI** | Extend existing Robolectric/Roborazzi and Android smoke coverage to compact, medium and expanded widths, large font scale, IME, state restore and back navigation. | Inspect screenshot artifacts; recorded PNGs are not yet automatic baseline comparisons. |
@@ -401,4 +401,3 @@ Static inspection of other AI/document apps is useful as design input, not as pr
 - keep remote agent/runtime integrations visibly distinct from local Aistee execution.
 
 Historical APK-specific observations are intentionally not maintained here; current product decisions belong in the sections above and provider/runtime facts in the dedicated research docs.
-
