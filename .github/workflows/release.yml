@@ -11,13 +11,6 @@ on: # yamllint disable-line rule:truthy
     branches: [main]
   workflow_dispatch:
 
-# One group serializes publishing, so versionCode order (GITHUB_RUN_NUMBER) matches publish order.
-# Trade-off: a pending run is replaced by a newer pending one. A tag release that gets cancelled that
-# way shows up as a cancelled run; re-push the tag.
-concurrency:
-  group: aistee-rolling-release
-  cancel-in-progress: false
-
 permissions:
   contents: write
 
@@ -33,6 +26,11 @@ jobs:
        github.event.workflow_run.head_repository.full_name == github.repository) ||
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    # Only eligible jobs enter the publication queue; no valid run is evicted.
+    concurrency:
+      group: aistee-rolling-release
+      queue: max
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -42,9 +40,32 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ env.BUILT_SHA }}
+          fetch-depth: 2
           persist-credentials: false
 
+      - name: Select release scope
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          required=true
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
+            lookup_err="$RUNNER_TEMP/release-scope.err"
+            if old_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/aistee-latest" --jq .object.sha 2>"$lookup_err")"; then
+              git cat-file -e "$old_sha^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$old_sha"
+              if git diff --quiet "$old_sha" "$BUILT_SHA" -- gradlew app/ shared/ build.gradle.kts settings.gradle.kts gradle.properties gradle/ .github/workflows/release.yml .github/actions/setup-android-build/; then
+                required=false
+              fi
+            elif ! grep -q 'HTTP 404' "$lookup_err"; then
+              cat "$lookup_err" >&2
+              exit 1
+            fi
+          fi
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+
       - name: Resolve app version
+        if: steps.scope.outputs.required == 'true'
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -78,11 +99,13 @@ jobs:
           echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
 
       - name: Set up Android build
+        if: steps.scope.outputs.required == 'true'
         uses: ./.github/actions/setup-android-build
         with:
           gradle-cache-disabled: "true"
 
       - name: Validate signing secrets
+        if: steps.scope.outputs.required == 'true'
         id: keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -129,10 +152,11 @@ jobs:
           echo "path=$keystore" >> "$GITHUB_OUTPUT"
 
       - name: Validate tree for tag or manual release
-        if: github.event_name != 'workflow_run'
+        if: steps.scope.outputs.required == 'true' && github.event_name != 'workflow_run'
         run: ./gradlew :app:testDebugUnitTest :app:lintDebug :shared:desktopTest --no-daemon --stacktrace
 
       - name: Build release APK and AAB
+        if: steps.scope.outputs.required == 'true'
         env:
           AISTEE_KEYSTORE: ${{ steps.keystore.outputs.path }}
           AISTEE_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -142,6 +166,7 @@ jobs:
         run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
 
       - name: Verify and name release artifacts
+        if: steps.scope.outputs.required == 'true'
         shell: bash
         env:
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
