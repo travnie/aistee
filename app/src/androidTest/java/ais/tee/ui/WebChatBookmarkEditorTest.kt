@@ -1,5 +1,6 @@
 package ais.tee.ui
 
+import ais.tee.TestExpandedWidth
 import ais.tee.data.model.WebAiService
 import ais.tee.data.preferences.WebChatBookmarkPersistence
 import ais.tee.data.preferences.WebChatBookmarkSaveResult
@@ -67,7 +68,8 @@ class WebChatBookmarkEditorTest {
     }
 
     @Test
-    fun editorAtLargeFontScale() {
+    @TestExpandedWidth
+    fun editorAtLargeFontScaleInWideWindow() {
         val store = WebChatBookmarkStore(MemoryPersistence())
         val saved = (store.save(WebAiService.CHATGPT, "https://chatgpt.com/c/saved",
             "Saved conversation", "Work") as WebChatBookmarkSaveResult.Saved).bookmark
