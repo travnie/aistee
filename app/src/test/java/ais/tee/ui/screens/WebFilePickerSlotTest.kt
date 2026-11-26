@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.content.Intent
 import android.os.Bundle
+import android.net.Uri
 import android.os.Looper
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.contract.ActivityResultContract
@@ -44,11 +45,14 @@ class WebFilePickerSlotTest {
         assertEquals("ChatGPT", slot.cancelIf { true })
         slot.launch(Intent(), "Claude") { owner, _ -> delivered.add(owner) }
         assertNotEquals(registry.launches[0], registry.launches[1])
-        registry.dispatchResult(registry.launches[0], Activity.RESULT_OK, Intent())
+        registry.dispatchResult(registry.launches[0], Activity.RESULT_OK, Intent().setData(Uri.parse("content://test/old")))
         assertTrue(delivered.isEmpty())
+        assertEquals(1, slot.outstandingKeys().size)
         registry.dispatchResult(registry.launches[1], Activity.RESULT_OK, Intent())
         assertEquals(listOf("Claude"), delivered)
         shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(slot.outstandingKeys().isEmpty())
+        assertNoPendingResults(registry)
     }
 
     @Test
@@ -59,17 +63,19 @@ class WebFilePickerSlotTest {
         val oldCode = firstRegistry.launches.single()
         val state = Bundle()
         firstRegistry.onSaveInstanceState(state)
-        first.cancelIf { true }
+        val restoredKeys = first.outstandingKeys()
+        first.close()
 
         val restoredRegistry = Registry()
         restoredRegistry.onRestoreInstanceState(state)
-        val restored = WebFilePickerSlot<String>(restoredRegistry)
+        val restored = WebFilePickerSlot<String>(restoredRegistry, restoredKeys)
         val delivered = mutableListOf<String>()
         restored.launch(Intent(), "new") { owner, _ -> delivered.add(owner) }
         val newCode = restoredRegistry.launches.single()
         assertNotEquals(oldCode, newCode)
-        restoredRegistry.dispatchResult(oldCode, Activity.RESULT_OK, Intent())
+        restoredRegistry.dispatchResult(oldCode, Activity.RESULT_OK, Intent().setData(Uri.parse("content://test/old")))
         assertTrue(delivered.isEmpty())
+        assertEquals(1, restored.outstandingKeys().size)
         restoredRegistry.dispatchResult(newCode, Activity.RESULT_CANCELED, null)
         assertEquals(listOf("new"), delivered)
         shadowOf(Looper.getMainLooper()).idle()
@@ -77,5 +83,14 @@ class WebFilePickerSlotTest {
         restoredRegistry.dispatchResult(restoredRegistry.launches.last(), Activity.RESULT_OK, Intent())
         assertEquals(listOf("new", "next"), delivered)
         shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(restored.outstandingKeys().isEmpty())
+        assertNoPendingResults(restoredRegistry)
+    }
+
+    private fun assertNoPendingResults(registry: Registry) {
+        val state = Bundle()
+        registry.onSaveInstanceState(state)
+        // AndroidX stores undelivered ActivityResult parcelables in a nested Bundle.
+        assertTrue(state.keySet().mapNotNull(state::getBundle).all { it.isEmpty })
     }
 }
