@@ -31,6 +31,9 @@ class ScopeTests(unittest.TestCase):
             ".github/workflows/android-ci.yml",
             ".github/scripts/appfunctions_scope.py",
             "unknown.config",
+            "app/src/main/java/ais/tee/ui/screens/WebPreviewAppFunctions.kt",
+            "app/src/main/java/ais/tee/data/preferences/WebChatNewConsentStore.kt",
+            "benchmark/build.gradle.kts",
         ):
             with self.subTest(path=path):
                 self.assertTrue(required([path, "README.md"]))
