@@ -1,5 +1,6 @@
 package ais.tee.ui.viewmodel
 
+import ais.tee.data.document.ExternalPromptVaultImport
 import ais.tee.data.document.PortablePrompt
 import ais.tee.data.document.PortablePromptBackup
 import ais.tee.data.document.TextDocument
@@ -1177,9 +1178,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         return true
     }
 
-    internal suspend fun importPortablePrompts(backup: PortablePromptBackup): PromptImportResult {
+    internal suspend fun importPortablePrompts(backup: PortablePromptBackup): PromptImportResult =
+        importPromptPairs(backup.prompts.map { it.title to it.text })
+
+    /** Merge-only external vault import; invalid entries were already dropped by the adapter. */
+    internal suspend fun importExternalPromptVault(external: ExternalPromptVaultImport): PromptImportResult =
+        importPromptPairs(external.prompts.map { it.title to it.text })
+
+    private suspend fun importPromptPairs(pairs: List<Pair<String, String>>): PromptImportResult {
         val result = withContext(Dispatchers.IO) {
-            projectLibraryStore.importPrompts(backup.prompts.map { it.title to it.text })
+            projectLibraryStore.importPrompts(pairs)
         }
         if (result.imported > 0) reloadProjectLibraryFromDisk()
         return result
