@@ -87,6 +87,32 @@ class WebFilePickerSlotTest {
         assertNoPendingResults(restoredRegistry)
     }
 
+    @Test
+    fun pendingResultBeforeRestoredRegistrationIsDrainedImmediately() {
+        val firstRegistry = Registry()
+        val first = WebFilePickerSlot<String>(firstRegistry)
+        first.launch(Intent(), "old") { _, _ -> error("Old owner must not receive a result") }
+        val state = Bundle()
+        firstRegistry.onSaveInstanceState(state)
+        val keys = first.outstandingKeys()
+        val oldCode = firstRegistry.launches.single()
+        first.close()
+
+        val registry = Registry()
+        registry.onRestoreInstanceState(state)
+        registry.dispatchResult(oldCode, Activity.RESULT_OK, Intent().setData(Uri.parse("content://test/old")))
+        val restored = WebFilePickerSlot<String>(registry, keys)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(restored.outstandingKeys().isEmpty())
+        assertNoPendingResults(registry)
+
+        val delivered = mutableListOf<String>()
+        restored.launch(Intent(), "new") { owner, _ -> delivered.add(owner) }
+        registry.dispatchResult(registry.launches.single(), Activity.RESULT_CANCELED, null)
+        assertEquals(listOf("new"), delivered)
+        shadowOf(Looper.getMainLooper()).idle()
+    }
+
     private fun assertNoPendingResults(registry: Registry) {
         val state = Bundle()
         registry.onSaveInstanceState(state)
