@@ -67,6 +67,14 @@ internal class WebChatDraftJournal(
         )
     }
 
+    /** Single archive read; expose presence only, never text or restore points. */
+    fun providersWithDrafts(): Set<WebAiService> = synchronized(lock) {
+        val archive = readArchive()
+        if (!archive.readable) return@synchronized emptySet()
+        val ids = archive.pages.filter { it.current.isNotBlank() }.mapTo(hashSetOf()) { it.serviceId }
+        WebAiService.entries.filterTo(linkedSetOf()) { it.id in ids }
+    }
+
     /** Latest text autosaves; significant older text periodically becomes a restore point. */
     fun save(service: WebAiService, text: String, ticket: Long = nextWriteTicket()): Boolean = synchronized(lock) {
         if (superseded(service, ticket)) return@synchronized true

@@ -59,6 +59,7 @@ import ais.tee.share.copyPlainTextToClipboard
 import ais.tee.data.model.WebAiService
 import ais.tee.data.model.onboardingCapabilities
 import ais.tee.data.preferences.WebChatPreferencesStore
+import ais.tee.data.preferences.WebChatDraftJournal
 import ais.tee.R
 import ais.tee.data.model.webChatSections
 import ais.tee.data.model.filterWebChatSections
@@ -90,7 +91,9 @@ import ais.tee.web.providerUrlMatches
 import ais.tee.web.providerGenerationTrackingSupported
 import ais.tee.web.sanitizeProviderAcceptTypes
 import ais.tee.web.setProviderGenerationTrackerSelected
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 private val comfortableWebWidth = 720.dp
@@ -368,6 +371,18 @@ internal fun WebChatScreen(
     }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
+    var draftPresenceRefresh by remember { mutableIntStateOf(0) }
+    var providersWithDrafts by remember { mutableStateOf<Set<WebAiService>>(emptySet()) }
+    val showDraftPresence = isActive && (persistentProviderNavigation || drawerState.targetValue == DrawerValue.Open)
+    LaunchedEffect(showDraftPresence, draftPresenceRefresh) {
+        if (showDraftPresence) {
+            providersWithDrafts = withContext(Dispatchers.IO) {
+                WebChatDraftJournal(context.applicationContext).providersWithDrafts()
+            }
+        } else {
+            providersWithDrafts = emptySet()
+        }
+    }
 
     LaunchedEffect(isActive) {
         if (!isActive) drawerState.close()
@@ -1165,6 +1180,7 @@ internal fun WebChatScreen(
             providerFavicons = providerFavicons,
             favoriteServices = uiState.favoriteWebServices,
             recentServices = recentWebServices,
+            providersWithDrafts = providersWithDrafts,
             onToggleFavorite = viewModel::toggleFavoriteWebService,
             onSelectService = { service ->
                 activateService(service)
@@ -1226,6 +1242,7 @@ internal fun WebChatScreen(
                                 showPromptVaultDialog = true
                             },
                             onStageDraft = { service, draft -> viewModel.stageVaultWebDraftReply(service, draft) },
+                            onDraftVaultDismissed = { draftPresenceRefresh++ },
                             onShowBookmarks = { bookmarksServiceId = selectedService.id },
                             onShowDiagnostics = ::openProviderDiagnostics,
                             onShowSignInHelp = {
@@ -1878,6 +1895,7 @@ private fun WebChatToolbar(
     onShowPromptVault: () -> Unit,
     onShowBookmarks: () -> Unit,
     onStageDraft: (WebAiService, String) -> Boolean,
+    onDraftVaultDismissed: () -> Unit,
     onShowDiagnostics: () -> Unit,
     onShowSignInHelp: () -> Unit,
     onClearProviderSessions: () -> Unit,
@@ -1918,7 +1936,10 @@ private fun WebChatToolbar(
     WebChatDraftVaultHost(
         serviceId = draftVaultServiceId,
         onStageDraft = onStageDraft,
-        onDismiss = { draftVaultServiceId = null },
+        onDismiss = {
+            draftVaultServiceId = null
+            onDraftVaultDismissed()
+        },
         onMessage = onShowSnackbar,
     )
 
@@ -2269,6 +2290,7 @@ internal fun WebProviderDrawer(
     providerFavicons: Map<WebAiService, Bitmap>,
     favoriteServices: Set<WebAiService>,
     recentServices: List<WebAiService> = emptyList(),
+    providersWithDrafts: Set<WebAiService> = emptySet(),
     onToggleFavorite: (WebAiService) -> Unit,
     onSelectService: (WebAiService) -> Unit,
     onOpenNativeCompare: () -> Unit,
@@ -2344,6 +2366,9 @@ internal fun WebProviderDrawer(
                                     size = 18.dp
                                 )
                             },
+                            trailingIcon = if (service in providersWithDrafts) {
+                                { WebProviderDraftIndicator(service) }
+                            } else null,
                             modifier = Modifier.testTag("btn_recent_web_service_${service.id}")
                         )
                     }
@@ -2372,6 +2397,7 @@ internal fun WebProviderDrawer(
                         isSelected = selectedService == service,
                         isFavorite = true,
                         activityStatus = activityStatuses[service] ?: WebChatActivityStatus.IDLE,
+                        hasDraft = service in providersWithDrafts,
                         favicon = providerFavicons[service],
                         onToggleFavorite = { onToggleFavorite(service) },
                         onSelect = { chooseProvider(service) }
@@ -2386,6 +2412,7 @@ internal fun WebProviderDrawer(
                     isSelected = selectedService == service,
                     isFavorite = service in favoriteServices,
                     activityStatus = activityStatuses[service] ?: WebChatActivityStatus.IDLE,
+                    hasDraft = service in providersWithDrafts,
                     favicon = providerFavicons[service],
                     onToggleFavorite = { onToggleFavorite(service) },
                     onSelect = { chooseProvider(service) }
@@ -2405,6 +2432,7 @@ internal fun WebProviderDrawer(
                         isSelected = selectedService == service,
                         isFavorite = service in favoriteServices,
                         activityStatus = activityStatuses[service] ?: WebChatActivityStatus.IDLE,
+                        hasDraft = service in providersWithDrafts,
                         favicon = providerFavicons[service],
                         onToggleFavorite = { onToggleFavorite(service) },
                         onSelect = { chooseProvider(service) }
@@ -2460,6 +2488,7 @@ private fun WebProviderDrawerItem(
     isSelected: Boolean,
     isFavorite: Boolean,
     activityStatus: WebChatActivityStatus,
+    hasDraft: Boolean,
     favicon: Bitmap?,
     onToggleFavorite: () -> Unit,
     onSelect: () -> Unit
@@ -2486,6 +2515,7 @@ private fun WebProviderDrawerItem(
         badge = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 WebProviderActivityIndicator(service, activityStatus, brandColor)
+                if (hasDraft) WebProviderDraftIndicator(service)
                 IconButton(
                     onClick = onToggleFavorite,
                     modifier = Modifier
@@ -2548,6 +2578,16 @@ private fun WebProviderIdentityIcon(
             modifier = Modifier.size(size)
         )
     }
+}
+
+@Composable
+private fun WebProviderDraftIndicator(service: WebAiService) {
+    Icon(
+        imageVector = Icons.Default.EditNote,
+        contentDescription = stringResource(R.string.web_local_draft_saved),
+        tint = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.size(18.dp).testTag("status_web_service_${service.id}_draft"),
+    )
 }
 
 @Composable

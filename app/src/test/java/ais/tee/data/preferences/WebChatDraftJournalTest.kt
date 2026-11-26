@@ -18,6 +18,26 @@ class WebChatDraftJournalTest {
         override fun clear(): Boolean { record = null; return true }
     }
 
+    @Test fun presenceShowsCurrentNonBlankDraftsOnly() {
+        val data = Fake()
+        val journal = WebChatDraftJournal(data)
+        assertTrue(journal.providersWithDrafts().isEmpty())
+        assertTrue(journal.checkpoint(WebAiService.CHATGPT, "Saved draft"))
+        assertTrue(journal.save(WebAiService.CLAUDE, "Another draft"))
+        assertTrue(journal.save(WebAiService.GEMINI, "   "))
+        assertEquals(setOf(WebAiService.CHATGPT, WebAiService.CLAUDE), journal.providersWithDrafts())
+        assertTrue(journal.save(WebAiService.CHATGPT, ""))
+        assertTrue(journal.load(WebAiService.CHATGPT).page.versions.isNotEmpty())
+        assertEquals(setOf(WebAiService.CLAUDE), journal.providersWithDrafts())
+        data.canWrite = false
+        assertFalse(journal.save(WebAiService.CLAUDE, ""))
+        assertEquals(setOf(WebAiService.CLAUDE), journal.providersWithDrafts())
+        data.record = "{bad"
+        assertTrue(journal.providersWithDrafts().isEmpty())
+        assertTrue(journal.reset())
+        assertTrue(journal.providersWithDrafts().isEmpty())
+    }
+
     @Test fun delayedAutosaveCannotUndoNewerCheckpoint() {
         val data = Fake()
         val first = WebChatDraftJournal(data)

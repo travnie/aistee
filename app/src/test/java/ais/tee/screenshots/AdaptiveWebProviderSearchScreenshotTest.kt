@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -73,6 +74,7 @@ class AdaptiveWebProviderSearchScreenshotTest {
                                 WebAiService.CHATGPT, WebAiService.CLAUDE,
                                 WebAiService.GEMINI, WebAiService.GROK
                             ),
+                            providersWithDrafts = setOf(WebAiService.GEMINI, WebAiService.CLAUDE),
                             onToggleFavorite = {},
                             onSelectService = { selections.add(it) },
                             onOpenNativeCompare = {},
@@ -90,6 +92,9 @@ class AdaptiveWebProviderSearchScreenshotTest {
         compose.onNodeWithTag("btn_recent_web_service_chatgpt").assertDoesNotExist()
         compose.onNodeWithTag("btn_recent_web_service_gemini").assertDoesNotExist()
         compose.onNodeWithTag("btn_recent_web_service_claude").assertIsDisplayed()
+        compose.onNodeWithTag("status_web_service_gemini_draft").assertIsDisplayed()
+        assertEquals(2, compose.onAllNodesWithTag("status_web_service_claude_draft").fetchSemanticsNodes().size)
+        compose.onNodeWithTag("status_web_service_grok_draft").assertDoesNotExist()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
         compose.onNodeWithTag("btn_recent_web_service_claude").performClick()
         compose.runOnIdle { assertEquals(listOf(WebAiService.CLAUDE), selections) }
