@@ -48,6 +48,28 @@ class WebRendererCrashFallbackScreenshotTest {
 
     @Test
     @Config(qualifiers = "w610dp-h320dp-xhdpi")
+    fun bothRecoveryActionsRemainReachableAtLargeFontScale() {
+        val actions = mutableListOf<String>()
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
+                AisteeTheme(darkTheme = true) {
+                    WebRendererCrashFallback(
+                        WebAiService.CHATGPT,
+                        onOpenHome = { actions.add("home") },
+                        onReopenConversation = { actions.add("conversation") },
+                    )
+                }
+            }
+        }
+        compose.onNodeWithText("Reopen conversation").performScrollTo().assertIsDisplayed().performClick()
+        compose.onNodeWithText("Open provider home").performScrollTo().assertIsDisplayed().performClick()
+        assertEquals(listOf("conversation", "home"), actions)
+        compose.onRoot().captureRoboImage("build/outputs/roborazzi/web_renderer_crash_large_text.png")
+    }
+
+    @Test
+    @Config(qualifiers = "w610dp-h320dp-xhdpi")
     fun unavailableConversationOffersHomeAtLargeFontScale() {
         var homes = 0
         compose.setContent {
