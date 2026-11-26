@@ -132,9 +132,14 @@ class MainActivity : ComponentActivity() {
     private val viewModel: StudioViewModel by viewModels()
     private val markdownWorkspaceViewModel: MarkdownWorkspaceViewModel by viewModels()
     private var retainedShareIntentHandled = false
+    private lateinit var webFilePickerSlot: WebFilePickerSlot<PendingFileChooser>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        webFilePickerSlot = WebFilePickerSlot(
+            activityResultRegistry,
+            savedInstanceState?.getStringArrayList(KEY_WEB_PICKER_LAUNCHES).orEmpty()
+        )
         enableEdgeToEdge()
         markdownWorkspaceViewModel.attachRecoveryStore(MarkdownWorkspaceRecoveryStore(noBackupFilesDir))
         markdownWorkspaceViewModel.attachLifecycle(this)
@@ -188,6 +193,7 @@ class MainActivity : ComponentActivity() {
                                 WebChatScreen(
                                     viewModel = viewModel,
                                     uiState = uiState,
+                                    filePickerSlot = webFilePickerSlot,
                                     onOpenNativeCompare = { viewModel.selectTab(NavigationTab.COMPARE_HUB) },
                                     onOpenStudio = { viewModel.selectTab(NavigationTab.STUDIO) },
                                     isActive = webChatsActive,
@@ -257,6 +263,12 @@ class MainActivity : ComponentActivity() {
         super.onSaveInstanceState(outState)
         outState.putBoolean(KEY_SHARE_INTENT_HANDLED, retainedShareIntentHandled)
         saveShareState(outState)
+        outState.putStringArrayList(KEY_WEB_PICKER_LAUNCHES, webFilePickerSlot.outstandingKeys())
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        webFilePickerSlot.close()
     }
 
     private fun handleNavigationIntent(intent: Intent) {
@@ -397,6 +409,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private companion object {
+        const val KEY_WEB_PICKER_LAUNCHES = "aistee.web.picker.launches"
         const val KEY_SHARE_INTENT_HANDLED = "llmbench.share.intent_handled"
         const val KEY_SHARE_STAGE = "llmbench.share.stage"
         const val KEY_SHARE_ID = "llmbench.share.id"

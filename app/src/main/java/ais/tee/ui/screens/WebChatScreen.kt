@@ -16,7 +16,6 @@ import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.webkit.*
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResult
 import androidx.compose.animation.*
 import androidx.compose.foundation.Image
@@ -137,7 +136,7 @@ internal fun webServicesToKeepAfterMemoryPressure(
     WebViewEvictionMode.SELECTED_ONLY -> if (webChatActive) listOf(selectedService) else emptyList()
 }
 
-private data class PendingFileChooser(
+internal data class PendingFileChooser(
     val service: WebAiService,
     val requestId: Int,
     val callback: ValueCallback<Array<Uri>>
@@ -173,9 +172,10 @@ private data class WebGenerationProbeTarget(
 /** Hosts account-backed AI services with mobile-first WebView controls. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WebChatScreen(
+internal fun WebChatScreen(
     viewModel: StudioViewModel,
     uiState: StudioUiState,
+    filePickerSlot: WebFilePickerSlot<PendingFileChooser>,
     onOpenNativeCompare: () -> Unit,
     onOpenStudio: () -> Unit,
     isActive: Boolean,
@@ -259,8 +259,6 @@ fun WebChatScreen(
     var diagnosticsProbeResult by remember { mutableStateOf<ProviderDiagnosticsProbeResult?>(null) }
     var diagnosticsProbeRequestId by remember { mutableIntStateOf(0) }
     var pendingExternalIntentUri by remember { mutableStateOf<Uri?>(null) }
-    val filePickerRegistry = LocalActivityResultRegistryOwner.current?.activityResultRegistry
-    val filePickerSlot = remember { mutableStateOf<WebFilePickerSlot<PendingFileChooser>?>(null) }
     var pendingSharedUploadConfirmation by remember {
         mutableStateOf<PendingSharedUploadConfirmation?>(null)
     }
@@ -390,7 +388,7 @@ fun WebChatScreen(
     }
 
     fun cancelPendingUploadFor(service: WebAiService, outcome: String) {
-        filePickerSlot.value?.cancelIf { it.service == service }?.let { request ->
+        filePickerSlot.cancelIf { it.service == service }?.let { request ->
             updateFileChooserOutcome(service, request.requestId, outcome)
             request.callback.onReceiveValue(null)
         }
@@ -779,8 +777,7 @@ fun WebChatScreen(
     DisposableEffect(webViewMap) {
         onDispose {
             closeFindInPage()
-            filePickerSlot.value?.cancelIf { true }?.callback?.onReceiveValue(null)
-            filePickerSlot.value = null
+            filePickerSlot.cancelIf { true }?.callback?.onReceiveValue(null)
             pendingSharedUploadConfirmation?.callback?.onReceiveValue(null)
             pendingSharedUploadConfirmation = null
             pendingSharedTextInsertion.value?.let { insertion ->
@@ -1379,7 +1376,7 @@ fun WebChatScreen(
                                         true
                                     } else {
                                         // A new foreground request supersedes a missing or abandoned result.
-                                        filePickerSlot.value?.cancelIf { true }?.let { previous ->
+                                        filePickerSlot.cancelIf { true }?.let { previous ->
                                             updateFileChooserOutcome(previous.service, previous.requestId, "superseded")
                                             previous.callback.onReceiveValue(null)
                                         }
@@ -1414,10 +1411,7 @@ fun WebChatScreen(
                                                 "picker launched"
                                             )
                                             val launchError = runCatching {
-                                                val registry = checkNotNull(filePickerRegistry)
-                                                val slot = filePickerSlot.value ?: WebFilePickerSlot<PendingFileChooser>(registry)
-                                                    .also { filePickerSlot.value = it }
-                                                slot.launch(
+                                                filePickerSlot.launch(
                                                     params.createIntent(),
                                                     PendingFileChooser(service, requestId, callback),
                                                     ::deliverFileChooserResult

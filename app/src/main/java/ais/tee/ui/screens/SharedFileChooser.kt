@@ -113,32 +113,52 @@ internal fun isAllowedUploadUri(context: Context, uri: Uri): Boolean {
     return true
 }
 
-/** Unique registry key per launch; cancelled owners cannot receive a late result. Main thread only. */
-internal class WebFilePickerSlot<T : Any>(private val registry: ActivityResultRegistry) {
+/** Activity-owned picker routing. Save opaque keys only; drain abandoned results. Main thread only. */
+internal class WebFilePickerSlot<T : Any>(
+    private val registry: ActivityResultRegistry,
+    restoredKeys: List<String> = emptyList(),
+) {
     private data class Launch<T>(
         val key: String,
         val request: T,
-        val launcher: ActivityResultLauncher<Intent>
+        val onResult: (T, ActivityResult) -> Unit,
     )
 
+    private val keys = linkedSetOf<String>()
+    private val launchers = mutableMapOf<String, ActivityResultLauncher<Intent>>()
     private var active: Launch<T>? = null
+
+    init {
+        restoredKeys.distinct().filter { it.startsWith(KEY_PREFIX) }.forEach(::register)
+    }
+
+    fun outstandingKeys(): ArrayList<String> = ArrayList(keys)
+
+    private fun register(key: String): ActivityResultLauncher<Intent> {
+        keys.add(key)
+        val launcher = registry.register(key, ActivityResultContracts.StartActivityForResult()) { result ->
+            keys.remove(key)
+            val item = active?.takeIf { it.key == key }
+            if (item != null) active = null
+            // Pending restored results can dispatch during register; unregister after dispatch.
+            Handler(Looper.getMainLooper()).post { launchers.remove(key)?.unregister() }
+            item?.onResult?.invoke(item.request, result)
+        }
+        launchers[key] = launcher
+        return launcher
+    }
 
     fun launch(intent: Intent, request: T, onResult: (T, ActivityResult) -> Unit) {
         check(active == null)
-        val key = "aistee-web-picker-${UUID.randomUUID()}"
-        val launcher = registry.register(key, ActivityResultContracts.StartActivityForResult()) { result ->
-            val item = active?.takeIf { it.key == key } ?: return@register
-            active = null
-            // Registry finishes dispatch after invoking the callback.
-            Handler(Looper.getMainLooper()).post { item.launcher.unregister() }
-            onResult(item.request, result)
-        }
-        active = Launch(key, request, launcher)
+        val key = "$KEY_PREFIX${UUID.randomUUID()}"
+        val launcher = register(key)
+        active = Launch(key, request, onResult)
         try {
             launcher.launch(intent)
         } catch (error: Exception) {
             active = null
-            launcher.unregister()
+            keys.remove(key)
+            launchers.remove(key)?.unregister()
             throw error
         }
     }
@@ -146,7 +166,18 @@ internal class WebFilePickerSlot<T : Any>(private val registry: ActivityResultRe
     fun cancelIf(predicate: (T) -> Boolean): T? {
         val item = active?.takeIf { predicate(it.request) } ?: return null
         active = null
-        item.launcher.unregister()
+        // Keep a drain callback; never queue the abandoned file result in saved state.
         return item.request
+    }
+
+    fun close() {
+        active = null
+        launchers.values.forEach { it.unregister() }
+        launchers.clear()
+        keys.clear()
+    }
+
+    private companion object {
+        const val KEY_PREFIX = "aistee-web-picker-"
     }
 }
