@@ -52,10 +52,13 @@ jobs:
           required=true
           if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
             lookup_err="$RUNNER_TEMP/release-scope.err"
-            if old_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/aistee-latest" --jq .object.sha 2>"$lookup_err")"; then
-              git cat-file -e "$old_sha^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$old_sha"
-              if git diff --quiet "$old_sha" "$BUILT_SHA" -- gradlew app/ shared/ build.gradle.kts settings.gradle.kts gradle.properties gradle/ .github/workflows/release.yml .github/actions/setup-android-build/; then
-                required=false
+            if published="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/aistee-latest" --jq 'if .draft then "" else (.id | tostring) end' 2>"$lookup_err")"; then
+              if [ -n "$published" ]; then
+                old_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/aistee-latest" --jq .object.sha)"
+                git cat-file -e "$old_sha^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$old_sha"
+                if git diff --quiet "$old_sha" "$BUILT_SHA" -- gradlew app/ shared/ build.gradle.kts settings.gradle.kts gradle.properties gradle/ .github/workflows/release.yml .github/actions/setup-android-build/; then
+                  required=false
+                fi
               fi
             elif ! grep -q 'HTTP 404' "$lookup_err"; then
               cat "$lookup_err" >&2
@@ -244,15 +247,18 @@ jobs:
           tag="aistee-latest"
           # A slow older CI completion must not replace a newer published commit.
           lookup_err="$RUNNER_TEMP/rolling-ref-lookup.err"
-          if old_sha="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq .object.sha 2>"$lookup_err")"; then
-            relation="$(gh api "repos/$GH_REPO/compare/$old_sha...$BUILT_SHA" --jq .status)"
-            if [ "$relation" = behind ]; then
-              echo "A newer commit is already published; skipping stale release."
-              exit 0
-            fi
-            if [ "$relation" != ahead ] && [ "$relation" != identical ]; then
-              echo "::error::Rolling tag is not an ancestor of the verified build."
-              exit 1
+          if published="$(gh api "repos/$GH_REPO/releases/tags/$tag" --jq 'if .draft then "" else (.id | tostring) end' 2>"$lookup_err")"; then
+            if [ -n "$published" ]; then
+              old_sha="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq .object.sha)"
+              relation="$(gh api "repos/$GH_REPO/compare/$old_sha...$BUILT_SHA" --jq .status)"
+              if [ "$relation" = behind ]; then
+                echo "A newer commit is already published; skipping stale release."
+                exit 0
+              fi
+              if [ "$relation" != ahead ] && [ "$relation" != identical ]; then
+                echo "::error::Rolling tag is not an ancestor of the verified build."
+                exit 1
+              fi
             fi
           elif ! grep -q 'HTTP 404' "$lookup_err"; then
             cat "$lookup_err" >&2
