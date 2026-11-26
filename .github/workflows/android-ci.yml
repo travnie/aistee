@@ -13,6 +13,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  appfunctions-scope:
+    runs-on: ubuntu-slim
+    permissions:
+      contents: read
+    outputs:
+      required: ${{ steps.scope.outputs.required }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Test scope selector
+        run: python3 -m unittest discover -s .github/scripts -p test_appfunctions_scope.py
+      - name: Select AppFunctions smoke
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 .github/scripts/appfunctions_scope.py >> "$GITHUB_OUTPUT"
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -98,6 +118,8 @@ jobs:
           retention-days: 7
 
   appfunctions-smoke:
+    needs: appfunctions-scope
+    if: needs.appfunctions-scope.outputs.required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
