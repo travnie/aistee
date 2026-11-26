@@ -11,13 +11,15 @@ import android.app.Application
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
@@ -73,7 +75,7 @@ class WebChatBookmarksScreenshotTest {
         compose.waitUntil(5_000) {
             compose.onAllNodesWithTag("web_bookmark_edit").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithTag("web_bookmark_edit").performClick()
+        compose.onNodeWithTag("web_bookmark_edit").performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag("web_bookmarks_title").performTextReplacement("Renamed")
         compose.onNodeWithTag("web_bookmarks_folder").performTextReplacement("Personal/AI")
         compose.onNodeWithTag("web_bookmarks_save").performClick()
@@ -108,7 +110,7 @@ class WebChatBookmarksScreenshotTest {
         compose.waitUntil(5_000) {
             compose.onAllNodesWithText("Edit this bookmark").fetchSemanticsNodes().isNotEmpty()
         }
-        compose.onNodeWithText("Edit this bookmark").performScrollTo().performClick()
+        compose.onNodeWithText("Edit this bookmark").performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithTag("web_bookmarks_title").performScrollTo().performTextReplacement("Unsaved")
         compose.onNodeWithTag("web_bookmarks_folder").performScrollTo().performTextReplacement("Personal/AI")
         compose.onNodeWithTag("web_bookmarks_save").assertIsDisplayed()
@@ -145,7 +147,7 @@ class WebChatBookmarksScreenshotTest {
             compose.onAllNodesWithTag("web_bookmarks_list").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithTag("web_bookmarks_list").performScrollToIndex(12)
-        compose.onNodeWithContentDescription("Edit Chat 11").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Edit Chat 11").assertIsDisplayed().performSemanticsAction(SemanticsActions.OnClick)
         compose.onNodeWithText("Cancel").performClick()
         compose.onNodeWithTag("web_bookmarks_editor").assertDoesNotExist()
         compose.onNodeWithText("Chat 11").assertIsDisplayed()
