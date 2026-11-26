@@ -3,6 +3,7 @@ package ais.tee.data.document
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -67,8 +68,34 @@ object ExternalPromptVaultAdapters {
     fun decode(raw: String): ExternalPromptVaultImport? {
         if (raw.length > MAX_EXTERNAL_VAULT_CHARS) return null
         val root = runCatching { Json.parseToJsonElement(raw) }.getOrNull() ?: return null
+        if (!root.hasOnlyJsonLiterals()) return null
         return adapters.firstNotNullOfOrNull { adapter -> adapter.decode(root) }
     }
+}
+
+private val JSON_NUMBER = Regex("-?(0|[1-9][0-9]*)([.][0-9]+)?([eE][+-]?[0-9]+)?")
+
+/**
+ * `parseToJsonElement` keeps unquoted words as primitive values even with `isLenient = false`, so
+ * `"kind": aistee-prompt-vault` would slip past the string-only kind check. Iterative on purpose:
+ * nesting depth is controlled by the imported file.
+ */
+private fun JsonElement.hasOnlyJsonLiterals(): Boolean {
+    val pending = ArrayDeque(listOf(this))
+    while (pending.isNotEmpty()) {
+        when (val element = pending.removeLast()) {
+            is JsonObject -> pending.addAll(element.values)
+            is JsonArray -> pending.addAll(element)
+            is JsonNull -> Unit
+            is JsonPrimitive -> {
+                val content = element.content
+                if (!element.isString && content != "true" && content != "false" &&
+                    !JSON_NUMBER.matches(content)
+                ) return false
+            }
+        }
+    }
+    return true
 }
 
 /** `{"prompts": [{...}, ...], ...}` envelope used by common browser-extension vault exports. */
@@ -115,8 +142,13 @@ private fun buildImport(
 private fun mapExternalEntry(entry: JsonElement): PortablePrompt? {
     val obj = entry as? JsonObject ?: return null
     // Real-world exports often pad names; trimming stays adapter-side, Library rules unchanged.
-    val title = EXTERNAL_TITLE_KEYS.firstNotNullOfOrNull { key -> obj[key]?.stringContent()?.trim() }
-    val text = EXTERNAL_TEXT_KEYS.firstNotNullOfOrNull { key -> obj[key]?.stringContent() }
+    // A blank value must not shadow a filled fallback key ({"title": "", "name": "X"}).
+    val title = EXTERNAL_TITLE_KEYS.firstNotNullOfOrNull { key ->
+        obj[key]?.stringContent()?.trim()?.takeIf { it.isNotEmpty() }
+    }
+    val text = EXTERNAL_TEXT_KEYS.firstNotNullOfOrNull { key ->
+        obj[key]?.stringContent()?.takeIf { it.isNotBlank() }
+    }
     // A lone surrogate would survive isValid but break strict UTF-8 asset encoding downstream,
     // and one over-limit body would abort the rest of the import; drop the entry instead.
     if (title == null || text == null ||

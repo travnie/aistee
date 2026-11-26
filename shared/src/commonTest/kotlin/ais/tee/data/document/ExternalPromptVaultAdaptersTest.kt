@@ -108,6 +108,29 @@ class ExternalPromptVaultAdaptersTest {
     }
 
     @Test
+    fun unquotedWordsRejectTheWholeFile() {
+        val kind = PortablePromptBackup.KIND
+        assertNull(ExternalPromptVaultAdapters.decode("""{"kind": $kind, "prompts": [{"title": "T", "text": "x"}]}"""))
+        assertNull(ExternalPromptVaultAdapters.decode("""{"junk": foo, "prompts": [{"title": "T", "text": "x"}]}"""))
+        assertNull(ExternalPromptVaultAdapters.decode("""[{"title": "T", "text": "x", "meta": {"n": [NaN]}}]"""))
+    }
+
+    @Test
+    fun jsonLiteralsInIgnoredMetadataStayAccepted() {
+        val raw = """{"count": -1.5e+3, "zero": 0, "flags": [true, false, null], "prompts": [{"title": "T", "text": "x"}]}"""
+        val import = requireNotNull(ExternalPromptVaultAdapters.decode(raw))
+        assertEquals(listOf("T"), import.prompts.map { it.title })
+    }
+
+    @Test
+    fun blankValuesDoNotShadowFallbackKeys() {
+        val raw = """[{"title": " ", "name": "Named", "content": "", "text": "body"}]"""
+        val import = requireNotNull(ExternalPromptVaultAdapters.decode(raw))
+        assertEquals(listOf("Named" to "body"), import.prompts.map { it.title to it.text })
+        assertEquals(0, import.skipped)
+    }
+
+    @Test
     fun oversizedFilesAreRejected() {
         val raw = "[{\"title\": \"Big\", \"content\": \"" + "x".repeat(8 * 1024 * 1024) + "\"}]"
         assertNull(ExternalPromptVaultAdapters.decode(raw))
