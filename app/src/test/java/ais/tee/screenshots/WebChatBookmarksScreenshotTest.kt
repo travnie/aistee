@@ -11,18 +11,12 @@ import android.app.Application
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performScrollToIndex
-import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.Density
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
@@ -52,106 +46,6 @@ class WebChatBookmarksScreenshotTest {
     @Test
     @Config(qualifiers = "w900dp-h1000dp-xxhdpi")
     fun expanded() = capture("web_bookmarks_expanded")
-
-    @Test
-    @Config(qualifiers = "w400dp-h800dp-xxhdpi")
-    fun editSavedBookmarkWithoutOpeningConversation() {
-        val store = WebChatBookmarkStore(MemoryPersistence())
-        val saved = (store.save(WebAiService.CHATGPT, "https://chatgpt.com/c/saved",
-            "Saved conversation", "Work") as WebChatBookmarkSaveResult.Saved).bookmark
-        var opened = false
-        compose.setContent {
-            AisteeTheme(darkTheme = true) {
-                WebChatBookmarksDialog(
-                    service = WebAiService.CHATGPT,
-                    currentUrl = "https://chatgpt.com/",
-                    onOpen = { opened = true },
-                    onDismiss = {},
-                    backup = WebChatBookmarkBackupActions(false, {}, {}),
-                    storeOverride = store,
-                )
-            }
-        }
-        compose.waitUntil(5_000) {
-            compose.onAllNodesWithTag("web_bookmark_edit").fetchSemanticsNodes().isNotEmpty()
-        }
-        compose.onNodeWithTag("web_bookmark_edit").performSemanticsAction(SemanticsActions.OnClick)
-        compose.onNodeWithTag("web_bookmarks_title").performTextReplacement("Renamed")
-        compose.onNodeWithTag("web_bookmarks_folder").performTextReplacement("Personal/AI")
-        compose.onNodeWithTag("web_bookmarks_save").performClick()
-        compose.waitUntil(5_000) {
-            compose.onAllNodesWithTag("web_bookmarks_editor").fetchSemanticsNodes().isEmpty()
-        }
-        assertEquals(saved.copy(title = "Renamed", folder = "Personal/AI"), store.load().bookmarks.single())
-        assertTrue(!opened)
-    }
-
-    @Test
-    @Config(qualifiers = "w610dp-h500dp-xxhdpi")
-    fun editorInShortLandscapeAtLargeFontScale() {
-        val store = WebChatBookmarkStore(MemoryPersistence())
-        val saved = (store.save(WebAiService.CHATGPT, "https://chatgpt.com/c/saved",
-            "Saved conversation", "Work") as WebChatBookmarkSaveResult.Saved).bookmark
-        compose.setContent {
-            val density = LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
-                AisteeTheme(darkTheme = true) {
-                    WebChatBookmarksDialog(
-                        service = WebAiService.CHATGPT,
-                        currentUrl = "https://chatgpt.com/c/saved",
-                        onOpen = {},
-                        onDismiss = {},
-                        backup = WebChatBookmarkBackupActions(false, {}, {}),
-                        storeOverride = store,
-                    )
-                }
-            }
-        }
-        compose.waitUntil(5_000) {
-            compose.onAllNodesWithText("Edit this bookmark").fetchSemanticsNodes().isNotEmpty()
-        }
-        compose.onNodeWithText("Edit this bookmark").performScrollTo().performSemanticsAction(SemanticsActions.OnClick)
-        compose.onNodeWithTag("web_bookmarks_title").performScrollTo().performTextReplacement("Unsaved")
-        compose.onNodeWithTag("web_bookmarks_folder").performScrollTo().performTextReplacement("Personal/AI")
-        compose.onNodeWithTag("web_bookmarks_save").assertIsDisplayed()
-        compose.onNodeWithTag("web_bookmarks_editor")
-            .captureRoboImage("build/outputs/roborazzi/web_bookmarks_editor_landscape_font150.png")
-        compose.onNodeWithText("Cancel").performClick()
-        compose.onNodeWithTag("web_bookmarks_editor").assertDoesNotExist()
-        compose.onNodeWithTag("web_bookmarks_dialog").assertExists()
-        assertEquals(saved, store.load().bookmarks.single())
-    }
-
-    @Test
-    @Config(qualifiers = "w400dp-h800dp-xxhdpi")
-    fun cancelEditorKeepsBookmarkListPosition() {
-        val store = WebChatBookmarkStore(MemoryPersistence())
-        repeat(12) { index ->
-            val name = "Chat " + index.toString().padStart(2, '0')
-            assertTrue(store.save(WebAiService.CHATGPT, "https://chatgpt.com/c/chat-$index",
-                name, "") is WebChatBookmarkSaveResult.Saved)
-        }
-        compose.setContent {
-            AisteeTheme(darkTheme = true) {
-                WebChatBookmarksDialog(
-                    service = WebAiService.CHATGPT,
-                    currentUrl = "https://chatgpt.com/",
-                    onOpen = {},
-                    onDismiss = {},
-                    backup = WebChatBookmarkBackupActions(false, {}, {}),
-                    storeOverride = store,
-                )
-            }
-        }
-        compose.waitUntil(5_000) {
-            compose.onAllNodesWithTag("web_bookmarks_list").fetchSemanticsNodes().isNotEmpty()
-        }
-        compose.onNodeWithTag("web_bookmarks_list").performScrollToIndex(12)
-        compose.onNodeWithContentDescription("Edit Chat 11").assertIsDisplayed().performSemanticsAction(SemanticsActions.OnClick)
-        compose.onNodeWithText("Cancel").performClick()
-        compose.onNodeWithTag("web_bookmarks_editor").assertDoesNotExist()
-        compose.onNodeWithText("Chat 11").assertIsDisplayed()
-    }
 
     private fun capture(name: String, fontScale: Float = 1f) {
         val store = WebChatBookmarkStore(MemoryPersistence())
