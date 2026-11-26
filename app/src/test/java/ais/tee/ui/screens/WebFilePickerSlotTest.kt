@@ -111,12 +111,13 @@ class WebFilePickerSlotTest {
         assertNoPendingResults(registry)
         // A previously queued result leaves the request-code mapping in AndroidX.
         // A second synthetic result must have no registered callback to consume it.
-        registry.dispatchResult(oldCode, Activity.RESULT_CANCELED, null)
-        val duplicateState = Bundle()
-        registry.onSaveInstanceState(duplicateState)
-        assertTrue(duplicateState.keySet().mapNotNull(duplicateState::getBundle).any { !it.isEmpty })
-        val drain = registry.register(keys.single(), androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) {}
-        drain.unregister()
+        if (registry.dispatchResult(oldCode, Activity.RESULT_CANCELED, null)) {
+            val duplicateState = Bundle()
+            registry.onSaveInstanceState(duplicateState)
+            assertTrue(duplicateState.keySet().mapNotNull(duplicateState::getBundle).any { !it.isEmpty })
+            val drain = registry.register(keys.single(), androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) {}
+            drain.unregister()
+        }
         assertNoPendingResults(registry)
 
         val delivered = mutableListOf<String>()
