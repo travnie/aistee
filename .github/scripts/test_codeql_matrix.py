@@ -28,7 +28,9 @@ class ScopeTests(unittest.TestCase):
             self.assertEqual(plan("pull_request", "base"), ALL)
 
     def test_matrix(self):
-        self.assertEqual(matrix(set()), [])
+        self.assertTrue(all(not row["required"] for row in matrix(set())))
+        self.assertEqual({row["language"] for row in matrix(set())}, ALL)
+        self.assertTrue(all(row["required"] for row in matrix(ALL)))
         self.assertEqual({row["language"] for row in matrix(ALL)}, ALL)
 
 

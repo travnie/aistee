@@ -39,9 +39,8 @@ jobs:
 
   analyze:
     needs: select
-    if: needs.select.outputs.include != '[]'
     name: CodeQL (${{ matrix.language }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.required && 'ubuntu-latest' || 'ubuntu-slim' }}
     timeout-minutes: 60
     permissions:
       contents: read
@@ -53,18 +52,23 @@ jobs:
         include: ${{ fromJSON(needs.select.outputs.include) }}
 
     steps:
+      - name: No affected code for this language
+        if: ${{ !matrix.required }}
+        run: echo 'CodeQL scan not needed for this change.'
       - name: Checkout
+        if: matrix.required
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
       - name: Set up Android toolchain
-        if: matrix.language == 'java-kotlin'
+        if: matrix.required && matrix.language == 'java-kotlin'
         uses: ./.github/actions/setup-android-build
         with:
           gradle-cache-disabled: "true"
 
       - name: Initialize CodeQL
+        if: matrix.required
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           languages: ${{ matrix.language }}
@@ -74,12 +78,13 @@ jobs:
       # Kotlin needs a real JDK 21 build, but CodeQL only needs compiled test code:
       # run actual tests separately in Android + KMP CI to avoid flaky test failures.
       - name: Compile Android, tests and benchmark Kotlin
-        if: matrix.language == 'java-kotlin'
+        if: matrix.required && matrix.language == 'java-kotlin'
         run: |
           ./gradlew :app:assembleDebug :app:compileDebugUnitTestKotlin \
             :benchmark:assemble :shared:desktopTestClasses --no-daemon --stacktrace
 
       - name: Analyze
+        if: matrix.required
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           category: "/language:${{ matrix.language }}"
