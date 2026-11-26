@@ -4,18 +4,11 @@ name: Release
 # One workflow so GITHUB_RUN_NUMBER, the versionCode source, stays monotonic across both.
 on: # yamllint disable-line rule:truthy
   push:
-    branches: ["main"]
     tags: ["v*"]
-    paths:
-      - "gradlew"
-      - "app/**"
-      - "shared/**"
-      - "build.gradle.kts"
-      - "settings.gradle.kts"
-      - "gradle.properties"
-      - "gradle/**"
-      - ".github/workflows/release.yml"
-      - ".github/actions/setup-android-build/**"
+  workflow_run:
+    workflows: ["Android + KMP CI"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 # One group serializes publishing, so versionCode order (GITHUB_RUN_NUMBER) matches publish order.
@@ -31,13 +24,24 @@ permissions:
 jobs:
   release:
     name: Build and publish release
-    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    # Only successful same-repository main push CI may authorize an automatic rolling release.
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository) ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      BUILT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: ${{ env.BUILT_SHA }}
           persist-credentials: false
 
       - name: Resolve app version
@@ -58,7 +62,7 @@ jobs:
               exit 1
             fi
             # Only releases cut from main: the commit must be main itself or behind it.
-            compare="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$GITHUB_SHA" --jq .status)"
+            compare="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$BUILT_SHA" --jq .status)"
             if [ "$compare" != "identical" ] && [ "$compare" != "behind" ]; then
               echo "::error::Tagged commit is not on main (compare status: $compare)."
               exit 1
@@ -124,6 +128,10 @@ jobs:
           fi
           echo "path=$keystore" >> "$GITHUB_OUTPUT"
 
+      - name: Validate tree for tag or manual release
+        if: github.event_name != 'workflow_run'
+        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :shared:desktopTest --no-daemon --stacktrace
+
       - name: Build release APK and AAB
         env:
           AISTEE_KEYSTORE: ${{ steps.keystore.outputs.path }}
@@ -131,7 +139,7 @@ jobs:
           AISTEE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           AISTEE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           AISTEE_VERSION_CODE: ${{ steps.release.outputs.version_code }}
-        run: ./gradlew :app:testDebugUnitTest :app:lintDebug :shared:desktopTest :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
 
       - name: Verify and name release artifacts
         shell: bash
@@ -188,8 +196,8 @@ jobs:
           done <<< "$existing"
           # The tag must still point at the commit that was built.
           tagged_sha="$(gh api "repos/$GH_REPO/commits/refs/tags/$tag" --jq .sha)"
-          if [ "$tagged_sha" != "$GITHUB_SHA" ]; then
-            echo "::error::Tag $tag moved to $tagged_sha during the build (built $GITHUB_SHA)."
+          if [ "$tagged_sha" != "$BUILT_SHA" ]; then
+            echo "::error::Tag $tag moved to $tagged_sha during the build (built $BUILT_SHA)."
             exit 1
           fi
           # Draft first, publish once both assets are attached.
@@ -209,6 +217,22 @@ jobs:
         run: |
           set -euo pipefail
           tag="aistee-latest"
+          # A slow older CI completion must not replace a newer published commit.
+          lookup_err="$RUNNER_TEMP/rolling-ref-lookup.err"
+          if old_sha="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq .object.sha 2>"$lookup_err")"; then
+            relation="$(gh api "repos/$GH_REPO/compare/$old_sha...$BUILT_SHA" --jq .status)"
+            if [ "$relation" = behind ]; then
+              echo "A newer commit is already published; skipping stale release."
+              exit 0
+            fi
+            if [ "$relation" != ahead ] && [ "$relation" != identical ]; then
+              echo "::error::Rolling tag is not an ancestor of the verified build."
+              exit 1
+            fi
+          elif ! grep -q 'HTTP 404' "$lookup_err"; then
+            cat "$lookup_err" >&2
+            exit 1
+          fi
           stage="aistee-stage-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           release_id=""
           old_id=""
@@ -297,10 +321,10 @@ jobs:
           trap cleanup_failed_promotion EXIT
 
           printf 'Signed Android builds from `%s`.\n\nRolling release. Assets are replaced after each successful build of `main`.\nApp version: `%s`.\n' \
-            "$GITHUB_SHA" "$RELEASE_VERSION" > release-notes.md
+            "$BUILT_SHA" "$RELEASE_VERSION" > release-notes.md
 
           gh release create "$stage" dist/aistee.apk dist/aistee.aab \
-            --draft --target "$GITHUB_SHA" \
+            --draft --target "$BUILT_SHA" \
             --title "Aistee · rolling" --notes-file release-notes.md
           release_id="$(release_id_for_tag "$stage")"
           if [ -z "$release_id" ]; then
@@ -365,7 +389,7 @@ jobs:
           fi
 
           gh api --method PATCH "repos/$GH_REPO/releases/$release_id" \
-            -f tag_name="$tag" -f target_commitish="$GITHUB_SHA" \
+            -f tag_name="$tag" -f target_commitish="$BUILT_SHA" \
             -f name='Aistee · rolling' -F draft=false -F prerelease=false \
             -f make_latest=true >/dev/null
 
@@ -373,14 +397,14 @@ jobs:
           deadline=$((SECONDS + 60))
           while [ "$SECONDS" -lt "$deadline" ]; do
             if promoted_sha="$(gh api "repos/$GH_REPO/git/ref/tags/$tag" --jq .object.sha 2>/dev/null)" \
-              && [ "$promoted_sha" = "$GITHUB_SHA" ]; then
+              && [ "$promoted_sha" = "$BUILT_SHA" ]; then
               tag_synced=true
               break
             fi
             sleep 2
           done
           if [ "$tag_synced" != true ]; then
-            echo "::error::Promoted rolling tag did not resolve to $GITHUB_SHA within 60 seconds."
+            echo "::error::Promoted rolling tag did not resolve to $BUILT_SHA within 60 seconds."
             exit 1
           fi
 
