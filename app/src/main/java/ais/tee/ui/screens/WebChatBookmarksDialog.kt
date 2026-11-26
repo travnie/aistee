@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -169,6 +170,7 @@ internal fun WebChatBookmarksDialog(
     var confirmReset by remember { mutableStateOf(false) }
     val actionsEnabled = !busy && !backup.busy
     val listScrollState = rememberScrollState()
+    val bookmarkListState = rememberLazyListState()
 
     suspend fun refresh() {
         val snapshot = withContext(Dispatchers.IO) { store.load() }
@@ -250,6 +252,7 @@ internal fun WebChatBookmarksDialog(
                                 compareBy<WebChatBookmark>({ it.folder.lowercase() }, { it.title.lowercase() })
                             ).groupBy { it.folder }
                             LazyColumn(
+                                state = bookmarkListState,
                                 modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)
                                     .testTag("web_bookmarks_list"),
                                 verticalArrangement = Arrangement.spacedBy(4.dp),

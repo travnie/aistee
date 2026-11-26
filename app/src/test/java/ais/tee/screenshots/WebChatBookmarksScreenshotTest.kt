@@ -15,6 +15,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
@@ -117,6 +118,37 @@ class WebChatBookmarksScreenshotTest {
         compose.onNodeWithTag("web_bookmarks_editor").assertDoesNotExist()
         compose.onNodeWithTag("web_bookmarks_dialog").assertExists()
         assertEquals(saved, store.load().bookmarks.single())
+    }
+
+    @Test
+    @Config(qualifiers = "w400dp-h800dp-xxhdpi")
+    fun cancelEditorKeepsBookmarkListPosition() {
+        val store = WebChatBookmarkStore(MemoryPersistence())
+        repeat(12) { index ->
+            val name = "Chat " + index.toString().padStart(2, '0')
+            assertTrue(store.save(WebAiService.CHATGPT, "https://chatgpt.com/c/chat-$index",
+                name, "") is WebChatBookmarkSaveResult.Saved)
+        }
+        compose.setContent {
+            AisteeTheme(darkTheme = true) {
+                WebChatBookmarksDialog(
+                    service = WebAiService.CHATGPT,
+                    currentUrl = "https://chatgpt.com/",
+                    onOpen = {},
+                    onDismiss = {},
+                    backup = WebChatBookmarkBackupActions(false, {}, {}),
+                    storeOverride = store,
+                )
+            }
+        }
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithTag("web_bookmarks_list").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("web_bookmarks_list").performScrollToIndex(12)
+        compose.onNodeWithContentDescription("Edit Chat 11").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithTag("web_bookmarks_editor").assertDoesNotExist()
+        compose.onNodeWithText("Chat 11").assertIsDisplayed()
     }
 
     private fun capture(name: String, fontScale: Float = 1f) {
