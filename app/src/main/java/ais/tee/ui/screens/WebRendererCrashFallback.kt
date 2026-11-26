@@ -10,6 +10,9 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -21,13 +24,15 @@ import ais.tee.data.model.WebAiService
 @Composable
 internal fun WebRendererCrashFallback(
     service: WebAiService,
-    onRetry: () -> Unit
+    onOpenHome: () -> Unit,
+    onReopenConversation: (() -> Unit)? = null
 ) {
     Box(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
+            modifier = Modifier.verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -38,10 +43,15 @@ internal fun WebRendererCrashFallback(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "The web renderer crashed. Retry opens the provider home page without clearing its cookies or storage.",
+                text = "The web renderer crashed. Your provider session is unchanged. If the conversation crashes again, open the provider home page.",
                 style = MaterialTheme.typography.bodyMedium
             )
-            Button(onClick = onRetry) { Text("Retry") }
+            if (onReopenConversation != null) {
+                Button(onClick = onReopenConversation) { Text("Reopen conversation") }
+                OutlinedButton(onClick = onOpenHome) { Text("Open provider home") }
+            } else {
+                Button(onClick = onOpenHome) { Text("Open provider home") }
+            }
         }
     }
 }
