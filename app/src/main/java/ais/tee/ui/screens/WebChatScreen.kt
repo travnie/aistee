@@ -371,13 +371,17 @@ internal fun WebChatScreen(
     }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
+    // Defer store initialization until navigation actually needs it, off the UI thread.
+    val draftJournal = remember(context.applicationContext) {
+        lazy { WebChatDraftJournal(context.applicationContext) }
+    }
     var draftPresenceRefresh by remember { mutableIntStateOf(0) }
     var providersWithDrafts by remember { mutableStateOf<Set<WebAiService>>(emptySet()) }
     val showDraftPresence = isActive && (persistentProviderNavigation || drawerState.targetValue == DrawerValue.Open)
-    LaunchedEffect(showDraftPresence, draftPresenceRefresh) {
+    LaunchedEffect(showDraftPresence, draftPresenceRefresh, draftJournal) {
         if (showDraftPresence) {
             providersWithDrafts = withContext(Dispatchers.IO) {
-                WebChatDraftJournal(context.applicationContext).providersWithDrafts()
+                draftJournal.value.providersWithDrafts()
             }
         } else {
             providersWithDrafts = emptySet()

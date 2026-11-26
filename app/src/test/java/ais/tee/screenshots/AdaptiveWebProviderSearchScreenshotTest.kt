@@ -54,6 +54,10 @@ class AdaptiveWebProviderSearchScreenshotTest {
         captureRecent("web_recent_providers_compact_font150", false, 1.5f)
 
     @Test
+    @Config(qualifiers = "w610dp-h500dp-xxhdpi")
+    fun mediumRecentShortcuts() = captureRecent("web_recent_providers_medium", false)
+
+    @Test
     @Config(qualifiers = "w900dp-h1000dp-xxhdpi")
     fun expandedRecentShortcuts() = captureRecent("web_recent_providers_expanded", true)
 
