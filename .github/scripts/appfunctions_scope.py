@@ -5,13 +5,31 @@ from pathlib import PurePosixPath
 import subprocess
 
 UNRELATED_PREFIXES = (
-    "benchmark/",
+    "benchmark/src/",
     "app/src/test/",
     "app/src/testDebug/",
-    "app/src/main/java/ais/tee/ui/screens/Web",
-    "app/src/main/java/ais/tee/data/preferences/WebChat",
 )
 UNRELATED_FILES = {
+    "app/src/main/java/ais/tee/ui/screens/WebChatBookmarksDialog.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebChatDraftJournalDialog.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebChatObservationPolicy.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebChatScreen.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebFindInPage.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebNavigationSafety.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebPageLoadFailureContent.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebPageLoadRecovery.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebPromptVaultDialog.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebPromptVaultTransfer.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebProviderSignInDialog.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebRendererCrashFallback.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebRendererPolicy.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebSharedContentUi.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebUserTurnTimelineDialog.kt",
+    "app/src/main/java/ais/tee/ui/screens/WebViewLifecycleState.kt",
+    "app/src/main/java/ais/tee/data/preferences/WebChatBookmarkStore.kt",
+    "app/src/main/java/ais/tee/data/preferences/WebChatDraftJournal.kt",
+    "app/src/main/java/ais/tee/data/preferences/WebChatDraftStore.kt",
+    "app/src/main/java/ais/tee/data/preferences/WebChatPreferencesStore.kt",
     "app/src/main/java/ais/tee/ui/screens/ProviderBrowserTab.kt",
     "app/src/main/java/ais/tee/ui/screens/ProviderDiagnosticsDialog.kt",
 }
