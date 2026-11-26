@@ -133,6 +133,29 @@ internal class WebChatBookmarkStore(private val persistence: WebChatBookmarkPers
             else WebChatBookmarkSaveResult.Rejected("Could not save encrypted bookmark")
         }
 
+    /** Edit a local bookmark by identity, without navigating or recreating a removed record. */
+    fun updateMetadata(
+        service: WebAiService,
+        id: String,
+        title: String,
+        folder: String,
+    ): WebChatBookmarkSaveResult = synchronized(lock) {
+        val snapshot = readSnapshot()
+        if (!snapshot.readable) return@synchronized WebChatBookmarkSaveResult.Rejected("Storage unavailable")
+        val target = snapshot.bookmarks.firstOrNull { it.id == id && it.providerId == service.id }
+            ?: return@synchronized WebChatBookmarkSaveResult.Rejected("Bookmark no longer exists")
+        val safeTitle = cleanWebBookmarkTitle(title)
+            ?: return@synchronized WebChatBookmarkSaveResult.Rejected("Enter a title (1–80 characters)")
+        val safeFolder = cleanWebBookmarkFolder(folder)
+            ?: return@synchronized WebChatBookmarkSaveResult.Rejected("Use up to three folder levels")
+        val updated = target.copy(title = safeTitle, folder = safeFolder)
+        if (updated == target || write(snapshot.bookmarks.map { if (it.id == id) updated else it })) {
+            WebChatBookmarkSaveResult.Saved(updated)
+        } else {
+            WebChatBookmarkSaveResult.Rejected("Could not save encrypted bookmark")
+        }
+    }
+
     fun remove(id: String): Boolean = synchronized(lock) {
         val snapshot = readSnapshot()
         snapshot.readable && snapshot.bookmarks.any { it.id == id } &&
