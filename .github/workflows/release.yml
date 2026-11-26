@@ -1,7 +1,7 @@
 name: Release
 
 # main -> rolling release `aistee-latest` (aistee.apk); tag vX.Y -> versioned release (aistee_X.Y.apk).
-# One workflow so GITHUB_RUN_NUMBER, the versionCode source, stays monotonic across both.
+# One serialized publication queue; allocate versionCode above all published builds.
 on: # yamllint disable-line rule:truthy
   push:
     tags: ["v*"]
@@ -13,6 +13,7 @@ on: # yamllint disable-line rule:truthy
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   release:
@@ -93,9 +94,18 @@ jobs:
             fi
           fi
           echo "kind=$kind" >> "$GITHUB_OUTPUT"
+          # Queue arrival and run-number order may differ. Use published version metadata
+          # as a floor; old releases predate the marker, so retain the run-number baseline.
+          set -o pipefail
+          published_max="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.draft == false) | .body // ""' | \
+            sed -n 's/^Android-version-code: \([0-9][0-9]*\)$/\1/p' | sort -n | tail -1)"
           version_code="$GITHUB_RUN_NUMBER"
+          if [ "${published_max:-0}" -ge "$version_code" ]; then
+            version_code=$((published_max + 1))
+          fi
           if [ "$version_code" -lt 1 ] || [ "$version_code" -gt 2100000000 ]; then
-            echo "::error::GITHUB_RUN_NUMBER is outside the Google Play versionCode range."
+            echo "::error::Allocated versionCode is outside the Google Play range."
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -207,6 +217,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_VERSION_CODE: ${{ steps.release.outputs.version_code }}
         run: |
           set -euo pipefail
           tag="$GITHUB_REF_NAME"
@@ -232,7 +243,7 @@ jobs:
           gh release create "$tag" \
             "dist/aistee_${RELEASE_VERSION}.apk" "dist/aistee_${RELEASE_VERSION}.aab" \
             --verify-tag --draft --latest=false \
-            --title "Aistee ${RELEASE_VERSION}" --generate-notes
+            --title "Aistee ${RELEASE_VERSION}" --notes "Android-version-code: $RELEASE_VERSION_CODE" --generate-notes
           test "$(gh release view "$tag" --json assets --jq '.assets | length')" -eq 2
           gh release edit "$tag" --draft=false --latest=false
 
@@ -242,9 +253,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_VERSION_CODE: ${{ steps.release.outputs.version_code }}
         run: |
           set -euo pipefail
           tag="aistee-latest"
+          # A newer verified CI may have skipped an identical tree (including a revert).
+          endpoint="repos/$GH_REPO/actions/workflows/android-ci.yml/runs"
+          verified="$(gh api "$endpoint?branch=main&event=push&status=success&per_page=1" \
+            --jq '.workflow_runs[0].head_sha // empty')"
+          if [ -n "$verified" ]; then
+            relation="$(gh api "repos/$GH_REPO/compare/$BUILT_SHA...$verified" --jq .status)"
+            if [ "$relation" = ahead ]; then
+              echo "A newer verified main run exists; skipping stale release."
+              exit 0
+            fi
+            if [ "$relation" = diverged ]; then
+              echo "::error::Verified main history diverged."
+              exit 1
+            fi
+          fi
           # A slow older CI completion must not replace a newer published commit.
           lookup_err="$RUNNER_TEMP/rolling-ref-lookup.err"
           if published="$(gh api "repos/$GH_REPO/releases/tags/$tag" --jq 'if .draft then "" else (.id | tostring) end' 2>"$lookup_err")"; then
@@ -353,6 +380,7 @@ jobs:
 
           printf 'Signed Android builds from `%s`.\n\nRolling release. Assets are replaced after each successful build of `main`.\nApp version: `%s`.\n' \
             "$BUILT_SHA" "$RELEASE_VERSION" > release-notes.md
+          printf '\nAndroid-version-code: %s\n' "$RELEASE_VERSION_CODE" >> release-notes.md
 
           gh release create "$stage" dist/aistee.apk dist/aistee.aab \
             --draft --target "$BUILT_SHA" \
