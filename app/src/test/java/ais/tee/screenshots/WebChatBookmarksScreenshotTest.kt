@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.Density
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -80,6 +81,40 @@ class WebChatBookmarksScreenshotTest {
         }
         assertEquals(saved.copy(title = "Renamed", folder = "Personal/AI"), store.load().bookmarks.single())
         assertTrue(!opened)
+    }
+
+    @Test
+    @Config(qualifiers = "w610dp-h500dp-xxhdpi")
+    fun editorInShortLandscapeAtLargeFontScale() {
+        val store = WebChatBookmarkStore(MemoryPersistence())
+        val saved = (store.save(WebAiService.CHATGPT, "https://chatgpt.com/c/saved",
+            "Saved conversation", "Work") as WebChatBookmarkSaveResult.Saved).bookmark
+        compose.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
+                AisteeTheme(darkTheme = true) {
+                    WebChatBookmarksDialog(
+                        service = WebAiService.CHATGPT,
+                        currentUrl = "https://chatgpt.com/c/saved",
+                        onOpen = {},
+                        onDismiss = {},
+                        backup = WebChatBookmarkBackupActions(false, {}, {}),
+                        storeOverride = store,
+                    )
+                }
+            }
+        }
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("Edit this bookmark").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Edit this bookmark").performScrollTo().performClick()
+        compose.onNodeWithTag("web_bookmarks_title").performScrollTo().performTextReplacement("Unsaved")
+        compose.onNodeWithTag("web_bookmarks_folder").performScrollTo().performTextReplacement("Personal/AI")
+        compose.onNodeWithTag("web_bookmarks_save").assertIsDisplayed()
+        compose.onNodeWithTag("web_bookmarks_editor")
+            .captureRoboImage("build/outputs/roborazzi/web_bookmarks_editor_landscape_font150.png")
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals(saved, store.load().bookmarks.single())
     }
 
     private fun capture(name: String, fontScale: Float = 1f) {
