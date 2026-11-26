@@ -10,6 +10,7 @@ import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.core.app.ActivityOptionsCompat
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -53,6 +54,9 @@ class WebFilePickerSlotTest {
         shadowOf(Looper.getMainLooper()).idle()
         assertTrue(slot.outstandingKeys().isEmpty())
         assertNoPendingResults(registry)
+        registry.launches.forEach { requestCode ->
+            assertFalse(registry.dispatchResult(requestCode, Activity.RESULT_CANCELED, null))
+        }
     }
 
     @Test
@@ -104,6 +108,15 @@ class WebFilePickerSlotTest {
         val restored = WebFilePickerSlot<String>(registry, keys)
         shadowOf(Looper.getMainLooper()).idle()
         assertTrue(restored.outstandingKeys().isEmpty())
+        assertNoPendingResults(registry)
+        // A previously queued result leaves the request-code mapping in AndroidX.
+        // A second synthetic result must have no registered callback to consume it.
+        registry.dispatchResult(oldCode, Activity.RESULT_CANCELED, null)
+        val duplicateState = Bundle()
+        registry.onSaveInstanceState(duplicateState)
+        assertTrue(duplicateState.keySet().mapNotNull(duplicateState::getBundle).any { !it.isEmpty })
+        val drain = registry.register(keys.single(), androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) {}
+        drain.unregister()
         assertNoPendingResults(registry)
 
         val delivered = mutableListOf<String>()
