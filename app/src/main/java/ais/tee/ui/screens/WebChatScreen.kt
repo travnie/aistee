@@ -485,11 +485,14 @@ internal fun WebChatScreen(
         releaseTerminatedWebView(deadView)
     }
 
-    fun retryRendererAfterCrash(service: WebAiService) {
+    fun retryRendererAfterCrash(service: WebAiService, reopenConversation: Boolean = false) {
         if (rendererCrashServices.remove(service) != true) return
         deferredRendererRecoveryServices.remove(service)
-        lastKnownUrls[service] = service.url
-        if (selectedService == service) currentUrl = service.url
+        val targetUrl = if (reopenConversation) {
+            webRendererCrashConversationUrl(service, lastKnownUrls[service]) ?: service.url
+        } else service.url
+        lastKnownUrls[service] = targetUrl
+        if (selectedService == service) currentUrl = targetUrl
         bumpWebViewInstance(service)
     }
 
@@ -1293,9 +1296,13 @@ internal fun WebChatScreen(
                     ) {
                         if (rendererCrashServices[service] == true) {
                             if (isCurrentService) {
+                                val reopenUrl = webRendererCrashConversationUrl(service, lastKnownUrls[service])
                                 WebRendererCrashFallback(
                                     service = service,
-                                    onRetry = { retryRendererAfterCrash(service) }
+                                    onOpenHome = { retryRendererAfterCrash(service) },
+                                    onReopenConversation = if (reopenUrl != null) {
+                                        { retryRendererAfterCrash(service, reopenConversation = true) }
+                                    } else null
                                 )
                             }
                         } else {
