@@ -168,6 +168,7 @@ internal fun WebChatBookmarksDialog(
     var pendingDelete by remember { mutableStateOf<WebChatBookmark?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
     val actionsEnabled = !busy && !backup.busy
+    val listScrollState = rememberScrollState()
 
     suspend fun refresh() {
         val snapshot = withContext(Dispatchers.IO) { store.load() }
@@ -180,144 +181,146 @@ internal fun WebChatBookmarksDialog(
         if (!backup.busy) refresh()
     }
 
-    AlertDialog(
-        onDismissRequest = { if (!busy) onDismiss() },
-        icon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
-        title = { Text("${service.shortName} bookmarks") },
-        text = {
-            Column(
-                modifier = Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    "Only Aistee saves these links. Provider chat history is unchanged.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                if (error != null) {
-                    Text(error.orEmpty(), color = MaterialTheme.colorScheme.error,
+    if (editorTarget == null) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) onDismiss() },
+            icon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
+            title = { Text("${service.shortName} bookmarks") },
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 460.dp).verticalScroll(listScrollState),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Only Aistee saves these links. Provider chat history is unchanged.",
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.testTag("web_bookmarks_error"))
-                }
-                Text("Export includes bookmarks from ALL providers, not just ${service.shortName}. The JSON file is not encrypted and contains conversation links.",
-                    style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        onClick = {
-                            error = null
-                            backup.export()
-                        },
-                        enabled = readable && !loading && actionsEnabled,
-                        modifier = Modifier.testTag("web_bookmarks_export")
-                    ) { Text("Export all JSON") }
-                    TextButton(
-                        onClick = {
-                            error = null
-                            backup.importBackup()
-                        },
-                        enabled = readable && !loading && actionsEnabled,
-                        modifier = Modifier.testTag("web_bookmarks_import")
-                    ) { Text("Import JSON") }
-                }
-                if (!readable) {
-                    Text("Encrypted bookmarks cannot be read on this device. They will not be overwritten.",
-                        color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = { confirmReset = true }, enabled = actionsEnabled) { Text("Reset unreadable bookmarks") }
-                } else {
-                    if (safeCurrentUrl == null) {
-                        Text("This address cannot be bookmarked safely. Pages with query strings, fragments or unrecognized hosts are excluded.",
-                            style = MaterialTheme.typography.bodySmall)
-                    } else {
-                        OutlinedButton(
-                            onClick = {
-                                editorTarget = WebBookmarkEditorTarget(safeCurrentUrl, existing)
-                                error = null
-                            },
-                            enabled = !loading && actionsEnabled,
-                            modifier = Modifier.fillMaxWidth().testTag("web_bookmarks_add")
-                        ) {
-                            Text(if (existing != null) "Edit this bookmark" else "Bookmark this page")
-                        }
+                    )
+                    if (error != null) {
+                        Text(error.orEmpty(), color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.testTag("web_bookmarks_error"))
                     }
-                    if (loading) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    } else if (bookmarks.isEmpty()) {
-                        Text("No bookmarks yet. Give a conversation a name, and it gets a home here.",
-                            style = MaterialTheme.typography.bodySmall)
+                    Text("Export includes bookmarks from ALL providers, not just ${service.shortName}. The JSON file is not encrypted and contains conversation links.",
+                        style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(
+                            onClick = {
+                                error = null
+                                backup.export()
+                            },
+                            enabled = readable && !loading && actionsEnabled,
+                            modifier = Modifier.testTag("web_bookmarks_export")
+                        ) { Text("Export all JSON") }
+                        TextButton(
+                            onClick = {
+                                error = null
+                                backup.importBackup()
+                            },
+                            enabled = readable && !loading && actionsEnabled,
+                            modifier = Modifier.testTag("web_bookmarks_import")
+                        ) { Text("Import JSON") }
+                    }
+                    if (!readable) {
+                        Text("Encrypted bookmarks cannot be read on this device. They will not be overwritten.",
+                            color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = { confirmReset = true }, enabled = actionsEnabled) { Text("Reset unreadable bookmarks") }
                     } else {
-                        val grouped = bookmarks.sortedWith(
-                            compareBy<WebChatBookmark>({ it.folder.lowercase() }, { it.title.lowercase() })
-                        ).groupBy { it.folder }
-                        LazyColumn(
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)
-                                .testTag("web_bookmarks_list"),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            val renderedFolders = mutableSetOf<String>()
-                            grouped.forEach { (group, entries) ->
-                                val headings = webBookmarkFolderHeadings(group)
-                                headings.forEach { heading ->
-                                    if (renderedFolders.add(heading.path)) {
-                                        item(key = "folder:${heading.path}") {
-                                            Row(
-                                                modifier = Modifier.padding(start = (heading.depth * 16).dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                            ) {
-                                                Icon(Icons.Default.Folder, contentDescription = null,
-                                                    modifier = Modifier.size(16.dp))
-                                                Spacer(Modifier.width(6.dp))
-                                                Text(heading.name,
-                                                    style = MaterialTheme.typography.labelMedium)
+                        if (safeCurrentUrl == null) {
+                            Text("This address cannot be bookmarked safely. Pages with query strings, fragments or unrecognized hosts are excluded.",
+                                style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            OutlinedButton(
+                                onClick = {
+                                    editorTarget = WebBookmarkEditorTarget(safeCurrentUrl, existing)
+                                    error = null
+                                },
+                                enabled = !loading && actionsEnabled,
+                                modifier = Modifier.fillMaxWidth().testTag("web_bookmarks_add")
+                            ) {
+                                Text(if (existing != null) "Edit this bookmark" else "Bookmark this page")
+                            }
+                        }
+                        if (loading) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        } else if (bookmarks.isEmpty()) {
+                            Text("No bookmarks yet. Give a conversation a name, and it gets a home here.",
+                                style = MaterialTheme.typography.bodySmall)
+                        } else {
+                            val grouped = bookmarks.sortedWith(
+                                compareBy<WebChatBookmark>({ it.folder.lowercase() }, { it.title.lowercase() })
+                            ).groupBy { it.folder }
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)
+                                    .testTag("web_bookmarks_list"),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                val renderedFolders = mutableSetOf<String>()
+                                grouped.forEach { (group, entries) ->
+                                    val headings = webBookmarkFolderHeadings(group)
+                                    headings.forEach { heading ->
+                                        if (renderedFolders.add(heading.path)) {
+                                            item(key = "folder:${heading.path}") {
+                                                Row(
+                                                    modifier = Modifier.padding(start = (heading.depth * 16).dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    Icon(Icons.Default.Folder, contentDescription = null,
+                                                        modifier = Modifier.size(16.dp))
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text(heading.name,
+                                                        style = MaterialTheme.typography.labelMedium)
+                                                }
                                             }
                                         }
                                     }
-                                }
-                                items(entries, key = { it.id }) { bookmark ->
-                                    Row(
-                                        modifier = Modifier.padding(start = (headings.size * 16).dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        TextButton(
-                                            onClick = {
-                                                if (safeWebChatBookmarkUrl(service, bookmark.url) == bookmark.url) {
-                                                    onOpen(bookmark.url)
-                                                    onDismiss()
-                                                } else error = "Bookmark address no longer belongs to this provider"
-                                            },
-                                            enabled = !busy,
-                                            modifier = Modifier.weight(1f).testTag("web_bookmark_open"),
+                                    items(entries, key = { it.id }) { bookmark ->
+                                        Row(
+                                            modifier = Modifier.padding(start = (headings.size * 16).dp),
+                                            verticalAlignment = Alignment.CenterVertically,
                                         ) {
-                                            Text(bookmark.title, maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis,
-                                                modifier = Modifier.fillMaxWidth())
+                                            TextButton(
+                                                onClick = {
+                                                    if (safeWebChatBookmarkUrl(service, bookmark.url) == bookmark.url) {
+                                                        onOpen(bookmark.url)
+                                                        onDismiss()
+                                                    } else error = "Bookmark address no longer belongs to this provider"
+                                                },
+                                                enabled = !busy,
+                                                modifier = Modifier.weight(1f).testTag("web_bookmark_open"),
+                                            ) {
+                                                Text(bookmark.title, maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.fillMaxWidth())
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    editorTarget = WebBookmarkEditorTarget(bookmark.url, bookmark)
+                                                    error = null
+                                                },
+                                                enabled = actionsEnabled,
+                                                modifier = Modifier.testTag("web_bookmark_edit"),
+                                            ) {
+                                                Icon(Icons.Default.Edit, contentDescription = "Edit ${bookmark.title}")
+                                            }
+                                            IconButton(
+                                                onClick = { pendingDelete = bookmark }, enabled = actionsEnabled,
+                                                modifier = Modifier.testTag("web_bookmark_remove"),
+                                            ) { Icon(Icons.Default.DeleteOutline,
+                                                contentDescription = "Remove ${bookmark.title}") }
                                         }
-                                        IconButton(
-                                            onClick = {
-                                                editorTarget = WebBookmarkEditorTarget(bookmark.url, bookmark)
-                                                error = null
-                                            },
-                                            enabled = actionsEnabled,
-                                            modifier = Modifier.testTag("web_bookmark_edit"),
-                                        ) {
-                                            Icon(Icons.Default.Edit, contentDescription = "Edit ${bookmark.title}")
-                                        }
-                                        IconButton(
-                                            onClick = { pendingDelete = bookmark }, enabled = actionsEnabled,
-                                            modifier = Modifier.testTag("web_bookmark_remove"),
-                                        ) { Icon(Icons.Default.DeleteOutline,
-                                            contentDescription = "Remove ${bookmark.title}") }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss, enabled = !busy) { Text("Done") }
-        },
-        modifier = Modifier.testTag("web_bookmarks_dialog"),
-    )
+            },
+            confirmButton = {
+                TextButton(onClick = onDismiss, enabled = !busy) { Text("Done") }
+            },
+            modifier = Modifier.testTag("web_bookmarks_dialog"),
+        )
+    }
 
     editorTarget?.let { target ->
         var title by remember(target) { mutableStateOf(target.bookmark?.title.orEmpty()) }

@@ -114,6 +114,8 @@ class WebChatBookmarksScreenshotTest {
         compose.onNodeWithTag("web_bookmarks_editor")
             .captureRoboImage("build/outputs/roborazzi/web_bookmarks_editor_landscape_font150.png")
         compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithTag("web_bookmarks_editor").assertDoesNotExist()
+        compose.onNodeWithTag("web_bookmarks_dialog").assertExists()
         assertEquals(saved, store.load().bookmarks.single())
     }
 
