@@ -22,7 +22,8 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.Density
-import androidx.test.espresso.Espresso.pressBack
+import android.view.KeyEvent
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -154,7 +155,7 @@ class WebChatBookmarkEditorTest {
         }
         compose.onNodeWithText("Edit this bookmark").performScrollTo().performClick()
         compose.onNodeWithTag("web_bookmarks_editor").assertExists()
-        pressBack()
+        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
         compose.onNodeWithTag("web_bookmarks_editor").assertDoesNotExist()
         compose.onNodeWithTag("web_bookmarks_dialog").assertExists()
         assertEquals(saved, store.load().bookmarks.single())
