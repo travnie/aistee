@@ -37,6 +37,7 @@ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffo
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -236,6 +237,7 @@ internal fun WebChatScreen(
     )
     val persistentProviderNavigation = webProviderNavigationIsPersistent(navigationSuiteType)
     var providerPanelExpanded by rememberSaveable { mutableStateOf(true) }
+    val providerPanelState = rememberSaveableStateHolder()
     val selectedService by rememberUpdatedState(uiState.selectedWebService)
     var showSignInHelp by remember(selectedService, isActive) { mutableStateOf(false) }
     val webPreferences = remember(context.applicationContext) {
@@ -1586,7 +1588,13 @@ internal fun WebChatScreen(
     if (persistentProviderNavigation) {
         PermanentNavigationDrawer(
             // Keep the content slot mounted; only the provider panel changes width.
-            drawerContent = { if (providerPanelExpanded) providerDrawerContent(true) },
+            drawerContent = {
+                if (providerPanelExpanded) {
+                    providerPanelState.SaveableStateProvider("wide-provider-panel") {
+                        providerDrawerContent(true)
+                    }
+                }
+            },
             modifier = modifier.fillMaxSize()
         ) {
             webChatContent()
@@ -2314,7 +2322,7 @@ internal fun WebProviderDrawer(
     onOpenNativeCompare: () -> Unit,
     onOpenStudio: () -> Unit
 ) {
-    var query by remember { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
     val sections = remember(favoriteServices, query) {
         filterWebChatSections(webChatSections(favoriteServices), query)
     }
