@@ -41,7 +41,7 @@ Delivered feature index, reviewed **29 October 2026** against the documented mai
 
 ## 📲 Android UI and system integration
 
-- Material 3 Adaptive compact/bottom and wide/rail shell, responsive message width, stable Lazy item IDs, reader-aware autoscroll and list/detail panes on larger windows.
+- Material 3 Adaptive compact/bottom and wide/rail shell, collapsible wide Web provider panel without replacing retained WebViews, responsive message width, stable Lazy item IDs, reader-aware autoscroll and list/detail panes on larger windows.
 - Startup/provider-switch/native-list-detail/long-scroll Macrobenchmarks and Baseline Profiles. Deterministic streaming benchmark still planned.
 - **Chats**, **Messages** and **Pinned chat** Glance widgets with stable rows and up to eight visible rows on resize; data stays based on local chats, not remote Web scraping.
 - Privacy-safe MessagingStyle notifications, conversation shortcuts, `RemoteInput` native Direct Reply with WorkManager. Provider Web reply is a reviewed, explicit composer handoff, never hidden send.

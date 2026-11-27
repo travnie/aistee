@@ -1,9 +1,14 @@
 package ais.tee
 
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebView
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import org.junit.Assert.assertEquals
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -21,8 +26,30 @@ class WideWebProviderNavigationTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun providerNavigationStaysVisibleWithoutDrawerButton() {
+    fun wideProviderPanelCollapsesAndExpandsWithoutReplacingWebView() {
         composeRule.onNodeWithTag("tab_web_service_claude").assertIsDisplayed()
         assertTrue(composeRule.onAllNodesWithTag("btn_web_provider_drawer").fetchSemanticsNodes().isEmpty())
+        composeRule.waitUntil(5_000) { webViews().isNotEmpty() }
+        val before = webViews()
+        val toggle = composeRule.onNodeWithTag("btn_web_provider_panel")
+        toggle.assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("tab_web_service_claude").assertDoesNotExist()
+        assertEquals(before, webViews())
+        toggle.assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("tab_web_service_claude").assertIsDisplayed()
+        assertEquals(before, webViews())
+    }
+
+    private fun webViews(): Set<WebView> {
+        var views = emptySet<WebView>()
+        composeRule.runOnIdle { views = collectWebViews(composeRule.activity.window.decorView) }
+        return views
+    }
+
+    private fun collectWebViews(view: View): Set<WebView> = buildSet {
+        if (view is WebView) add(view)
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) addAll(collectWebViews(view.getChildAt(index)))
+        }
     }
 }
