@@ -25,6 +25,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -37,7 +38,6 @@ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffo
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -237,7 +237,9 @@ internal fun WebChatScreen(
     )
     val persistentProviderNavigation = webProviderNavigationIsPersistent(navigationSuiteType)
     var providerPanelExpanded by rememberSaveable { mutableStateOf(true) }
-    val providerPanelState = rememberSaveableStateHolder()
+    val providerSearchQuery = rememberSaveable { mutableStateOf("") }
+    val providerListScroll = rememberScrollState()
+    val providerRecentScroll = rememberScrollState()
     val selectedService by rememberUpdatedState(uiState.selectedWebService)
     var showSignInHelp by remember(selectedService, isActive) { mutableStateOf(false) }
     val webPreferences = remember(context.applicationContext) {
@@ -1191,6 +1193,9 @@ internal fun WebChatScreen(
             favoriteServices = uiState.favoriteWebServices,
             recentServices = recentWebServices,
             providersWithDrafts = providersWithDrafts,
+            searchQuery = providerSearchQuery,
+            listScroll = providerListScroll,
+            recentScroll = providerRecentScroll,
             onToggleFavorite = viewModel::toggleFavoriteWebService,
             onSelectService = { service ->
                 activateService(service)
@@ -1588,13 +1593,7 @@ internal fun WebChatScreen(
     if (persistentProviderNavigation) {
         PermanentNavigationDrawer(
             // Keep the content slot mounted; only the provider panel changes width.
-            drawerContent = {
-                if (providerPanelExpanded) {
-                    providerPanelState.SaveableStateProvider("wide-provider-panel") {
-                        providerDrawerContent(true)
-                    }
-                }
-            },
+            drawerContent = { if (providerPanelExpanded) providerDrawerContent(true) },
             modifier = modifier.fillMaxSize()
         ) {
             webChatContent()
@@ -2320,9 +2319,12 @@ internal fun WebProviderDrawer(
     onToggleFavorite: (WebAiService) -> Unit,
     onSelectService: (WebAiService) -> Unit,
     onOpenNativeCompare: () -> Unit,
-    onOpenStudio: () -> Unit
+    onOpenStudio: () -> Unit,
+    searchQuery: MutableState<String> = rememberSaveable { mutableStateOf("") },
+    listScroll: ScrollState = rememberScrollState(),
+    recentScroll: ScrollState = rememberScrollState(),
 ) {
-    var query by rememberSaveable { mutableStateOf("") }
+    var query by searchQuery
     val sections = remember(favoriteServices, query) {
         filterWebChatSections(webChatSections(favoriteServices), query)
     }
@@ -2341,7 +2343,7 @@ internal fun WebProviderDrawer(
         Column(
             modifier = Modifier
                 .fillMaxHeight()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(listScroll)
         ) {
             Text(
                 text = "Chats",
@@ -2376,7 +2378,7 @@ internal fun WebProviderDrawer(
                 )
                 Row(
                     modifier = Modifier.fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
+                        .horizontalScroll(recentScroll)
                         .padding(horizontal = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
