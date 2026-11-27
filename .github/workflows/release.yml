@@ -261,7 +261,6 @@ jobs:
           set -euo pipefail
           tag="aistee-latest"
           # Compare verified prerequisite jobs, not whole-workflow publication success.
-          # A newer failed push must not prevent the last passing build from publishing.
           main_sha="$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)"
           relation="$(gh api "repos/$GH_REPO/compare/$BUILT_SHA...$main_sha" --jq .status)"
           if [ "$relation" != ahead ] && [ "$relation" != identical ]; then
@@ -270,28 +269,31 @@ jobs:
           fi
           if [ "$BUILT_SHA" != "$main_sha" ]; then
             if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
-              echo "::warning::Manual recovery must target current main."
-              exit 0
-            fi
-            endpoint="repos/$GH_REPO/actions/workflows/android-ci.yml/runs"
-            created="$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID" --jq .created_at)"
-            runs="$(gh api --paginate -X GET "$endpoint" -f branch=main -f event=push \
-              -f "created=>=$created" -F per_page=100 \
-              --jq '.workflow_runs[] | [.id, .head_sha] | @tsv')"
-            while IFS=$'\t' read -r run_id verified_sha; do
-              [ -n "$run_id" ] && [ "$verified_sha" != "$BUILT_SHA" ] || continue
-              relation="$(gh api "repos/$GH_REPO/compare/$BUILT_SHA...$verified_sha" --jq .status)"
-              [ "$relation" = ahead ] || continue
-              relation="$(gh api "repos/$GH_REPO/compare/$verified_sha...$main_sha" --jq .status)"
-              [ "$relation" = ahead ] || [ "$relation" = identical ] || continue
-              jobs="$(gh api --paginate "repos/$GH_REPO/actions/runs/$run_id/jobs?filter=latest&per_page=100" \
-                --jq '.jobs[] | select(.conclusion == "success") | .name')"
-              if grep -Fxq build <<< "$jobs" && grep -Fxq android-smoke <<< "$jobs" &&
-                grep -Fxq appfunctions-smoke <<< "$jobs"; then
-                echo "Newer main revision passed all Android checks; skipping stale release."
+              git fetch --no-tags --depth=1 origin "$main_sha"
+              if ! git diff --quiet "$BUILT_SHA" FETCH_HEAD -- gradlew app/ shared/ build.gradle.kts settings.gradle.kts \
+                gradle.properties gradle/ .github/workflows/release.yml .github/actions/setup-android-build/; then
+                echo "::warning::Manual recovery must match current main release inputs."
                 exit 0
               fi
-            done <<< "$runs"
+            else
+              endpoint="repos/$GH_REPO/actions/workflows/android-ci.yml/runs"
+              created="$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID" --jq .created_at)"
+              runs="$(gh api --paginate -X GET "$endpoint" -f branch=main -f event=push \
+                -f "created=>=$created" -F per_page=100 \
+                --jq '.workflow_runs[] | [.id, .head_sha, .run_attempt] | @tsv')"
+              while IFS=$'\t' read -r run_id verified_sha run_attempt; do
+                [ -n "$run_id" ] && [ "$verified_sha" != "$BUILT_SHA" ] || continue
+                relation="$(gh api "repos/$GH_REPO/compare/$BUILT_SHA...$verified_sha" --jq .status)"
+                [ "$relation" = ahead ] || continue
+                relation="$(gh api "repos/$GH_REPO/compare/$verified_sha...$main_sha" --jq .status)"
+                [ "$relation" = ahead ] || [ "$relation" = identical ] || continue
+                verified="$(python3 .github/scripts/release_verified_jobs.py "$GH_REPO" "$run_id" "$run_attempt")"
+                if [ "$verified" = true ]; then
+                  echo "Newer main revision passed all Android checks; skipping stale release."
+                  exit 0
+                fi
+              done <<< "$runs"
+            fi
           fi
           # A slow older CI completion must not replace a newer published commit.
           lookup_err="$RUNNER_TEMP/rolling-ref-lookup.err"
