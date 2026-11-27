@@ -27,7 +27,9 @@ jobs:
           fetch-depth: 2
           persist-credentials: false
       - name: Test scope selector
-        run: python3 -m unittest discover -s .github/scripts -p test_appfunctions_scope.py
+        run: |
+          python3 -m unittest discover -s .github/scripts -p test_appfunctions_scope.py
+          python3 -m unittest discover -s .github/scripts -p test_release_verified_jobs.py
       - name: Select AppFunctions smoke
         id: scope
         env:
