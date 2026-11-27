@@ -1242,10 +1242,6 @@ internal fun WebChatScreen(
                             persistentPanelExpanded = providerPanelExpanded.takeIf { persistentProviderNavigation },
                             onOpenDrawer = {
                                 if (persistentProviderNavigation) {
-                                    if (providerPanelExpanded) {
-                                        focusManager.clearFocus()
-                                        keyboard?.hide()
-                                    }
                                     providerPanelExpanded = !providerPanelExpanded
                                 } else drawerScope.launch { drawerState.open() }
                             },
