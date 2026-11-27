@@ -5,10 +5,16 @@ name: Release
 on: # yamllint disable-line rule:truthy
   push:
     tags: ["v*"]
-  workflow_run:
-    workflows: ["Android + KMP CI"]
-    types: [completed]
-    branches: [main]
+  workflow_call:
+    secrets:
+      KEYSTORE_BASE64:
+        required: true
+      KEYSTORE_PASSWORD:
+        required: true
+      KEY_ALIAS:
+        required: true
+      KEY_PASSWORD:
+        required: true
   workflow_dispatch:
 
 permissions:
@@ -18,13 +24,9 @@ permissions:
 jobs:
   release:
     name: Build and publish release
-    # Only successful same-repository main push CI may authorize an automatic rolling release.
+    # Main push caller requires all Android CI jobs to succeed.
     if: >-
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.event == 'push' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.head_repository.full_name == github.repository) ||
+      ((github.event_name == 'push' || github.event_name == 'workflow_call') && github.ref == 'refs/heads/main') ||
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     # Only eligible jobs enter the publication queue; no valid run is evicted.
@@ -35,7 +37,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      BUILT_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      BUILT_SHA: ${{ github.sha }}
+      VERIFIED_CI: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && github.ref == 'refs/heads/main' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -51,7 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           required=true
-          if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
+          if [ "$VERIFIED_CI" = true ]; then
             lookup_err="$RUNNER_TEMP/release-scope.err"
             if published="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/aistee-latest" --jq 'if .draft then "" else (.id | tostring) end' 2>"$lookup_err")"; then
               if [ -n "$published" ]; then
@@ -165,7 +168,7 @@ jobs:
           echo "path=$keystore" >> "$GITHUB_OUTPUT"
 
       - name: Validate tree for tag or manual release
-        if: steps.scope.outputs.required == 'true' && github.event_name != 'workflow_run'
+        if: steps.scope.outputs.required == 'true' && env.VERIFIED_CI != 'true'
         run: ./gradlew :app:testDebugUnitTest :app:lintDebug :shared:desktopTest --no-daemon --stacktrace
 
       - name: Build release APK and AAB
