@@ -8,6 +8,9 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -48,6 +51,29 @@ class WideWebProviderNavigationTest {
         composeRule.onNodeWithTag("tab_web_service_claude").assertDoesNotExist()
         composeRule.onNodeWithTag("btn_web_provider_panel").assertIsDisplayed().performClick()
         composeRule.onNodeWithTag("tab_web_service_claude").assertIsDisplayed()
+    }
+
+    @Test
+    fun wideProviderPanelRestoresScrollAndSearchAfterCollapse() {
+        val toggle = composeRule.onNodeWithTag("btn_web_provider_panel")
+        val studio = composeRule.onNodeWithTag("btn_switch_to_studio")
+        studio.performScrollTo().assertIsDisplayed()
+        val before = studio.fetchSemanticsNode().boundsInRoot
+        toggle.performClick()
+        toggle.performClick()
+        studio.assertIsDisplayed()
+        assertEquals(before, studio.fetchSemanticsNode().boundsInRoot)
+
+        val search = composeRule.onNodeWithTag("web_provider_search")
+        search.performScrollTo().performTextInput("grok")
+        composeRule.onNodeWithTag("tab_web_service_chatgpt").assertDoesNotExist()
+        toggle.performClick()
+        toggle.performClick()
+        composeRule.onNodeWithText("grok").assertIsDisplayed()
+        composeRule.onNodeWithTag("tab_web_service_chatgpt").assertDoesNotExist()
+        composeRule.onNodeWithTag("tab_web_service_grok").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("btn_clear_web_provider_search").performClick()
+        composeRule.onNodeWithTag("tab_web_service_chatgpt").assertExists()
     }
 
     private fun visibleWebViewWidth(): Int {
