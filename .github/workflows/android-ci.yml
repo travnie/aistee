@@ -10,7 +10,8 @@ on: # yamllint disable-line rule:truthy
 
 concurrency:
   group: android-ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Do not cancel main while the verified build is publishing.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   appfunctions-scope:
@@ -172,3 +173,16 @@ jobs:
             app/build/outputs/androidTest-results/
             out/appfunctions/
           retention-days: 7
+
+  rolling-release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build, android-smoke, appfunctions-smoke]
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/release.yml
+    secrets:
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
