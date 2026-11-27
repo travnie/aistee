@@ -26,7 +26,7 @@ jobs:
     name: Build and publish release
     # Main push caller requires all Android CI jobs to succeed.
     if: >-
-      ((github.event_name == 'push' || github.event_name == 'workflow_call') && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/android-ci.yml@refs/heads/main', github.repository)) ||
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     # Only eligible jobs enter the publication queue; no valid run is evicted.
@@ -38,7 +38,7 @@ jobs:
     timeout-minutes: 60
     env:
       BUILT_SHA: ${{ github.sha }}
-      VERIFIED_CI: ${{ (github.event_name == 'push' || github.event_name == 'workflow_call') && github.ref == 'refs/heads/main' }}
+      VERIFIED_CI: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.workflow_ref == format('{0}/.github/workflows/android-ci.yml@refs/heads/main', github.repository) }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -260,20 +260,17 @@ jobs:
         run: |
           set -euo pipefail
           tag="aistee-latest"
-          # A newer verified CI may have skipped an identical tree (including a revert).
-          endpoint="repos/$GH_REPO/actions/workflows/android-ci.yml/runs"
-          verified="$(gh api "$endpoint?branch=main&event=push&status=success&per_page=1" \
-            --jq '.workflow_runs[0].head_sha // empty')"
-          if [ -n "$verified" ]; then
-            relation="$(gh api "repos/$GH_REPO/compare/$BUILT_SHA...$verified" --jq .status)"
-            if [ "$relation" = ahead ]; then
-              echo "A newer verified main run exists; skipping stale release."
-              exit 0
-            fi
-            if [ "$relation" = diverged ]; then
-              echo "::error::Verified main history diverged."
-              exit 1
-            fi
+          # Whole-workflow success includes publishing; check the actual current release tree instead.
+          git fetch --no-tags --depth=1 origin main
+          relation="$(gh api "repos/$GH_REPO/compare/$BUILT_SHA...main" --jq .status)"
+          if [ "$relation" != ahead ] && [ "$relation" != identical ]; then
+            echo "::warning::Candidate no longer on main; skipping rolling release."
+            exit 0
+          fi
+          if ! git diff --quiet "$BUILT_SHA" FETCH_HEAD -- gradlew app/ shared/ build.gradle.kts settings.gradle.kts \
+            gradle.properties gradle/ .github/workflows/release.yml .github/actions/setup-android-build/; then
+            echo "::warning::Candidate differs from current release inputs; keeping last-good release."
+            exit 0
           fi
           # A slow older CI completion must not replace a newer published commit.
           lookup_err="$RUNNER_TEMP/rolling-ref-lookup.err"
