@@ -28,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -234,6 +235,7 @@ internal fun WebChatScreen(
         currentWindowAdaptiveInfoV2()
     )
     val persistentProviderNavigation = webProviderNavigationIsPersistent(navigationSuiteType)
+    var providerPanelExpanded by rememberSaveable { mutableStateOf(true) }
     val selectedService by rememberUpdatedState(uiState.selectedWebService)
     var showSignInHelp by remember(selectedService, isActive) { mutableStateOf(false) }
     val webPreferences = remember(context.applicationContext) {
@@ -377,7 +379,9 @@ internal fun WebChatScreen(
     }
     var draftPresenceRefresh by remember { mutableIntStateOf(0) }
     var providersWithDrafts by remember { mutableStateOf<Set<WebAiService>>(emptySet()) }
-    val showDraftPresence = isActive && (persistentProviderNavigation || drawerState.targetValue == DrawerValue.Open)
+    val showDraftPresence = isActive && if (persistentProviderNavigation) {
+        providerPanelExpanded
+    } else drawerState.targetValue == DrawerValue.Open
     LaunchedEffect(showDraftPresence, draftPresenceRefresh, draftJournal) {
         if (showDraftPresence) {
             providersWithDrafts = withContext(Dispatchers.IO) {
@@ -1235,8 +1239,16 @@ internal fun WebChatScreen(
                             isDesktopMode = isDesktopMode,
                             isLoading = isLoading,
                             loadingProgress = loadingProgress,
-                            showProviderDrawerButton = !persistentProviderNavigation,
-                            onOpenDrawer = { drawerScope.launch { drawerState.open() } },
+                            persistentPanelExpanded = providerPanelExpanded.takeIf { persistentProviderNavigation },
+                            onOpenDrawer = {
+                                if (persistentProviderNavigation) {
+                                    if (providerPanelExpanded) {
+                                        focusManager.clearFocus()
+                                        keyboard?.hide()
+                                    }
+                                    providerPanelExpanded = !providerPanelExpanded
+                                } else drawerScope.launch { drawerState.open() }
+                            },
                             onApplyStudio = ::applyStudioPrompt,
                             onShowPromptHelper = { showPromptHelperDialog = true },
                             onShowPromptVault = {
@@ -1577,7 +1589,8 @@ internal fun WebChatScreen(
 
     if (persistentProviderNavigation) {
         PermanentNavigationDrawer(
-            drawerContent = { providerDrawerContent(true) },
+            // Keep the content slot mounted; only the provider panel changes width.
+            drawerContent = { if (providerPanelExpanded) providerDrawerContent(true) },
             modifier = modifier.fillMaxSize()
         ) {
             webChatContent()
@@ -1892,7 +1905,7 @@ private fun WebChatToolbar(
     isDesktopMode: Boolean,
     isLoading: Boolean,
     loadingProgress: Int,
-    showProviderDrawerButton: Boolean,
+    persistentPanelExpanded: Boolean?,
     onOpenDrawer: () -> Unit,
     onApplyStudio: () -> Unit,
     onShowPromptHelper: () -> Unit,
@@ -1964,15 +1977,20 @@ private fun WebChatToolbar(
                     .padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (showProviderDrawerButton) {
-                    IconButton(
-                        onClick = onOpenDrawer,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .testTag("btn_web_provider_drawer")
-                    ) {
-                        Icon(Icons.Default.Menu, contentDescription = "Switch AI service")
-                    }
+                IconButton(
+                    onClick = onOpenDrawer,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .testTag(if (persistentPanelExpanded == null) "btn_web_provider_drawer" else "btn_web_provider_panel"),
+                ) {
+                    Icon(
+                        imageVector = if (persistentPanelExpanded == true) Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Menu,
+                        contentDescription = when (persistentPanelExpanded) {
+                            true -> stringResource(R.string.web_provider_panel_collapse)
+                            false -> stringResource(R.string.web_provider_panel_expand)
+                            null -> "Switch AI service"
+                        },
+                    )
                 }
 
                 WebProviderIdentityIcon(

@@ -54,6 +54,8 @@
     <string name="web_recent_providers">Recent providers</string>
     <string name="web_local_draft_saved">Local draft saved</string>
     <string name="web_provider_search">Find provider</string>
+    <string name="web_provider_panel_collapse">Collapse provider panel</string>
+    <string name="web_provider_panel_expand">Expand provider panel</string>
     <string name="web_provider_search_clear">Clear provider search</string>
     <string name="web_provider_search_empty">No matching providers</string>
     <string name="web_find_title">Find in page</string>
