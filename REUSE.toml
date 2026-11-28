@@ -27,3 +27,10 @@ path = "app/src/main/assets/licenses/JTokkit-LICENSE.txt"
 precedence = "override"
 SPDX-FileCopyrightText = "2023 Knuddels, Philip Müller"
 SPDX-License-Identifier = "MIT"
+
+# Experimental imported source retains its archive license.
+[[annotations]]
+path = "experiments/ai-studio-webview/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 trvny"
+SPDX-License-Identifier = "ISC"
