@@ -44,13 +44,18 @@ class McpToolInvocationTest {
         assertEquals(mapOf("Mcp-Param-Region" to "世界", "Mcp-Param-Count" to "42", "Mcp-Param-Flag" to "false"),
             mapped.parameterHeaders(tool, args))
         assertEquals(emptyMap(), mapped.parameterHeaders(tool, JsonObject(emptyMap())))
+        for (absent in listOf("""{"region":null,"nested":null}""", """{"nested":{"count":null,"flag":null}}""",
+            """{"nested":"not an object"}""")) {
+            assertEquals(emptyMap(), mapped.parameterHeaders(tool, requireNotNull(parseMcpArguments(absent))))
+            assertEquals(CapabilityDecision.ASK, mapped.callDecision(tool, absent, BenchToolInvocationMode.EXPLICIT_USER_ACTION, false))
+        }
         assertEquals(CapabilityDecision.ASK, mapped.callDecision(tool, raw, BenchToolInvocationMode.EXPLICIT_USER_ACTION, false))
         assertEquals(CapabilityDecision.ALLOW, mapped.callDecision(tool, raw, BenchToolInvocationMode.EXPLICIT_USER_ACTION, true))
         assertEquals(CapabilityDecision.REQUIRES_USER_INTERACTION,
             mapped.callDecision(tool, raw, BenchToolInvocationMode.MODEL_TOOL_CALL, true))
         for (bad in listOf("""{"region":true}""", """{"nested":{"count":9007199254740992}}""",
             """{"nested":{"count":9007199254740990.9}}""", """{"nested":{"count":1e-1}}""",
-            """{"nested":{"flag":"false"}}""", """{"nested":null}""")) {
+            """{"nested":{"flag":"false"}}""")) {
             assertEquals(CapabilityDecision.DENY, mapped.callDecision(tool, bad, BenchToolInvocationMode.EXPLICIT_USER_ACTION, true))
         }
     }
@@ -74,6 +79,12 @@ class McpToolInvocationTest {
         assertEquals(2, ordinary.count)
         assertEquals(CapabilityDecision.ASK, ordinary.callDecision(ordinary.browse().first().nativeName,
             EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, false))
+    }
+
+    @Test fun unannotatedLegacySubschemasRetainExistingDiscoveryLimits() {
+        val nested = (1..18).fold("""{"type":"string"}""") { child, _ -> """{"properties":{"child":$child}}""" }
+        val schema = """{"type":"object","dependencies":{"legacy":$nested}}"""
+        assertEquals(2, annotatedCatalog(schema).count)
     }
 
     @Test fun resultsAreBoundedUntrustedTextWithoutResourceFetchingOrOpaqueState() {

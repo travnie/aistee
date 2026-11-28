@@ -2,6 +2,7 @@ package ais.tee.data.model
 
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -14,6 +15,8 @@ internal data class McpParameterHeader(val name: String, val path: List<String>,
 
 /** Only statically reachable properties; never interpret examples or defaults as schemas. */
 internal fun parseMcpParameterHeaders(schema: JsonObject): List<McpParameterHeader>? = runCatching {
+    // Keep existing validation/limits for tools without parameter-header annotations.
+    if (!schema.toString().contains("\"x-mcp-header\"")) return@runCatching emptyList()
     val result = mutableListOf<McpParameterHeader>()
     val names = mutableSetOf<String>()
     var visited = 0
@@ -52,7 +55,7 @@ internal fun parseMcpParameterHeaders(schema: JsonObject): List<McpParameterHead
     result.toList()
 }.getOrNull()
 
-/** Mirrors exact reviewed values. Missing path omitted; present wrong type fails closed. */
+/** Mirrors exact reviewed values. Missing/null paths omitted; wrong leaf types fail closed. */
 internal fun extractMcpParameterHeaders(
     bindings: List<McpParameterHeader>,
     arguments: JsonObject,
@@ -63,9 +66,8 @@ internal fun extractMcpParameterHeaders(
         var current: JsonElement = arguments
         var missing = false
         for (key in binding.path) {
-            val obj = current as? JsonObject ?: error("Invalid parameter path")
-            val next = obj[key]
-            if (next == null) {
+            val next = (current as? JsonObject)?.get(key)
+            if (next == null || next == JsonNull) {
                 missing = true
                 break
             }

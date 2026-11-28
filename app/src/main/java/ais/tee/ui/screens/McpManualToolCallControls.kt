@@ -26,6 +26,11 @@ internal fun McpManualToolCallControls(
         enabled = decision == CapabilityDecision.ASK && !state.busy,
         modifier = Modifier.testTag("mcp_review_call"),
     ) { Text("Review manual call") }
+    if (decision == CapabilityDecision.DENY && parseMcpArguments(state.draftArguments) != null) {
+        Text("Invalid or oversized mapped header values. Check the argument types and sizes.",
+            color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag("mcp_parameter_header_error"))
+    }
     Text("Each call needs confirmation. JSON syntax and mapped header values are checked; " +
         "server validates the full schema. Authentication is not supported in this preview.",
         style = MaterialTheme.typography.bodySmall)

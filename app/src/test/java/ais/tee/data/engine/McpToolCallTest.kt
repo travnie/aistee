@@ -66,7 +66,7 @@ class McpToolCallTest {
     @Test fun approvedParameterHeadersMirrorBodyAndEncodeUnsafeValues() = runBlocking {
         val mapped = requireNotNull(McpToolCatalog.fromToolsListResponse("demo", "3".repeat(32),
             """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"mapped","inputSchema":{"type":"object","properties":{"text":{"type":"string","x-mcp-header":"Text"},"count":{"type":"integer","x-mcp-header":"Count"},"optional":{"type":"string","x-mcp-header":"Optional"}}}}]}}"""))
-        val args = """{"text":"line1\n世界","count":-12}"""
+        val args = """{"text":"line1\n世界","count":-12,"optional":null}"""
         val review = requireNotNull(McpToolCallReview.prepare(CALL_ENDPOINT, mapped, mapped.browse().single().nativeName, args, 1))
         var requests = 0
         val transport = McpHttpDiscovery(OkHttpClient.Builder().addInterceptor { chain ->
