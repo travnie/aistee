@@ -10,7 +10,7 @@ Kotlin Multiplatform · Android first · Local-first tools
 [![Performance](https://img.shields.io/github/actions/workflow/status/travnie/aistee/performance-ci.yml?branch=main&label=performance&logo=githubactions&logoColor=white&style=flat-square)](https://github.com/travnie/aistee/actions/workflows/performance-ci.yml)
 [![Latest APK](https://img.shields.io/badge/APK-rolling-818CF8?logo=android&logoColor=white&style=flat-square)](https://github.com/travnie/aistee/releases/download/aistee-latest/aistee.apk)
 [![Last commit](https://img.shields.io/github/last-commit/travnie/aistee?color=A78BFA&logo=git&style=flat-square)](https://github.com/travnie/aistee/commits/main)
-[![License](https://img.shields.io/badge/license-MPL--2.0-818CF8?logo=opensourceinitiative&logoColor=white&style=flat-square)](https://spdx.org/licenses/MPL-2.0.html)
+[![License](https://img.shields.io/badge/license-MPL--2.0-818CF8?logo=opensourceinitiative&logoColor=white&style=flat-square)](https://spdx.org/licenses/MPL-2.0)
 
 [![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin%20Multiplatform-7F52FF?logo=kotlin&logoColor=white&style=flat-square)](https://kotlinlang.org/docs/multiplatform.html) ![Gradle](https://img.shields.io/badge/Gradle-02303A?logo=gradle&logoColor=fff&style=flat-square)
 [![Material 3](https://img.shields.io/badge/Material%203-4285F4?logo=jetpackcompose&logoColor=white&style=flat-square)](https://m3.material.io/) [![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white&style=flat-square)](https://developer.android.com/about/versions/oreo)
@@ -124,7 +124,6 @@ Backends are optional. Add one only when a feature requires server-side state or
 
 - verify embedded sign-in, upload and activity probes for the newer Web providers,
 - add browser-backed auth handoff only where a provider exposes a verifiable contract,
-- extend Codebench handoffs while keeping Streambench a companion UI,
 - continue measured Material 3 Adaptive / large-screen UX work,
 - keep security and privacy as release gates across storage, WebViews, tools, exports, widgets and notifications.
 
@@ -137,15 +136,18 @@ Backends are optional. Add one only when a feature requires server-side state or
 - [Product ideas](docs/product-ideas.md)
 - [Active skills runtime](docs/skills-runtime.md)
 - [Android performance](docs/android-performance.md)
-- [Design](DESIGN.md)
+- [Design](docs/DESIGN.md)
 
 ## :hammer_and_wrench: Development
 
 Android keeps minSdk 26; current compile/target SDK levels live in `app/build.gradle.kts`. Portable logic belongs in `shared`; platform APIs stay in platform modules/source sets. Long-chat responsiveness, reliable uploads and provider isolation are product constraints, not optional polish.
 
-## :scroll: License
+## :scroll: [License](LICENSE)
 
-MPL-2.0, see [LICENSE](LICENSE). SPDX/REUSE metadata is in [REUSE.toml](REUSE.toml); third-party notices remain under their own licenses.
+```
+2026 ©️ travny/trvny
+```
+[MPL-2.0](https://spdx.org/licenses/MPL-2.0)
 
 ## :speech_balloon: Cytat z szuflady
 
