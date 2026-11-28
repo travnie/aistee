@@ -1,6 +1,7 @@
 package ais.tee.screenshots
 
 import ais.tee.data.engine.*
+import ais.tee.data.model.McpToolCatalog
 import ais.tee.data.model.NativeToolResult
 import ais.tee.ui.screens.McpDiscoveryPanel
 import ais.tee.ui.screens.McpPreviewState
@@ -84,6 +85,40 @@ class McpManualCallTest {
     private fun openReview() {
         compose.onNodeWithTag("mcp_discovery_panel").performScrollToNode(hasTestTag(REVIEW_TAG))
         compose.onNodeWithTag(REVIEW_TAG).performScrollTo().performClick()
+    }
+
+    @Test fun mappedArgumentErrorsRecoverAndReviewDisclosesHeaders() {
+        val mapped = requireNotNull(McpToolCatalog.fromToolsListResponse("demo", "3".repeat(32),
+            """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"mapped","inputSchema":{"type":"object","properties":{"count":{"type":"integer","x-mcp-header":"Count"}}}}]}}"""))
+        val state = preview().apply {
+            outcome = McpDiscoveryOutcome.Success(mapped)
+            selectedTool = mapped.browse().single().nativeName
+            draftArguments = """{"count":"wrong"}"""
+        }
+        val store = McpServerStore(FakeMcpServerPersistence())
+        compose.setContent {
+            AisteeTheme {
+                Surface { McpDiscoveryPanel(state, serverStore = store) }
+            }
+        }
+        val panel = compose.onNodeWithTag("mcp_discovery_panel")
+        val editor = compose.onNodeWithTag("mcp_call_draft_args")
+        val error = compose.onNodeWithTag("mcp_parameter_header_error")
+        panel.performScrollToNode(hasTestTag(REVIEW_TAG))
+        compose.onNodeWithTag(REVIEW_TAG).assertIsNotEnabled()
+        error.assertExists()
+        editor.performScrollTo().performTextReplacement("{")
+        panel.performScrollToNode(hasTestTag(REVIEW_TAG))
+        compose.onNodeWithTag(REVIEW_TAG).assertIsNotEnabled()
+        error.assertDoesNotExist()
+        editor.performScrollTo().performTextReplacement("""{"count":2}""")
+        panel.performScrollToNode(hasTestTag(REVIEW_TAG))
+        error.assertDoesNotExist()
+        compose.onNodeWithTag(REVIEW_TAG).assertIsEnabled()
+        openReview()
+        compose.onNodeWithTag("mcp_review_parameter_headers").assertTextEquals(
+            "Arguments also sent as HTTP headers: Mcp-Param-Count")
+        compose.onNodeWithTag("mcp_deny_call").performClick()
     }
 
     @Test fun stoppingWaitCancelsTheRequestWithoutAutomaticallyRetrying() {
