@@ -202,6 +202,11 @@ internal class McpHttpDiscovery(
                         .header("MCP-Protocol-Version", MCP_VERSION)
                         .header("Mcp-Method", "tools/call")
                         .header("Mcp-Name", mcpNameHeader(review.target.remoteName))
+                        .apply {
+                            review.parameterHeaders.forEach { (name, value) ->
+                                header(name, mcpNameHeader(value))
+                            }
+                        }
                         .build()
                     val raw = requestPage(request, 1)
                     val result = raw?.let { Json.parseToJsonElement(it).jsonObject[JSON_RPC_RESULT_FIELD] as? JsonObject }

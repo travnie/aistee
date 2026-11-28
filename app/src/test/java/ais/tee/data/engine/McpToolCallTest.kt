@@ -63,6 +63,34 @@ class McpToolCallTest {
         assertEquals("McpToolCallReview([redacted])", review.toString())
     }
 
+    @Test fun approvedParameterHeadersMirrorBodyAndEncodeUnsafeValues() = runBlocking {
+        val mapped = requireNotNull(McpToolCatalog.fromToolsListResponse("demo", "3".repeat(32),
+            """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"mapped","inputSchema":{"type":"object","properties":{"text":{"type":"string","x-mcp-header":"Text"},"count":{"type":"integer","x-mcp-header":"Count"},"optional":{"type":"string","x-mcp-header":"Optional"}}}}]}}"""))
+        val args = """{"text":"line1\n世界","count":-12}"""
+        val review = requireNotNull(McpToolCallReview.prepare(CALL_ENDPOINT, mapped, mapped.browse().single().nativeName, args, 1))
+        var requests = 0
+        val transport = McpHttpDiscovery(OkHttpClient.Builder().addInterceptor { chain ->
+            requests++
+            val request = chain.request()
+            assertEquals(mcpNameHeader("line1\n世界"), request.header("Mcp-Param-Text"))
+            assertEquals("-12", request.header("Mcp-Param-Count"))
+            assertNull(request.header("Mcp-Param-Optional"))
+            assertNull(request.header("Authorization"))
+            val buffer = okio.Buffer()
+            requireNotNull(request.body).writeTo(buffer)
+            assertEquals(Json.parseToJsonElement(args), Json.parseToJsonElement(buffer.readUtf8()).jsonObject["params"]?.jsonObject?.get("arguments"))
+            Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body("""{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","content":[]}}"""
+                    .toResponseBody("application/json".toMediaType())).build()
+        }.build())
+        assertEquals(McpToolCallOutcome.Failure(McpToolCallFailure.BLOCKED), transport.callToolChecked(review))
+        assertEquals(0, requests)
+        assertTrue(review.approveOnce())
+        assertTrue(transport.callToolChecked(review) is McpToolCallOutcome.Completed)
+        assertEquals(McpToolCallOutcome.Failure(McpToolCallFailure.BLOCKED), transport.callToolChecked(review))
+        assertEquals(1, requests)
+    }
+
     @Test fun aServerErrorDoesNotRetryOrMakeTheApprovalReusable() = runBlocking {
         var requests = 0
         val transport = McpHttpDiscovery(OkHttpClient.Builder().addInterceptor { chain ->
