@@ -11,6 +11,7 @@ internal class McpToolCallReview private constructor(
     val target: McpToolTarget,
     val call: NativeToolCall,
     val rawArguments: String,
+    val parameterHeaders: Map<String, String>,
     val epoch: Int,
 ) {
     private val approved = AtomicBoolean(false)
@@ -33,8 +34,9 @@ internal class McpToolCallReview private constructor(
                     approved = false) != CapabilityDecision.ASK) return null
             val target = catalog.resolveTarget(nativeName) ?: return null
             val args = parseMcpArguments(arguments) ?: return null
+            val headers = catalog.parameterHeaders(nativeName, args) ?: return null
             return McpToolCallReview(url, catalog, target,
-                NativeToolCall(UUID.randomUUID().toString(), nativeName, args), arguments, epoch)
+                NativeToolCall(UUID.randomUUID().toString(), nativeName, args), arguments, headers, epoch)
         }
     }
 }

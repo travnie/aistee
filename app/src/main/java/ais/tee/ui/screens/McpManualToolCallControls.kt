@@ -26,8 +26,13 @@ internal fun McpManualToolCallControls(
         enabled = decision == CapabilityDecision.ASK && !state.busy,
         modifier = Modifier.testTag("mcp_review_call"),
     ) { Text("Review manual call") }
-    Text("Each call needs confirmation. JSON syntax checked; server validates its schema. " +
-        "Parameter-header tools and authentication are not supported in this preview.",
+    if (decision == CapabilityDecision.DENY && parseMcpArguments(state.draftArguments) != null) {
+        Text("Invalid or oversized mapped header values. Check the argument types and sizes.",
+            color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.testTag("mcp_parameter_header_error"))
+    }
+    Text("Each call needs confirmation. JSON syntax and mapped header values are checked; " +
+        "server validates the full schema. Authentication is not supported in this preview.",
         style = MaterialTheme.typography.bodySmall)
     if (state.calling) {
         Text("Calling tool…")
@@ -49,6 +54,12 @@ internal fun McpManualToolCallControls(
                     Text(review.target.remoteName)
                     Text("Arguments sent")
                     Text(review.call.arguments.toString(), modifier = Modifier.testTag("mcp_review_arguments"))
+                    if (review.parameterHeaders.isNotEmpty()) {
+                        Text("Arguments also sent as HTTP headers: " + review.parameterHeaders.keys.joinToString(),
+                            modifier = Modifier.testTag("mcp_review_parameter_headers"))
+                        Text("Header values may be visible to network intermediaries. Do not include secrets.",
+                            color = MaterialTheme.colorScheme.error)
+                    }
                     Text("May change remote data or incur costs. No account cookies, API keys or local files " +
                         "are attached. Stopping the request cannot undo remote actions.")
                 }

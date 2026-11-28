@@ -51,6 +51,7 @@ class McpToolCatalog private constructor(
     private data class Entry(
         val summary: McpToolSummary,
         val inputSchema: JsonObject,
+        val parameterHeaders: List<McpParameterHeader>,
     )
 
     val count: Int get() = entries.size
@@ -98,6 +99,12 @@ class McpToolCatalog private constructor(
             })
         }.toString()
     }
+
+    /** Raw values for the approved transport only; never add them to exports or logs. */
+    fun parameterHeaders(nativeName: String, arguments: JsonObject): Map<String, String>? =
+        entries.firstOrNull { it.summary.nativeName == nativeName }?.let {
+            extractMcpParameterHeaders(it.parameterHeaders, arguments)
+        }
 
     fun resolveTarget(nativeName: String): McpToolTarget? =
         entries.firstOrNull { it.summary.nativeName == nativeName }?.let {
@@ -149,7 +156,7 @@ class McpToolCatalog private constructor(
                     require(envelope["error"] == null)
                     val result = envelope["result"] as? JsonObject ?: error("Missing result")
                     val tools = result["tools"] as? JsonArray ?: error("Missing tools")
-                    require(entries.size + tools.size <= MAX_MCP_TOOLS)
+                    require(names.size + tools.size <= MAX_MCP_TOOLS)
                     val nextValue = result["nextCursor"]
                     val nextCursor = nextValue?.stringValue()
                     require(nextValue == null ||
@@ -174,6 +181,8 @@ class McpToolCatalog private constructor(
                         val schema = tool["inputSchema"] as? JsonObject ?: error("Missing input schema")
                         require(schema.toString().length <= MAX_MCP_SCHEMA_CHARS)
                         require(schema["type"].stringValue() == "object")
+                        // Invalid parameter-header definitions are excluded, not silently executed.
+                        val headers = parseMcpParameterHeaders(schema) ?: return@forEach
                         validateMcpSchema(schema)
                         entries += Entry(
                             summary = McpToolSummary(
@@ -183,6 +192,7 @@ class McpToolCatalog private constructor(
                                 description = description,
                             ),
                             inputSchema = schema,
+                            parameterHeaders = headers,
                         )
                     }
                 }

@@ -13,10 +13,8 @@ fun McpToolCatalog.callDecision(
     invocationMode: BenchToolInvocationMode,
     approved: Boolean,
 ): CapabilityDecision {
-    val definition = loadDefinition(nativeName) ?: return CapabilityDecision.DENY
-    if (parseMcpArguments(argumentsJson) == null || hasParameterHeaders(definition.inputSchema)) {
-        return CapabilityDecision.DENY
-    }
+    val args = parseMcpArguments(argumentsJson) ?: return CapabilityDecision.DENY
+    if (parameterHeaders(nativeName, args) == null) return CapabilityDecision.DENY
     if (invocationMode != BenchToolInvocationMode.EXPLICIT_USER_ACTION) {
         return CapabilityDecision.REQUIRES_USER_INTERACTION
     }
@@ -34,23 +32,6 @@ private fun validJsonLiterals(value: JsonElement): Boolean = when (value) {
     is JsonObject -> value.values.all(::validJsonLiterals)
     is JsonArray -> value.all(::validJsonLiterals)
     is JsonPrimitive -> value.isString || jsonLiteral.matches(value.content)
-}
-
-// Parameter-header schemas blocked here; JSON examples/defaults are data, not schema nodes.
-private fun hasParameterHeaders(value: JsonElement): Boolean {
-    val schema = value as? JsonObject ?: return false
-    if ("x-mcp-header" in schema) return true
-    return schema.any { (key, child) ->
-        when (key) {
-            "properties", "patternProperties", "\$defs", "definitions", "dependentSchemas", "dependencies" ->
-                (child as? JsonObject)?.values?.any(::hasParameterHeaders) == true
-            "prefixItems", "allOf", "anyOf", "oneOf" ->
-                (child as? JsonArray)?.any(::hasParameterHeaders) == true
-            "items", "additionalItems", "contentSchema", "additionalProperties", "unevaluatedProperties", "unevaluatedItems", "contains",
-            "not", "if", "then", "else", "propertyNames" -> hasParameterHeaders(child)
-            else -> false
-        }
-    }
 }
 
 private fun hasBoundedMcpArgumentDepth(raw: String): Boolean {

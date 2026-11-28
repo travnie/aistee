@@ -31,36 +31,60 @@ class McpToolInvocationTest {
         assertNotNull(parseMcpArguments("""{"string":"value","number":-12.5e2,"null":null,"bool":false,"array":[1,"x"]}"""))
     }
 
-    @Test fun parameterHeaderToolsStayBlockedUntilTheMappingRouteIsImplemented() {
-        val annotated = requireNotNull(McpToolCatalog.fromToolsListResponse("demo", "2".repeat(32),
-            """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"headers","inputSchema":{"type":"object","properties":{"region":{"type":"string","x-mcp-header":"Region"}}}}]}}"""))
-        assertEquals(CapabilityDecision.DENY, annotated.callDecision(annotated.browse().single().nativeName,
-            EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = true))
-        val ordinary = requireNotNull(McpToolCatalog.fromToolsListResponse("demo", "3".repeat(32),
-            """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"ordinary","inputSchema":{"type":"object","properties":{"x-mcp-header":{"type":"string"}},"default":{"x-mcp-header":"literal"},"examples":[{"x-mcp-header":"data"}]}}]}}"""))
-        assertEquals(CapabilityDecision.ASK, ordinary.callDecision(ordinary.browse().single().nativeName,
-            EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = false))
-        val dependency = requireNotNull(McpToolCatalog.fromToolsListResponse("demo", "4".repeat(32),
-            """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"dependency","inputSchema":{"type":"object","dependencies":{"value":{"properties":{"region":{"type":"string","x-mcp-header":"Region"}}}}}}]}}"""))
-        assertEquals(CapabilityDecision.DENY, dependency.callDecision(dependency.browse().single().nativeName,
-            EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = false))
-        val propertyDependency = requireNotNull(McpToolCatalog.fromToolsListResponse("demo", "5".repeat(32),
-            """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"propertyDependency","inputSchema":{"type":"object","dependencies":{"value":["x-mcp-header"]}}}]}}"""))
-        assertEquals(CapabilityDecision.ASK, propertyDependency.callDecision(propertyDependency.browse().single().nativeName,
-            EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = false))
+    private fun annotatedCatalog(schema: String): McpToolCatalog = requireNotNull(
+        McpToolCatalog.fromToolsListResponse("demo", "2".repeat(32),
+            """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"headers","inputSchema":$schema},{"name":"ordinary","inputSchema":{"type":"object"}}]}}""")
+    )
+
+    @Test fun mappedHeadersRequireConsentAndUseExactNestedPaths() {
+        val mapped = annotatedCatalog("""{"type":"object","properties":{"region":{"type":"string","x-mcp-header":"Region"},"nested":{"type":"object","properties":{"count":{"type":"integer","x-mcp-header":"Count"},"flag":{"type":"boolean","x-mcp-header":"Flag"}}}}}""")
+        val tool = mapped.browse().first().nativeName
+        val raw = """{"region":"世界","nested":{"count":4.2e1,"flag":false},"count":123}"""
+        val args = requireNotNull(parseMcpArguments(raw))
+        assertEquals(mapOf("Mcp-Param-Region" to "世界", "Mcp-Param-Count" to "42", "Mcp-Param-Flag" to "false"),
+            mapped.parameterHeaders(tool, args))
+        assertEquals(emptyMap(), mapped.parameterHeaders(tool, JsonObject(emptyMap())))
+        for (absent in listOf("""{"region":null,"nested":null}""", """{"nested":{"count":null,"flag":null}}""",
+            """{"nested":"not an object"}""")) {
+            assertEquals(emptyMap(), mapped.parameterHeaders(tool, requireNotNull(parseMcpArguments(absent))))
+            assertEquals(CapabilityDecision.ASK, mapped.callDecision(tool, absent, BenchToolInvocationMode.EXPLICIT_USER_ACTION, false))
+        }
+        assertEquals(CapabilityDecision.ASK, mapped.callDecision(tool, raw, BenchToolInvocationMode.EXPLICIT_USER_ACTION, false))
+        assertEquals(CapabilityDecision.ALLOW, mapped.callDecision(tool, raw, BenchToolInvocationMode.EXPLICIT_USER_ACTION, true))
+        assertEquals(CapabilityDecision.REQUIRES_USER_INTERACTION,
+            mapped.callDecision(tool, raw, BenchToolInvocationMode.MODEL_TOOL_CALL, true))
+        for (bad in listOf("""{"region":true}""", """{"nested":{"count":9007199254740992}}""",
+            """{"nested":{"count":9007199254740990.9}}""", """{"nested":{"count":1e-1}}""",
+            """{"nested":{"flag":"false"}}""")) {
+            assertEquals(CapabilityDecision.DENY, mapped.callDecision(tool, bad, BenchToolInvocationMode.EXPLICIT_USER_ACTION, true))
+        }
     }
 
-    @Test fun annotationsInOtherSchemaValuedKeywordsCannotEnableManualCalls() {
-        for (keyword in listOf("additionalItems", "contentSchema")) {
-            val schema = buildJsonObject {
-                put("type", "object")
-                put(keyword, buildJsonObject { put("type", "string"); put("x-mcp-header", "Value") })
-            }
-            val raw = """{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"extension","inputSchema":$schema}]}}"""
-            val other = requireNotNull(McpToolCatalog.fromToolsListResponse("demo", "6".repeat(32), raw))
-            assertEquals(CapabilityDecision.DENY, other.callDecision(other.browse().single().nativeName,
-                EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, approved = false))
+    @Test fun invalidHeaderDefinitionsAreExcludedWithoutDiscardingOrdinaryTools() {
+        val annotation = """{"type":"string","x-mcp-header":"Region"}"""
+        for (schema in listOf(
+            """{"type":"object","x-mcp-header":"Root"}""",
+            """{"type":"object","properties":{"a":{"type":"string","x-mcp-header":"bad header"}}}""",
+            """{"type":"object","properties":{"a":{"type":"number","x-mcp-header":"Number"}}}""",
+            """{"type":"object","properties":{"a":$annotation,"b":{"type":"string","x-mcp-header":"region"}}}""",
+            """{"type":"object","properties":{"a":{"type":"array","items":$annotation}}}""",
+            """{"type":"object","allOf":[{"properties":{"a":$annotation}}]}""",
+            """{"type":"object","dependencies":{"value":{"properties":{"region":$annotation}}}}""",
+            """{"type":"object","additionalItems":$annotation}""",
+            """{"type":"object","contentSchema":$annotation}"""
+        )) {
+            assertEquals(listOf("ordinary"), annotatedCatalog(schema).browse().map { it.remoteName })
         }
+        val ordinary = annotatedCatalog("""{"type":"object","properties":{"x-mcp-header":{"type":"string"}},"default":{"x-mcp-header":"literal"},"examples":[{"x-mcp-header":"data"}],"dependencies":{"value":["x-mcp-header"]}}""")
+        assertEquals(2, ordinary.count)
+        assertEquals(CapabilityDecision.ASK, ordinary.callDecision(ordinary.browse().first().nativeName,
+            EMPTY_ARGUMENTS, BenchToolInvocationMode.EXPLICIT_USER_ACTION, false))
+    }
+
+    @Test fun unannotatedLegacySubschemasRetainExistingDiscoveryLimits() {
+        val nested = (1..18).fold("""{"type":"string"}""") { child, _ -> """{"properties":{"child":$child}}""" }
+        val schema = """{"type":"object","dependencies":{"legacy":$nested}}"""
+        assertEquals(2, annotatedCatalog(schema).count)
     }
 
     @Test fun resultsAreBoundedUntrustedTextWithoutResourceFetchingOrOpaqueState() {
