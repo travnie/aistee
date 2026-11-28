@@ -151,6 +151,6 @@ MPL-2.0, see [LICENSE](LICENSE). SPDX/REUSE metadata is in [REUSE.toml](REUSE.to
 
 <!-- markdownlint-disable MD033 -->
 <!--STARTS_HERE_QUOTE_README-->
-<i>❝The most original authors are not so because they advance what is new, but because they put what they have to say as if it had never been said before. — Johann Wolfgang von Goethe❞</i>
+<i>❝“BASIC is to computer programming as QWERTY is to typing.”— Seymour Papert❞</i>
 <!--ENDS_HERE_QUOTE_README-->
 <!-- markdownlint-enable MD033 -->
